@@ -43,7 +43,7 @@ namespace Ludots.Core.Presentation.Camera
         /// </summary>
         /// <param name="state">The player's camera state.</param>
         /// <param name="deltaTime">Time elapsed since last frame.</param>
-        public void Update(CameraState state, float deltaTime)
+        public void Update(CameraState state, float deltaTime, RenderCameraDebugState renderDebug = null)
         {
             if (state == null) return;
 
@@ -70,6 +70,20 @@ namespace Ludots.Core.Presentation.Camera
 
             Vector3 offset = new Vector3(offsetX, vDist, offsetZ);
             Vector3 desiredPos = targetPos + offset;
+
+            if (renderDebug != null && renderDebug.Enabled)
+            {
+                Vector3 pullDir = targetPos - desiredPos;
+                if (pullDir.LengthSquared() > 0.000001f)
+                {
+                    pullDir = Vector3.Normalize(pullDir);
+                    Vector3 backward = -pullDir;
+                    desiredPos += backward * Math.Max(renderDebug.PullBackMeters, 0f);
+                }
+
+                desiredPos += renderDebug.PositionOffsetMeters;
+                targetPos += renderDebug.TargetOffsetMeters;
+            }
 
             Vector3 forward = Vector3.Normalize(targetPos - desiredPos);
             Vector3 up = Vector3.UnitY;

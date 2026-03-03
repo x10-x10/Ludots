@@ -101,5 +101,8 @@ namespace Ludots.Core.Scripting
         public const string Navigation2DPlayground_AgentsPerTeam = "Navigation2DPlayground_AgentsPerTeam";
         public const string Navigation2DPlayground_LiveAgentsTotal = "Navigation2DPlayground_LiveAgentsTotal";
         public const string Navigation2DPlayground_FlowDebugLines = "Navigation2DPlayground_FlowDebugLines";
+
+        public const string RenderCameraDebugState = "RenderCameraDebugState";
+        public const string CameraCullingDebugState = "CameraCullingDebugState";
     }
 }

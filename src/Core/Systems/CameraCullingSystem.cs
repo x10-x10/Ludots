@@ -6,6 +6,7 @@ using Ludots.Core.Components;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Components;
+using Ludots.Core.Scripting;
 using Ludots.Core.Spatial;
 
 namespace Ludots.Core.Systems
@@ -15,6 +16,8 @@ namespace Ludots.Core.Systems
         private readonly CameraManager _cameraManager;
         private readonly ISpatialQueryService _spatial;
         private readonly IViewController _view;
+        private readonly IDictionary<string, object> _globals;
+        private readonly CameraCullingDebugState _debugState;
         private Entity[] _buffer = new Entity[4096];
         private HashSet<Entity> _prevVisible = new HashSet<Entity>();
         private HashSet<Entity> _nextVisible = new HashSet<Entity>();
@@ -27,11 +30,23 @@ namespace Ludots.Core.Systems
         public float LowLODDistCm = 20000f;    // < 200m (Low)
         // > LowLODDistCm → Culled
 
-        public CameraCullingSystem(World world, CameraManager cameraManager, ISpatialQueryService spatial, IViewController view) : base(world) 
+        public CameraCullingSystem(
+            World world,
+            CameraManager cameraManager,
+            ISpatialQueryService spatial,
+            IViewController view,
+            IDictionary<string, object> globals = null) : base(world)
         {
             _cameraManager = cameraManager;
             _spatial = spatial ?? throw new ArgumentNullException(nameof(spatial));
             _view = view ?? throw new ArgumentNullException(nameof(view));
+            _globals = globals;
+
+            if (_globals != null)
+            {
+                _debugState = new CameraCullingDebugState();
+                _globals[ContextKeys.CameraCullingDebugState] = _debugState;
+            }
         }
 
         public override void Update(in float dt)
@@ -86,12 +101,16 @@ namespace Ludots.Core.Systems
             float highSq = HighLODDistCm * HighLODDistCm;
             float medSq = MediumLODDistCm * MediumLODDistCm;
             float lowSq2 = LowLODDistCm * LowLODDistCm;
+            int highCount = 0;
+            int mediumCount = 0;
+            int lowCount = 0;
+            int culledCount = 0;
 
             for (int idx = 0; idx < r.Count; idx++)
             {
                 var e = _buffer[idx];
                 if (!World.IsAlive(e)) continue;
-                if (!World.Has<WorldPositionCm>(e) || !World.Has<CullState>(e) || !World.Has<VisualModel>(e)) continue;
+                if (!World.Has<WorldPositionCm>(e) || !World.Has<CullState>(e)) continue;
 
                 var wp = World.Get<WorldPositionCm>(e).Value;
                 float px = wp.X.ToFloat();
@@ -99,7 +118,13 @@ namespace Ludots.Core.Systems
                 bool inViewport = (px >= minX && px <= maxX && py >= minY && py <= maxY);
 
                 ref var cull = ref World.Get<CullState>(e);
-                if (!inViewport) { cull.LOD = LODLevel.Culled; cull.IsVisible = false; continue; }
+                if (!inViewport)
+                {
+                    cull.LOD = LODLevel.Culled;
+                    cull.IsVisible = false;
+                    culledCount++;
+                    continue;
+                }
 
                 // 2. Distance Check (Logic Space)
                 float dx = px - tx;
@@ -114,23 +139,27 @@ namespace Ludots.Core.Systems
                     cull.LOD = LODLevel.High;
                     cull.IsVisible = true;
                     _nextVisible.Add(e);
+                    highCount++;
                 }
                 else if (distSq < medSq)
                 {
                     cull.LOD = LODLevel.Medium;
                     cull.IsVisible = true;
                     _nextVisible.Add(e);
+                    mediumCount++;
                 }
                 else if (distSq < lowSq2)
                 {
                     cull.LOD = LODLevel.Low;
                     cull.IsVisible = true;
                     _nextVisible.Add(e);
+                    lowCount++;
                 }
                 else
                 {
                     cull.LOD = LODLevel.Culled;
                     cull.IsVisible = false;
+                    culledCount++;
                 }
             }
 
@@ -141,11 +170,56 @@ namespace Ludots.Core.Systems
                 ref var cull = ref World.Get<CullState>(e);
                 cull.LOD = LODLevel.Culled;
                 cull.IsVisible = false;
+                culledCount++;
             }
+
+            PublishDebugState(
+                target,
+                minX,
+                maxX,
+                minY,
+                maxY,
+                r.Count,
+                r.Dropped,
+                highCount,
+                mediumCount,
+                lowCount,
+                culledCount);
 
             var tmp = _prevVisible;
             _prevVisible = _nextVisible;
             _nextVisible = tmp;
+        }
+
+        private void PublishDebugState(
+            in Vector2 logicalTargetCm,
+            float minX,
+            float maxX,
+            float minY,
+            float maxY,
+            int queryCount,
+            int queryDropped,
+            int highCount,
+            int mediumCount,
+            int lowCount,
+            int culledCount)
+        {
+            if (_debugState == null) return;
+
+            _debugState.LogicalTargetCm = logicalTargetCm;
+            _debugState.LogicalMinX = minX;
+            _debugState.LogicalMaxX = maxX;
+            _debugState.LogicalMinY = minY;
+            _debugState.LogicalMaxY = maxY;
+            _debugState.HighLodDistCm = HighLODDistCm;
+            _debugState.MediumLodDistCm = MediumLODDistCm;
+            _debugState.LowLodDistCm = LowLODDistCm;
+            _debugState.QueryCount = queryCount;
+            _debugState.QueryDropped = queryDropped;
+            _debugState.VisibleHighCount = highCount;
+            _debugState.VisibleMediumCount = mediumCount;
+            _debugState.VisibleLowCount = lowCount;
+            _debugState.CulledCount = culledCount;
         }
     }
 }

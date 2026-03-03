@@ -15,6 +15,7 @@ using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Gameplay.GAS.Orders;
+using Ludots.Core.Scripting;
 using Ludots.Core.Spatial;
 using Ludots.Core.Systems;
 using NUnit.Framework;
@@ -350,6 +351,40 @@ namespace Ludots.Tests.ThreeC
             That(secondPos.X, Is.LessThan(targetVisualX), "Position should not snap to target (smoothing)");
         }
 
+        [Test]
+        public void Presenter_RenderDebugPullBack_IncreasesRenderDistanceWithoutChangingLogicalTarget()
+        {
+            var adapter = new StubCameraAdapter();
+            var coords = new StubSpatialCoordinateConverter();
+            var presenter = new CameraPresenter(coords, adapter) { SmoothSpeed = 999f };
+
+            var state = new CameraState
+            {
+                TargetCm = Vector2.Zero,
+                Yaw = 0f,
+                Pitch = 45f,
+                DistanceCm = 2000f,
+                FovYDeg = 60f
+            };
+
+            presenter.Update(state, 0.016f);
+            var normal = adapter.LastState;
+            float normalDistance = Vector3.Distance(normal.Position, normal.Target);
+
+            var debug = new RenderCameraDebugState
+            {
+                Enabled = true,
+                PullBackMeters = 8f
+            };
+
+            presenter.Update(state, 0.016f, debug);
+            var detached = adapter.LastState;
+            float detachedDistance = Vector3.Distance(detached.Position, detached.Target);
+
+            That(detachedDistance, Is.GreaterThan(normalDistance + 7.5f), "Render camera should be farther from target after pull-back");
+            That(presenter.CurrentTargetPosition, Is.EqualTo(Vector3.Zero), "Logical target should remain stable");
+        }
+
         // ══════════════════════════════════════════════════════════════
         //  D. Camera Culling
         // ══════════════════════════════════════════════════════════════
@@ -491,6 +526,41 @@ namespace Ludots.Tests.ThreeC
 
             ref var cull = ref world.Get<CullState>(entity);
             That(cull.IsVisible, Is.False, "Frame 2: previously visible entity should be marked culled");
+        }
+
+        [Test]
+        public void Culling_WithGlobalContext_PublishesDebugState()
+        {
+            using var world = World.Create();
+            var manager = new CameraManager();
+            manager.State.TargetCm = Vector2.Zero;
+            manager.State.DistanceCm = 30000f;
+            manager.State.Pitch = 45f;
+            manager.State.FovYDeg = 60f;
+
+            var spatial = new StubSpatialQueryService();
+            var view = new StubViewController();
+            var globals = new Dictionary<string, object>();
+
+            var highEntity = CreateCullableEntity(world, 100, 100);
+            var mediumEntity = CreateCullableEntity(world, 5000, 5000);
+            var culledEntity = CreateCullableEntity(world, 25000, 25000);
+            spatial.Entities.Add(highEntity);
+            spatial.Entities.Add(mediumEntity);
+            spatial.Entities.Add(culledEntity);
+
+            var system = new CameraCullingSystem(world, manager, spatial, view, globals);
+            system.Update(0.016f);
+
+            That(globals.ContainsKey(ContextKeys.CameraCullingDebugState), Is.True);
+            That(globals[ContextKeys.CameraCullingDebugState], Is.InstanceOf<CameraCullingDebugState>());
+
+            var debug = (CameraCullingDebugState)globals[ContextKeys.CameraCullingDebugState];
+            That(debug.QueryCount, Is.EqualTo(3));
+            That(debug.VisibleHighCount, Is.GreaterThanOrEqualTo(1));
+            That(debug.VisibleMediumCount, Is.GreaterThanOrEqualTo(1));
+            That(debug.CulledCount, Is.GreaterThanOrEqualTo(1));
+            That(debug.LowLodDistCm, Is.EqualTo(system.LowLODDistCm));
         }
 
         // ══════════════════════════════════════════════════════════════

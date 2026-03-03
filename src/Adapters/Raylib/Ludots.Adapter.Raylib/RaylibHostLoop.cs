@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using Ludots.Adapter.Raylib.Debug;
 using Ludots.Adapter.Raylib.Services;
 using Ludots.Client.Raylib.Rendering;
 using Ludots.Core.Components;
@@ -79,6 +80,9 @@ namespace Ludots.Adapter.Raylib
 
                 var cameraAdapter = new RaylibCameraAdapter(initialCamera);
                 var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter);
+                var renderCameraDebug = new RenderCameraDebugState();
+                engine.GlobalContext[ContextKeys.RenderCameraDebugState] = renderCameraDebug;
+                var gmConsole = new RaylibGmCommandConsole(engine.GlobalContext, renderCameraDebug);
 
                 IScreenProjector screenProjector = new RaylibScreenProjector(cameraAdapter);
                 engine.GlobalContext[ContextKeys.ScreenProjector] = screenProjector;
@@ -87,7 +91,7 @@ namespace Ludots.Adapter.Raylib
                 ValidateRequiredContextBeforeLoop(engine);
 
                 var viewController = new RaylibViewController(cameraAdapter);
-                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController);
+                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController, engine.GlobalContext);
                 engine.RegisterPresentationSystem(cullingSystem);
 
                 engine.Start();
@@ -98,7 +102,7 @@ namespace Ludots.Adapter.Raylib
                 engine.LoadMap(config.StartupMapId);
 
                 var debugDrawRenderer = new RaylibDebugDrawRenderer { PlaneY = 0.35f };
-                using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Instanced);
+                using var primitiveRenderer = new RaylibPrimitiveRenderer(engine.VFS, RaylibPrimitiveRenderMode.Instanced);
 
                 while (!Rl.WindowShouldClose())
                 {
@@ -120,11 +124,12 @@ namespace Ludots.Adapter.Raylib
                             engine.GlobalContext[ContextKeys.Navigation2DPlayground_ResetScenario] = true;
                         }
 
+                        bool gmCaptured = gmConsole.UpdateInput();
                         bool uiCaptured = drawSkiaUi && UpdateInput(uiRoot);
-                        engine.GlobalContext[ContextKeys.UiCaptured] = uiCaptured;
+                        engine.GlobalContext[ContextKeys.UiCaptured] = uiCaptured || gmCaptured;
                         engine.Tick(dt);
 
-                        cameraPresenter.Update(engine.GameSession.Camera.State, dt);
+                        cameraPresenter.Update(engine.GameSession.Camera.State, dt, renderCameraDebug);
 
                         Rl.BeginDrawing();
                         Rl.ClearBackground(new Raylib_cs.Color(0, 0, 0, 255));
@@ -167,6 +172,11 @@ namespace Ludots.Adapter.Raylib
                             debugDrawRenderer.Draw(dd);
                         }
 
+                        if (renderCameraDebug.DrawLogicalCullingDebug)
+                        {
+                            DrawLogicalCullingDebug(engine);
+                        }
+
                         Rl.EndMode3D();
 
                         // Terrain debug HUD
@@ -201,8 +211,9 @@ namespace Ludots.Adapter.Raylib
 
                         Rl.DrawFPS(screenWidth - 100, 10);
                         Rl.DrawText($"Scale | Grid=1.00m | HexWidth={HexCoordinates.HexWidth:F3}m | RowSpacing={HexCoordinates.RowSpacing:F3}m | HeightScale={terrainRenderer.HeightScale:F2}", 10, screenHeight - 35, 20, Raylib_cs.Color.WHITE);
-                        DrawOverlay(drawTerrain, drawPrimitives, drawDebugDraw, drawSkiaUi, engine, primitiveRenderer);
+                        DrawOverlay(drawTerrain, drawPrimitives, drawDebugDraw, drawSkiaUi, engine, primitiveRenderer, renderCameraDebug);
                         DrawScreenOverlays(engine);
+                        gmConsole.DrawOverlay(screenWidth, screenHeight);
 
                         Rl.EndDrawing();
                     }
@@ -429,6 +440,54 @@ namespace Ludots.Adapter.Raylib
             Rl.DrawLine3D(a, b, ToRaylibColor(item.BorderColor));
         }
 
+        private static void DrawLogicalCullingDebug(GameEngine engine)
+        {
+            if (!engine.GlobalContext.TryGetValue(ContextKeys.CameraCullingDebugState, out var obj) ||
+                obj is not CameraCullingDebugState state)
+            {
+                return;
+            }
+
+            float minX = WorldUnits.CmToM(state.LogicalMinX);
+            float maxX = WorldUnits.CmToM(state.LogicalMaxX);
+            float minZ = WorldUnits.CmToM(state.LogicalMinY);
+            float maxZ = WorldUnits.CmToM(state.LogicalMaxY);
+            float y = 0.15f;
+
+            var p0 = new Vector3(minX, y, minZ);
+            var p1 = new Vector3(maxX, y, minZ);
+            var p2 = new Vector3(maxX, y, maxZ);
+            var p3 = new Vector3(minX, y, maxZ);
+            var boxColor = new Color(255, 220, 20, 210);
+            Rl.DrawLine3D(p0, p1, boxColor);
+            Rl.DrawLine3D(p1, p2, boxColor);
+            Rl.DrawLine3D(p2, p3, boxColor);
+            Rl.DrawLine3D(p3, p0, boxColor);
+
+            var center = new Vector3(
+                WorldUnits.CmToM(state.LogicalTargetCm.X),
+                y,
+                WorldUnits.CmToM(state.LogicalTargetCm.Y));
+
+            DrawCircleXZ(center, WorldUnits.CmToM(state.HighLodDistCm), new Color(40, 220, 40, 210));
+            DrawCircleXZ(center, WorldUnits.CmToM(state.MediumLodDistCm), new Color(255, 200, 40, 210));
+            DrawCircleXZ(center, WorldUnits.CmToM(state.LowLodDistCm), new Color(255, 80, 80, 210));
+        }
+
+        private static void DrawCircleXZ(Vector3 center, float radius, Color color)
+        {
+            const int segments = 64;
+            float step = MathF.PI * 2f / segments;
+            for (int i = 0; i < segments; i++)
+            {
+                float a0 = i * step;
+                float a1 = (i + 1) * step;
+                var p0 = new Vector3(center.X + MathF.Cos(a0) * radius, center.Y, center.Z + MathF.Sin(a0) * radius);
+                var p1 = new Vector3(center.X + MathF.Cos(a1) * radius, center.Y, center.Z + MathF.Sin(a1) * radius);
+                Rl.DrawLine3D(p0, p1, color);
+            }
+        }
+
         private static Color ToRaylibColor(Vector4 c)
         {
             byte r = (byte)(Clamp01(c.X) * 255f);
@@ -473,7 +532,7 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
-        private static void DrawOverlay(bool drawTerrain, bool drawPrimitives, bool drawDebugDraw, bool drawSkiaUi, GameEngine engine, RaylibPrimitiveRenderer primitiveRenderer)
+        private static void DrawOverlay(bool drawTerrain, bool drawPrimitives, bool drawDebugDraw, bool drawSkiaUi, GameEngine engine, RaylibPrimitiveRenderer primitiveRenderer, RenderCameraDebugState renderCameraDebug)
         {
             int x = 10;
             int y = 60;
@@ -514,7 +573,12 @@ namespace Ludots.Adapter.Raylib
 
             Rl.DrawText($"Agents/team: {agentsPerTeam}", x + 4, y + (h + gap) * 12 + 0, 16, new Color(220, 220, 220, 220));
             Rl.DrawText($"Live agents: {liveTotal}", x + 4, y + (h + gap) * 12 + 18, 16, new Color(220, 220, 220, 220));
-            Rl.DrawText($"Instanced: {primitiveRenderer.LastInstancedInstances} ({primitiveRenderer.LastInstancedBatches} batches)", x + 4, y + (h + gap) * 12 + 36, 16, new Color(220, 220, 220, 220));
+            Rl.DrawText(
+                $"Instanced: {primitiveRenderer.LastInstancedInstances} ({primitiveRenderer.LastInstancedBatches} batches) | Models: {primitiveRenderer.LastModelDrawCalls}",
+                x + 4,
+                y + (h + gap) * 12 + 36,
+                16,
+                new Color(220, 220, 220, 220));
 
             int ddLines = 0;
             if (engine.GlobalContext.TryGetValue(ContextKeys.DebugDrawCommandBuffer, out var ddObj) && ddObj is DebugDrawCommandBuffer dd)
@@ -527,6 +591,28 @@ namespace Ludots.Adapter.Raylib
             if (engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_FlowDebugLines, out var fdlObj) && fdlObj is int fdl) flowDbgLines = fdl;
             Rl.DrawText($"FlowDbgLines: {flowDbgLines}", x + 4, y + (h + gap) * 12 + 72, 16, new Color(220, 220, 220, 220));
 
+            string camDebug = renderCameraDebug.Enabled
+                ? $"RenderCamDbg: ON pull={renderCameraDebug.PullBackMeters:F1}m"
+                : "RenderCamDbg: OFF";
+            Rl.DrawText(camDebug, x + 4, y + (h + gap) * 12 + 90, 16, new Color(180, 220, 255, 230));
+
+            string cullDebug = renderCameraDebug.DrawLogicalCullingDebug
+                ? "CullDebug: ON (logic frustum/LOD)"
+                : "CullDebug: OFF";
+            Rl.DrawText(cullDebug, x + 4, y + (h + gap) * 12 + 108, 16, new Color(180, 220, 255, 230));
+            Rl.DrawText("GM: F8 -> gm help", x + 4, y + (h + gap) * 12 + 126, 16, new Color(180, 220, 255, 230));
+
+            if (engine.GlobalContext.TryGetValue(ContextKeys.CameraCullingDebugState, out var cullObj) &&
+                cullObj is CameraCullingDebugState cullState)
+            {
+                Rl.DrawText(
+                    $"Cull LOD H/M/L={cullState.VisibleHighCount}/{cullState.VisibleMediumCount}/{cullState.VisibleLowCount} Culled={cullState.CulledCount}",
+                    x + 4,
+                    y + (h + gap) * 12 + 144,
+                    16,
+                    new Color(180, 220, 255, 230));
+            }
+
             // Audit playground counters (render only when present)
             int auditGlobal = engine.GlobalContext.TryGetValue("Audit.GlobalMapLoadedCount", out var agObj) && agObj is int ag ? ag : -1;
             int auditScoped = engine.GlobalContext.TryGetValue("Audit.ScopedMapLoadedCount", out var asObj) && asObj is int asc ? asc : -1;
@@ -536,7 +622,7 @@ namespace Ludots.Adapter.Raylib
 
             if (auditGlobal >= 0 || auditScoped >= 0 || auditNamed >= 0 || auditAnchor >= 0 || auditFactory >= 0)
             {
-                int auditYBase = y + (h + gap) * 12 + 96;
+                int auditYBase = y + (h + gap) * 12 + 168;
                 Rl.DrawText($"Audit Global: {Math.Max(auditGlobal, 0)}", x + 4, auditYBase, 16, new Color(180, 240, 180, 230));
                 Rl.DrawText($"Audit Scoped: {Math.Max(auditScoped, 0)}", x + 4, auditYBase + 18, 16, new Color(180, 240, 180, 230));
                 Rl.DrawText($"Audit Named: {Math.Max(auditNamed, 0)}", x + 4, auditYBase + 36, 16, new Color(180, 240, 180, 230));
