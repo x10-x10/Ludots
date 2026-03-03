@@ -33,7 +33,9 @@
     "rotateDegPerSecond": 90,
     "initialYawDegrees": 35,
     "initialPitchDegrees": 60,
-    "initialDistanceCm": 14000
+    "initialDistanceCm": 5200,
+    "minDistanceCm": 2800,
+    "maxDistanceCm": 12000
   },
   "skillDemo": {
     "showcaseStepIntervalSeconds": 2.2,

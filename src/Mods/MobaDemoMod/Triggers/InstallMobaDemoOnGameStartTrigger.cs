@@ -114,7 +114,9 @@ namespace MobaDemoMod.Triggers
                     {
                         EnablePan = false,
                         ZoomCmPerWheel = mobaConfig.Camera.ZoomCmPerWheel,
-                        RotateDegPerSecond = mobaConfig.Camera.RotateDegPerSecond
+                        RotateDegPerSecond = mobaConfig.Camera.RotateDegPerSecond,
+                        MinDistanceCm = mobaConfig.Camera.MinDistanceCm,
+                        MaxDistanceCm = mobaConfig.Camera.MaxDistanceCm
                     }
                 };
             }

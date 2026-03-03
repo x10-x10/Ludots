@@ -85,7 +85,9 @@ namespace MobaDemoMod
             [JsonPropertyName("rotateDegPerSecond")] public float RotateDegPerSecond { get; set; } = 90f;
             [JsonPropertyName("initialYawDegrees")] public float InitialYawDegrees { get; set; } = 35f;
             [JsonPropertyName("initialPitchDegrees")] public float InitialPitchDegrees { get; set; } = 60f;
-            [JsonPropertyName("initialDistanceCm")] public float InitialDistanceCm { get; set; } = 14000f;
+            [JsonPropertyName("initialDistanceCm")] public float InitialDistanceCm { get; set; } = 5200f;
+            [JsonPropertyName("minDistanceCm")] public float MinDistanceCm { get; set; } = 2800f;
+            [JsonPropertyName("maxDistanceCm")] public float MaxDistanceCm { get; set; } = 12000f;
         }
 
         public sealed class SkillDemoConfig
