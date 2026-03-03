@@ -492,6 +492,8 @@ namespace Ludots.Core.Engine
             var w = World;
             ((SpatialQueryService)SpatialQueries).SetPositionProvider(entity =>
             {
+                if (!w.IsAlive(entity) || !w.Has<WorldPositionCm>(entity))
+                    return default;
                 ref var pos = ref w.Get<WorldPositionCm>(entity);
                 return pos.Value.ToWorldCmInt2();
             });
