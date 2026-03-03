@@ -206,7 +206,7 @@ namespace MobaDemoMod.Presentation
                     HighlightShowcaseTarget(_enemyA);
                     break;
                 case 1:
-                    TriggerFireball();
+                    TriggerFireball(_enemyA);
                     break;
                 case 2:
                     HighlightShowcaseTarget(_enemyB);
@@ -221,15 +221,43 @@ namespace MobaDemoMod.Presentation
             }
         }
 
-        private void TriggerFireball()
+        private void TriggerFireball(Entity forcedTarget = default)
         {
-            if (!_world.IsAlive(_hero) || !_world.IsAlive(_enemyA)) return;
-            PublishEffect(_fireballEffectId, _hero, _enemyA);
+            if (!_world.IsAlive(_hero)) return;
+            Entity target = _world.IsAlive(forcedTarget) ? forcedTarget : ResolveManualFireballTarget();
+            if (!_world.IsAlive(target)) return;
+
+            PublishEffect(_fireballEffectId, _hero, target);
             if (_cfg == null) return;
             if (_globals.TryGetValue(ContextKeys.PresentationCommandBuffer, out var cmdObj) && cmdObj is PresentationCommandBuffer commands)
             {
                 EmitPerformer(commands, _cfg.Presentation.DemoFireballDefId, _hero);
+                EmitPerformer(commands, _cfg.Presentation.DemoFireballDefId, target);
             }
+        }
+
+        private Entity ResolveManualFireballTarget()
+        {
+            if (TryGetContextEntity(ContextKeys.HoveredEntity, out var hovered) && hovered != _hero)
+                return hovered;
+            if (TryGetContextEntity(ContextKeys.SelectedEntity, out var selected) && selected != _hero)
+                return selected;
+            if (_world.IsAlive(_enemyA))
+                return _enemyA;
+            if (_world.IsAlive(_enemyB))
+                return _enemyB;
+            return default;
+        }
+
+        private bool TryGetContextEntity(string key, out Entity entity)
+        {
+            entity = default;
+            if (!_globals.TryGetValue(key, out var obj) || obj is not Entity e)
+                return false;
+            if (!_world.IsAlive(e))
+                return false;
+            entity = e;
+            return true;
         }
 
         private void TriggerMagicCircle()
