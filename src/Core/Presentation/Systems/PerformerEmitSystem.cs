@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
-using System.Text.Json;
 using Arch.Core;
 using Arch.System;
 using Ludots.Core.GraphRuntime;
@@ -37,9 +35,6 @@ namespace Ludots.Core.Presentation.Systems
 
     public sealed class PerformerEmitSystem : BaseSystem<World, float>
     {
-        private static int _debugMarkerLogsRemaining = 8;
-        private static int _debugBarLogsRemaining = 8;
-        private static int _debugTextLogsRemaining = 8;
         private readonly PerformerInstanceBuffer _instances;
         private readonly PerformerDefinitionRegistry _definitions;
         private readonly GroundOverlayBuffer _groundOverlays;
@@ -375,14 +370,6 @@ namespace Ludots.Core.Presentation.Systems
                 Scale = new Vector3(sx, sy, sz),
                 Color = color,
             });
-
-            if (def.Id == 5001 && _debugMarkerLogsRemaining > 0)
-            {
-                _debugMarkerLogsRemaining--;
-                #region agent log
-                File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new { hypothesisId = "H4", location = "PerformerEmitSystem:EmitMarker3D", message = "Entity marker emitted", data = new { defId = def.Id, ownerId = owner.Id, meshOrShapeId = def.MeshOrShapeId, sx, sy, sz, px = pos.X, py = pos.Y, pz = pos.Z }, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }) + "\n");
-                #endregion
-            }
         }
 
         private void EmitWorldBar(int handle, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
@@ -405,14 +392,6 @@ namespace Ludots.Core.Presentation.Systems
                 Color0 = bg,
                 Color1 = fg,
             });
-
-            if (def.Id == 9010 && _debugBarLogsRemaining > 0)
-            {
-                _debugBarLogsRemaining--;
-                #region agent log
-                File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new { hypothesisId = "H3", location = "PerformerEmitSystem:EmitWorldBar", message = "World bar emitted", data = new { defId = def.Id, ownerId = owner.Id, fillRatio, width, height }, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }) + "\n");
-                #endregion
-            }
         }
 
         private void EmitWorldText(int handle, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
@@ -435,14 +414,6 @@ namespace Ludots.Core.Presentation.Systems
                 FontSize = (int)ResolveParam(handle, def, owner, 3, def.DefaultFontSize),
                 Color0 = color,
             });
-
-            if (def.Id == 9011 && _debugTextLogsRemaining > 0 && (value0 <= 0.01f || value0 < value1))
-            {
-                _debugTextLogsRemaining--;
-                #region agent log
-                File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new { hypothesisId = "H2", location = "PerformerEmitSystem:EmitWorldText", message = "World text emitted", data = new { defId = def.Id, ownerId = owner.Id, value0, value1, id0, id1 }, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }) + "\n");
-                #endregion
-            }
         }
 
         // ── Helpers ──
