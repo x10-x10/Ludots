@@ -1,0 +1,103 @@
+[
+  {
+    "id": "rts_base",
+    "components": {
+      "Name": {
+        "Value": "Base"
+      },
+      "WorldPositionCm": {
+        "Value": {
+          "X": 0,
+          "Y": 0
+        }
+      },
+      "AttributeBuffer": {
+        "base": {
+          "Health": 2000
+        }
+      }
+    }
+  },
+  {
+    "id": "rts_barracks",
+    "components": {
+      "Name": {
+        "Value": "Barracks"
+      },
+      "WorldPositionCm": {
+        "Value": {
+          "X": 0,
+          "Y": 0
+        }
+      },
+      "AttributeBuffer": {
+        "base": {
+          "Health": 1000
+        }
+      }
+    }
+  },
+  {
+    "id": "rts_infantry",
+    "components": {
+      "Name": {
+        "Value": "Infantry"
+      },
+      "WorldPositionCm": {
+        "Value": {
+          "X": 0,
+          "Y": 0
+        }
+      },
+      "Team": {
+        "Id": 1
+      },
+      "AttributeBuffer": {
+        "base": {
+          "Health": 100
+        }
+      }
+    }
+  },
+  {
+    "id": "rts_tank",
+    "components": {
+      "Name": {
+        "Value": "Tank"
+      },
+      "WorldPositionCm": {
+        "Value": {
+          "X": 0,
+          "Y": 0
+        }
+      },
+      "Team": {
+        "Id": 1
+      },
+      "AttributeBuffer": {
+        "base": {
+          "Health": 500
+        }
+      }
+    }
+  },
+  {
+    "id": "rts_mineral",
+    "components": {
+      "Name": {
+        "Value": "Mineral"
+      },
+      "WorldPositionCm": {
+        "Value": {
+          "X": 0,
+          "Y": 0
+        }
+      },
+      "AttributeBuffer": {
+        "base": {
+          "Health": 1500
+        }
+      }
+    }
+  }
+]
