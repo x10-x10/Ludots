@@ -1,13 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
-using System.Text.Json;
 using Arch.Core;
 using Arch.System;
 using Ludots.Core.Components;
 using Ludots.Core.Gameplay.GAS;
-using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Presentation;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Input.Runtime;
@@ -27,7 +24,6 @@ namespace MobaDemoMod.Presentation
     /// </summary>
     public sealed class MobaSkillDemoPresentationSystem : ISystem<float>
     {
-        private static int _debugSkillDemoLogsRemaining = 28;
         private readonly World _world;
         private readonly Dictionary<string, object> _globals;
         private readonly IModContext _ctx;
@@ -47,7 +43,6 @@ namespace MobaDemoMod.Presentation
         private int _magicCircleEffectId;
         private int _summonEffectId;
         private int _displacementEffectId;
-        private int _healthAttrId;
 
         public MobaSkillDemoPresentationSystem(World world, Dictionary<string, object> globals, IModContext ctx)
         {
@@ -89,23 +84,6 @@ namespace MobaDemoMod.Presentation
             _magicCircleEffectId = ResolveEffectId(cfg.SkillDemo.ManualMagicCircleEffectId);
             _summonEffectId = ResolveEffectId(cfg.SkillDemo.ManualSummonEffectId);
             _displacementEffectId = EffectTemplateIdRegistry.GetId("Effect.Moba.Displacement.R");
-            _healthAttrId = AttributeRegistry.GetId("Health");
-            if (_healthAttrId <= 0) _healthAttrId = AttributeRegistry.Register("Health");
-
-            if (_debugSkillDemoLogsRemaining > 0)
-            {
-                _debugSkillDemoLogsRemaining--;
-                // #region agent log
-                File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
-                {
-                    hypothesisId = "H2",
-                    location = "MobaSkillDemoPresentationSystem:EnsureInitialized",
-                    message = "Manual demo effect ids resolved",
-                    data = new { fireballName = cfg.SkillDemo.ManualFireballEffectId, fireballEffectId = _fireballEffectId, magicCircleEffectId = _magicCircleEffectId, summonEffectId = _summonEffectId, healthAttrId = _healthAttrId },
-                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                }) + "\n");
-                // #endregion
-            }
 
             _ctx.Log("[MobaDemoMod] SkillDemo initialized.");
             return true;
@@ -163,23 +141,7 @@ namespace MobaDemoMod.Presentation
             }
 
             if (input.PressedThisFrame("DemoFireball"))
-            {
-                if (_debugSkillDemoLogsRemaining > 0)
-                {
-                    _debugSkillDemoLogsRemaining--;
-                    // #region agent log
-                    File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
-                    {
-                        hypothesisId = "H1",
-                        location = "MobaSkillDemoPresentationSystem:HandleManualHotkeys",
-                        message = "DemoFireball key pressed",
-                        data = new { heroAlive = _world.IsAlive(_hero), enemyAAlive = _world.IsAlive(_enemyA), enemyBAlive = _world.IsAlive(_enemyB), showcaseEnabled = _showcaseEnabled },
-                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    }) + "\n");
-                    // #endregion
-                }
                 TriggerFireball();
-            }
             if (input.PressedThisFrame("DemoMagicCircle"))
                 TriggerMagicCircle();
             if (input.PressedThisFrame("DemoSummon"))
@@ -218,20 +180,6 @@ namespace MobaDemoMod.Presentation
 
                 if (ge.Kind == GasPresentationEventKind.EffectApplied && ge.Delta < 0f && _world.IsAlive(ge.Target))
                 {
-                    if (_debugSkillDemoLogsRemaining > 0)
-                    {
-                        _debugSkillDemoLogsRemaining--;
-                        // #region agent log
-                        File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
-                        {
-                            hypothesisId = "H4",
-                            location = "MobaSkillDemoPresentationSystem:ConsumeGasPresentationEvents",
-                            message = "Negative EffectApplied observed",
-                            data = new { actorId = ge.Actor.Id, targetId = ge.Target.Id, effectTemplateId = ge.EffectTemplateId, attributeId = ge.AttributeId, delta = ge.Delta },
-                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                        }) + "\n");
-                        // #endregion
-                    }
                     EmitPerformer(commands, _cfg.Presentation.DemoFireballDefId, ge.Target);
                 }
             }
@@ -278,29 +226,6 @@ namespace MobaDemoMod.Presentation
             if (!_world.IsAlive(_hero)) return;
             Entity target = _world.IsAlive(forcedTarget) ? forcedTarget : ResolveManualFireballTarget();
             if (!_world.IsAlive(target)) return;
-
-            float beforeCurrent = -1f;
-            float beforeBase = -1f;
-            if (_world.Has<AttributeBuffer>(target))
-            {
-                ref var attrs = ref _world.Get<AttributeBuffer>(target);
-                beforeCurrent = attrs.GetCurrent(_healthAttrId);
-                beforeBase = attrs.GetBase(_healthAttrId);
-            }
-            if (_debugSkillDemoLogsRemaining > 0)
-            {
-                _debugSkillDemoLogsRemaining--;
-                // #region agent log
-                File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
-                {
-                    hypothesisId = "H1",
-                    location = "MobaSkillDemoPresentationSystem:TriggerFireball",
-                    message = "TriggerFireball resolved target",
-                    data = new { heroId = _hero.Id, targetId = target.Id, fireballEffectId = _fireballEffectId, targetHealthCurrent = beforeCurrent, targetHealthBase = beforeBase },
-                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                }) + "\n");
-                // #endregion
-            }
 
             PublishEffect(_fireballEffectId, _hero, target);
             if (_cfg == null) return;
@@ -368,25 +293,8 @@ namespace MobaDemoMod.Presentation
         {
             if (templateId <= 0) return;
             if (!_globals.TryGetValue(ContextKeys.EffectRequestQueue, out var reqObj) || reqObj is not EffectRequestQueue requests)
-            {
-                if (_debugSkillDemoLogsRemaining > 0)
-                {
-                    _debugSkillDemoLogsRemaining--;
-                    // #region agent log
-                    File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
-                    {
-                        hypothesisId = "H2",
-                        location = "MobaSkillDemoPresentationSystem:PublishEffect",
-                        message = "EffectRequestQueue missing in globals",
-                        data = new { templateId, sourceId = source.Id, targetId = target.Id },
-                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    }) + "\n");
-                    // #endregion
-                }
                 return;
-            }
-
-            int countBefore = requests.Count;
+            
 
             requests.Publish(new EffectRequest
             {
@@ -396,20 +304,6 @@ namespace MobaDemoMod.Presentation
                 TargetContext = default,
                 TemplateId = templateId
             });
-            if (_debugSkillDemoLogsRemaining > 0)
-            {
-                _debugSkillDemoLogsRemaining--;
-                // #region agent log
-                File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
-                {
-                    hypothesisId = "H2",
-                    location = "MobaSkillDemoPresentationSystem:PublishEffect",
-                    message = "Effect request published",
-                    data = new { templateId, sourceId = source.Id, targetId = target.Id, queueCountBefore = countBefore, queueCountAfter = requests.Count },
-                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                }) + "\n");
-                // #endregion
-            }
         }
 
         private void HighlightShowcaseTarget(Entity target)
