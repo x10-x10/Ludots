@@ -1,0 +1,18 @@
+{
+  "ModPaths": [
+    "../../../../../../Mods/LudotsCoreMod",
+    "../../../../../../Mods/CoreInputMod",
+    "../../../../../../Mods/MobaDemoMod",
+    "../../../../../../Mods/RtsDemoMod",
+    "../../../../../../Mods/RtsShowcaseMod",
+    "../../../../../../Mods/ArpgDemoMod",
+    "../../../../../../Mods/TcgDemoMod",
+    "../../../../../../Mods/FourXDemoMod",
+    "../../../../../../Mods/AuditPlaygroundMod",
+    "../../../../../../Mods/Navigation2DPlaygroundMod",
+    "../../../../../../Mods/PerformanceVisualizationMod",
+    "../../../../../../Mods/Physics2DPlaygroundMod",
+    "../../../../../../Mods/DiagnosticsOverlayMod",
+    "../../../../../../Mods/FeatureHubMod"
+  ]
+}
