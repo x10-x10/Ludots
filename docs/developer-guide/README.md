@@ -62,3 +62,10 @@
     *   Editor ↔ Raylib 轨道相机模型统一
     *   MapConfig.DefaultCamera 配置规范
     *   Yaw 方向约定与坐标映射
+
+## 审计与合并
+
+*   [phase1_phase2a 审计报告](../audits/phase1_phase2a_audit_report.md)
+*   [E2E 验收用例](../audits/e2e_acceptance_tests.md)
+*   [Merge 状态与 ModLoader 审计](../audits/merge_status_and_modloader_20260304.md)
+*   [全分支审计与最终合并方案](../audits/final_merge_plan_20260304.md)

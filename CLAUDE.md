@@ -80,6 +80,7 @@ All systems must belong to exactly one group. Execution order within phases is d
 
 - **"Everything is a Mod"** — Core itself is mounted as a mod
 - `mod.json` manifest: `name` (unique ModId), `version`, optional `main` (DLL path), `dependencies`, `priority`
+- **Dev-as-release**: All mods output to `bin/net8.0/` (no Debug/Release split). `main` in mod.json: `bin/net8.0/ModName.dll`. See `src/Mods/Directory.Build.props`.
 - ModLoader: scans → parses manifests → topological sort by dependencies → VFS mount → DLL load → `OnLoad(ModContext)`
 - VFS paths: `ModId:Path/To/Resource` (e.g., `Core:Configs/game.json`)
 - ConfigPipeline merges `game.json` from Core + mods in load order; objects merge recursively, arrays/scalars override
@@ -124,3 +125,4 @@ Tests follow AAA (Arrange/Act/Assert). Test class: `<Subsystem>Tests`. Test meth
 | Startup entrypoints | `docs/developer-guide/09_startup_entrypoints.md` |
 | Map/Mod spatial services | `docs/developer-guide/10_map_mod_spatial.md` |
 | GAS layered architecture & Sinks | `docs/developer-guide/11_gas_layered_architecture.md` |
+| Audits & merge plans | `docs/audits/` |
