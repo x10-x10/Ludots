@@ -365,6 +365,12 @@ namespace Ludots.Core.Engine
             var w = World;
             ((SpatialQueryService)SpatialQueries).SetPositionProvider(entity =>
             {
+                if (!w.IsAlive(entity) || !w.Has<WorldPositionCm>(entity))
+                {
+                    // Spatial backend may momentarily contain stale entities during structural transitions.
+                    // Return a far-away sentinel position so fine-shape filtering excludes them safely.
+                    return new WorldCmInt2(1_000_000_000, 1_000_000_000);
+                }
                 ref var pos = ref w.Get<WorldPositionCm>(entity);
                 return pos.Value.ToWorldCmInt2();
             });
