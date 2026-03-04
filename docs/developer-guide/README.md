@@ -62,3 +62,11 @@
     *   Editor ↔ Raylib 轨道相机模型统一
     *   MapConfig.DefaultCamera 配置规范
     *   Yaw 方向约定与坐标映射
+17. [Entity 外观资产管线：AssetKey、Performer、Prefab 与 Raylib 渲染](17_entity_visual_asset_pipeline.md)
+    *   mesh_assets/prefabs 配置与 asset key 映射
+    *   EntityTemplate 到 Performer 绑定与动态 VisualModel 解析
+    *   Raylib 模型加载、prefab 展开与离屏裁剪链路
+18. [Raylib 验收调试能力的 ConfigPipeline 配置化](18_raylib_acceptance_debug_config_pipeline.md)
+    *   acceptance_debug 配置结构与合并策略
+    *   GM 命令与配置映射关系
+    *   Mod 覆写与交互验收流程

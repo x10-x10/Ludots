@@ -7,6 +7,7 @@ using Ludots.Core.Components;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Config;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
@@ -20,6 +21,9 @@ namespace Ludots.Adapter.Raylib.Debug
         private readonly GameEngine _engine;
         private readonly IDictionary<string, object> _globals;
         private readonly RenderCameraDebugState _cameraDebug;
+        private readonly AcceptanceDebugConfig _config;
+        private readonly bool _allowCommandsWithoutPrefix;
+        private readonly KeyboardKey _toggleKey;
         private readonly Dictionary<string, CommandDef> _commands =
             new Dictionary<string, CommandDef>(StringComparer.OrdinalIgnoreCase);
 
@@ -29,6 +33,7 @@ namespace Ludots.Adapter.Raylib.Debug
         private bool _prevBackspace;
         private bool _prevEnter;
         private bool _prevEscape;
+        private string _toggleKeyLabel = "F8";
 
         private readonly struct CommandDef
         {
@@ -43,18 +48,28 @@ namespace Ludots.Adapter.Raylib.Debug
         }
 
         public bool IsOpen { get; private set; }
+        public string ToggleKeyLabel => _toggleKeyLabel;
 
-        public RaylibGmCommandConsole(GameEngine engine, IDictionary<string, object> globals, RenderCameraDebugState cameraDebug)
+        public RaylibGmCommandConsole(
+            GameEngine engine,
+            IDictionary<string, object> globals,
+            RenderCameraDebugState cameraDebug,
+            AcceptanceDebugConfig config)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             _globals = globals ?? throw new ArgumentNullException(nameof(globals));
             _cameraDebug = cameraDebug ?? throw new ArgumentNullException(nameof(cameraDebug));
+            _config = config ?? new AcceptanceDebugConfig();
+            _config.Normalize();
+            _allowCommandsWithoutPrefix = _config.Console.AllowCommandsWithoutPrefix;
+            _toggleKey = ResolveToggleKey(_config.Console.ToggleKey, out _toggleKeyLabel);
+            _lastMessage = $"{_toggleKeyLabel} 打开 GM 控制台";
             RegisterBuiltInCommands();
         }
 
         public bool UpdateInput()
         {
-            if (GetKeyPressed(KeyboardKey.KEY_F8, ref _prevF8))
+            if (GetKeyPressed(_toggleKey, ref _prevF8))
             {
                 IsOpen = !IsOpen;
                 _lastMessage = IsOpen
@@ -108,7 +123,7 @@ namespace Ludots.Adapter.Raylib.Debug
             Rl.DrawRectangle(boxX, boxY, boxW, boxH, new Color(0, 0, 0, 190));
             Rl.DrawRectangleLines(boxX, boxY, boxW, boxH, new Color(80, 190, 255, 220));
 
-            Rl.DrawText("GM Console (F8 toggle)", boxX + 10, boxY + 8, 18, new Color(120, 220, 255, 255));
+            Rl.DrawText($"GM Console ({_toggleKeyLabel} toggle)", boxX + 10, boxY + 8, 18, new Color(120, 220, 255, 255));
             Rl.DrawText("GM> " + _input, boxX + 10, boxY + 32, 20, Color.WHITE);
             Rl.DrawText(_lastMessage, boxX + 10, boxY + 56, 16, new Color(190, 220, 190, 255));
         }
@@ -124,6 +139,11 @@ namespace Ludots.Adapter.Raylib.Debug
             if (tokens[0].Equals("gm", StringComparison.OrdinalIgnoreCase))
             {
                 start = 1;
+            }
+            else if (!_allowCommandsWithoutPrefix)
+            {
+                _lastMessage = "请使用前缀: gm <command>";
+                return;
             }
 
             if (start >= tokens.Length)
@@ -157,7 +177,7 @@ namespace Ludots.Adapter.Raylib.Debug
         private void RegisterBuiltInCommands()
         {
             Register("help", "gm help", _ =>
-                "可用: cam.detach cam.pull cam.offset cam.target_offset cam.reset cull.debug cull.state accept.case accept.focus accept.scale accept.probe accept.inspect");
+                "可用: cam.detach cam.pull cam.offset cam.target_offset cam.reset cull.debug cull.state accept.case accept.focus accept.focuspreset accept.scale accept.probe accept.inspect");
 
             Register("cam.detach", "gm cam.detach on|off", args =>
             {
@@ -226,25 +246,32 @@ namespace Ludots.Adapter.Raylib.Debug
                 return "Cull state 不可用";
             });
 
-            Register("accept.case", "gm accept.case on|off", args =>
+            Register("accept.case", "gm accept.case on|off|<caseId>", args =>
             {
-                if (args.Length != 1 || !TryParseBool(args[0], out bool on))
-                    return "用法: gm accept.case on|off";
+                if (args.Length != 1)
+                    return "用法: gm accept.case on|off|<caseId>";
 
-                if (on)
+                if (TryParseBool(args[0], out bool on))
                 {
-                    _cameraDebug.Enabled = true;
-                    _cameraDebug.PullBackMeters = Math.Max(_cameraDebug.PullBackMeters, 20f);
-                    _cameraDebug.DrawLogicalCullingDebug = true;
-                    _cameraDebug.DrawAcceptanceProbes = true;
-                    _cameraDebug.AcceptanceScaleMultiplier = Math.Max(_cameraDebug.AcceptanceScaleMultiplier, 2f);
-                    return "验收用例模式 ON（逻辑裁剪+探针+放大比例）";
+                    if (on)
+                    {
+                        ApplyCasePreset(_config.Accept.CaseOn);
+                        return $"case={_config.Accept.CaseOn.Id} pull={_cameraDebug.PullBackMeters:F1}m scale={_cameraDebug.AcceptanceScaleMultiplier:F2}";
+                    }
+
+                    _cameraDebug.DrawAcceptanceProbes = false;
+                    _cameraDebug.DrawLogicalCullingDebug = false;
+                    _cameraDebug.AcceptanceScaleMultiplier = 1f;
+                    return "验收用例模式 OFF";
                 }
 
-                _cameraDebug.DrawAcceptanceProbes = false;
-                _cameraDebug.DrawLogicalCullingDebug = false;
-                _cameraDebug.AcceptanceScaleMultiplier = 1f;
-                return "验收用例模式 OFF";
+                if (TryFindCasePreset(args[0], out var casePreset) && casePreset != null)
+                {
+                    ApplyCasePreset(casePreset);
+                    return $"case={casePreset.Id} pull={_cameraDebug.PullBackMeters:F1}m scale={_cameraDebug.AcceptanceScaleMultiplier:F2}";
+                }
+
+                return $"未知 caseId: {args[0]}";
             });
 
             Register("accept.focus", "gm accept.focus <nameKeyword> [distanceCm]", args =>
@@ -252,7 +279,7 @@ namespace Ludots.Adapter.Raylib.Debug
                 if (args.Length < 1 || args.Length > 2)
                     return "用法: gm accept.focus <nameKeyword> [distanceCm]";
 
-                float distanceCm = _engine.GameSession.Camera.State.DistanceCm;
+                float distanceCm = _config.Accept.DefaultFocusDistanceCm;
                 if (args.Length == 2)
                 {
                     if (!TryParseFloat(args[1], out distanceCm))
@@ -263,6 +290,18 @@ namespace Ludots.Adapter.Raylib.Debug
                     return result;
 
                 return result;
+            });
+
+            Register("accept.focuspreset", "gm accept.focuspreset <presetId>", args =>
+            {
+                if (args.Length != 1) return "用法: gm accept.focuspreset <presetId>";
+                if (!TryFindFocusPreset(args[0], out var preset) || preset == null)
+                    return $"未知 focus preset: {args[0]}";
+
+                if (!TryFocusByName(preset.Keyword, preset.DistanceCm, out string result))
+                    return result;
+
+                return $"focuspreset `{preset.Id}` 命中: {result}";
             });
 
             Register("accept.scale", "gm accept.scale <factor>", args =>
@@ -296,13 +335,83 @@ namespace Ludots.Adapter.Raylib.Debug
                 int modelFail = TryGetInt(ContextKeys.RenderModelLoadFailures);
                 int fallback = TryGetInt(ContextKeys.RenderModelFallbackDraws);
                 int missingId = TryGetInt(ContextKeys.RenderMissingModelAssetId);
-                return $"Inspect draw={drawItems} model(draw/cache/fail/fallback)={modelDraw}/{modelCache}/{modelFail}/{fallback} missingAsset={missingId}";
+                return $"Inspect acceptScale={_cameraDebug.AcceptanceScaleMultiplier:F2} draw={drawItems} model={modelDraw}/{modelCache}/{modelFail}/{fallback} miss={missingId}";
             });
         }
 
         private void Register(string name, string help, Func<string[], string> handler)
         {
             _commands[name] = new CommandDef(help, handler);
+        }
+
+        private void ApplyCasePreset(AcceptanceDebugConfig.AcceptanceCasePreset? preset)
+        {
+            if (preset == null) return;
+            preset.NormalizeDefaults();
+            _cameraDebug.Enabled = preset.EnableRenderCameraDebug;
+            _cameraDebug.PullBackMeters = preset.PullBackMeters;
+            _cameraDebug.AcceptanceScaleMultiplier = preset.ScaleMultiplier;
+            _cameraDebug.DrawLogicalCullingDebug = preset.DrawLogicalCullingDebug;
+            _cameraDebug.DrawAcceptanceProbes = preset.DrawAcceptanceProbes;
+            _cameraDebug.PositionOffsetMeters = preset.PositionOffsetVector;
+            _cameraDebug.TargetOffsetMeters = preset.TargetOffsetVector;
+        }
+
+        private bool TryFindCasePreset(string caseId, out AcceptanceDebugConfig.AcceptanceCasePreset? preset)
+        {
+            preset = null;
+            if (string.IsNullOrWhiteSpace(caseId)) return false;
+            var list = _config.Accept.CasePresets;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var item = list[i];
+                if (item == null) continue;
+                if (string.Equals(item.Id, caseId, StringComparison.OrdinalIgnoreCase))
+                {
+                    preset = item;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private bool TryFindFocusPreset(string presetId, out AcceptanceDebugConfig.FocusPreset? preset)
+        {
+            preset = null;
+            if (string.IsNullOrWhiteSpace(presetId)) return false;
+            var list = _config.Accept.FocusPresets;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var item = list[i];
+                if (item == null) continue;
+                if (string.Equals(item.Id, presetId, StringComparison.OrdinalIgnoreCase))
+                {
+                    preset = item;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static KeyboardKey ResolveToggleKey(string raw, out string displayLabel)
+        {
+            var fallback = KeyboardKey.KEY_F8;
+            displayLabel = "F8";
+            if (string.IsNullOrWhiteSpace(raw)) return fallback;
+
+            string token = raw.Trim();
+            if (!token.StartsWith("KEY_", StringComparison.OrdinalIgnoreCase))
+                token = "KEY_" + token;
+
+            if (Enum.TryParse<KeyboardKey>(token, ignoreCase: true, out var parsed))
+            {
+                displayLabel = token.StartsWith("KEY_", StringComparison.OrdinalIgnoreCase)
+                    ? token.Substring(4).ToUpperInvariant()
+                    : token.ToUpperInvariant();
+                return parsed;
+            }
+
+            return fallback;
         }
 
         private static bool TryParseBool(string raw, out bool value)
@@ -385,7 +494,7 @@ namespace Ludots.Adapter.Raylib.Debug
             return false;
         }
 
-        private int TryGetInt(string key, Func<object, int> convert = null)
+        private int TryGetInt(string key, Func<object, int>? convert = null)
         {
             if (!_globals.TryGetValue(key, out var obj) || obj == null) return -1;
             if (convert != null) return convert(obj);

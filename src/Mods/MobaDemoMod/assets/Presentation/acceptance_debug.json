@@ -1,0 +1,34 @@
+{
+  "accept": {
+    "defaultFocusDistanceCm": 18000,
+    "caseOn": {
+      "id": "moba_default",
+      "pullBackMeters": 28.0,
+      "scaleMultiplier": 3.0,
+      "drawLogicalCullingDebug": true,
+      "drawAcceptanceProbes": true
+    },
+    "probeVisual": {
+      "maxProbeCount": 128,
+      "minHeightMeters": 3.2,
+      "minBoxSizeMeters": 2.2,
+      "tipRadiusMeters": 0.4,
+      "boxAlpha01": 0.4
+    },
+    "focusPresets": [
+      { "id": "village", "keyword": "Village", "distanceCm": 18000 },
+      { "id": "hero", "keyword": "Hero", "distanceCm": 16000 },
+      { "id": "dummy", "keyword": "Dummy", "distanceCm": 16000 }
+    ],
+    "casePresets": [
+      {
+        "id": "moba_readable",
+        "enableRenderCameraDebug": true,
+        "pullBackMeters": 30.0,
+        "scaleMultiplier": 3.5,
+        "drawLogicalCullingDebug": true,
+        "drawAcceptanceProbes": true
+      }
+    ]
+  }
+}

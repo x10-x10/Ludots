@@ -13,6 +13,7 @@ using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.DebugDraw;
 using Ludots.Core.Presentation.Hud;
+using Ludots.Core.Presentation.Config;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
@@ -80,9 +81,10 @@ namespace Ludots.Adapter.Raylib
 
                 var cameraAdapter = new RaylibCameraAdapter(initialCamera);
                 var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter);
+                var acceptanceDebugConfig = ResolveAcceptanceDebugConfig(engine);
                 var renderCameraDebug = new RenderCameraDebugState();
                 engine.GlobalContext[ContextKeys.RenderCameraDebugState] = renderCameraDebug;
-                var gmConsole = new RaylibGmCommandConsole(engine, engine.GlobalContext, renderCameraDebug);
+                var gmConsole = new RaylibGmCommandConsole(engine, engine.GlobalContext, renderCameraDebug, acceptanceDebugConfig);
 
                 IScreenProjector screenProjector = new RaylibScreenProjector(cameraAdapter);
                 engine.GlobalContext[ContextKeys.ScreenProjector] = screenProjector;
@@ -184,7 +186,7 @@ namespace Ludots.Adapter.Raylib
 
                         if (renderCameraDebug.DrawAcceptanceProbes && currentDraw != null && currentMeshes != null)
                         {
-                            DrawAcceptanceProbes(currentDraw, currentMeshes);
+                            DrawAcceptanceProbes(currentDraw, currentMeshes, acceptanceDebugConfig.Accept.ProbeVisual);
                         }
 
                         Rl.EndMode3D();
@@ -221,7 +223,7 @@ namespace Ludots.Adapter.Raylib
 
                         Rl.DrawFPS(screenWidth - 100, 10);
                         Rl.DrawText($"Scale | Grid=1.00m | HexWidth={HexCoordinates.HexWidth:F3}m | RowSpacing={HexCoordinates.RowSpacing:F3}m | HeightScale={terrainRenderer.HeightScale:F2}", 10, screenHeight - 35, 20, Raylib_cs.Color.WHITE);
-                        DrawOverlay(drawTerrain, drawPrimitives, drawDebugDraw, drawSkiaUi, engine, primitiveRenderer, renderCameraDebug);
+                        DrawOverlay(drawTerrain, drawPrimitives, drawDebugDraw, drawSkiaUi, engine, primitiveRenderer, renderCameraDebug, gmConsole.ToggleKeyLabel);
                         DrawScreenOverlays(engine);
                         gmConsole.DrawOverlay(screenWidth, screenHeight);
 
@@ -246,6 +248,20 @@ namespace Ludots.Adapter.Raylib
         {
             ValidateKey<IScreenProjector>(engine, ContextKeys.ScreenProjector);
             ValidateKey<IScreenRayProvider>(engine, ContextKeys.ScreenRayProvider);
+        }
+
+        private static AcceptanceDebugConfig ResolveAcceptanceDebugConfig(GameEngine engine)
+        {
+            if (engine.GlobalContext.TryGetValue(ContextKeys.AcceptanceDebugConfig, out var obj) &&
+                obj is AcceptanceDebugConfig cfg)
+            {
+                cfg.Normalize();
+                return cfg;
+            }
+
+            var fallback = new AcceptanceDebugConfig();
+            fallback.Normalize();
+            return fallback;
         }
 
         private static void ValidateKey<T>(GameEngine engine, string key)
@@ -498,18 +514,24 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
-        private static void DrawAcceptanceProbes(PrimitiveDrawBuffer draw, MeshAssetRegistry meshes)
+        private static void DrawAcceptanceProbes(
+            PrimitiveDrawBuffer draw,
+            MeshAssetRegistry meshes,
+            AcceptanceDebugConfig.ProbeVisualOptions probeVisual)
         {
+            probeVisual ??= new AcceptanceDebugConfig.ProbeVisualOptions();
+            probeVisual.Normalize();
+
             var span = draw.GetSpan();
-            int count = Math.Min(span.Length, 64);
+            int count = Math.Min(span.Length, probeVisual.MaxProbeCount);
             for (int i = 0; i < count; i++)
             {
                 ref readonly var item = ref span[i];
                 var basePos = item.Position;
-                float height = MathF.Max(MathF.Abs(item.Scale.Y), 3.0f);
-                float sx = MathF.Max(MathF.Abs(item.Scale.X), 2.0f);
-                float sy = MathF.Max(MathF.Abs(item.Scale.Y), 2.0f);
-                float sz = MathF.Max(MathF.Abs(item.Scale.Z), 2.0f);
+                float height = MathF.Max(MathF.Abs(item.Scale.Y), probeVisual.MinHeightMeters);
+                float sx = MathF.Max(MathF.Abs(item.Scale.X), probeVisual.MinBoxSizeMeters);
+                float sy = MathF.Max(MathF.Abs(item.Scale.Y), probeVisual.MinBoxSizeMeters);
+                float sz = MathF.Max(MathF.Abs(item.Scale.Z), probeVisual.MinBoxSizeMeters);
 
                 Color lineColor;
                 Color boxColor;
@@ -534,12 +556,15 @@ namespace Ludots.Adapter.Raylib
                     boxColor = new Color(150, 0, 150, 100);
                 }
 
+                byte alpha = (byte)Math.Clamp((int)(probeVisual.BoxAlpha01 * 255f), 0, 255);
+                boxColor = new Color(boxColor.r, boxColor.g, boxColor.b, alpha);
+
                 var boxCenter = new Vector3(basePos.X, basePos.Y + sy * 0.5f, basePos.Z);
                 Rl.DrawCube(boxCenter, sx, sy, sz, boxColor);
 
                 var tip = new Vector3(basePos.X, basePos.Y + height, basePos.Z);
                 Rl.DrawLine3D(basePos, tip, lineColor);
-                Rl.DrawSphere(tip, 0.35f, new Color(255, 255, 40, 255));
+                Rl.DrawSphere(tip, probeVisual.TipRadiusMeters, new Color(255, 255, 40, 255));
             }
         }
 
@@ -596,7 +621,15 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
-        private static void DrawOverlay(bool drawTerrain, bool drawPrimitives, bool drawDebugDraw, bool drawSkiaUi, GameEngine engine, RaylibPrimitiveRenderer primitiveRenderer, RenderCameraDebugState renderCameraDebug)
+        private static void DrawOverlay(
+            bool drawTerrain,
+            bool drawPrimitives,
+            bool drawDebugDraw,
+            bool drawSkiaUi,
+            GameEngine engine,
+            RaylibPrimitiveRenderer primitiveRenderer,
+            RenderCameraDebugState renderCameraDebug,
+            string gmToggleKeyLabel)
         {
             int x = 10;
             int y = 60;
@@ -670,7 +703,7 @@ namespace Ludots.Adapter.Raylib
                 y + (h + gap) * 12 + 126,
                 16,
                 new Color(255, 190, 255, 230));
-            Rl.DrawText("GM: F8 -> gm help", x + 4, y + (h + gap) * 12 + 144, 16, new Color(180, 220, 255, 230));
+            Rl.DrawText($"GM: {gmToggleKeyLabel} -> gm help", x + 4, y + (h + gap) * 12 + 144, 16, new Color(180, 220, 255, 230));
             Rl.DrawText(
                 $"Accept scale/probe: x{renderCameraDebug.AcceptanceScaleMultiplier:F2}/{(renderCameraDebug.DrawAcceptanceProbes ? "ON" : "OFF")}",
                 x + 4,

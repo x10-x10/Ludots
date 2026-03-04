@@ -1,0 +1,43 @@
+{
+  "console": {
+    "toggleKey": "F8",
+    "allowCommandsWithoutPrefix": true
+  },
+  "accept": {
+    "defaultFocusDistanceCm": 18000,
+    "caseOn": {
+      "id": "default",
+      "enableRenderCameraDebug": true,
+      "pullBackMeters": 20.0,
+      "scaleMultiplier": 2.0,
+      "drawLogicalCullingDebug": true,
+      "drawAcceptanceProbes": true,
+      "positionOffsetMeters": [0.0, 0.0, 0.0],
+      "targetOffsetMeters": [0.0, 0.0, 0.0]
+    },
+    "probeVisual": {
+      "maxProbeCount": 64,
+      "minHeightMeters": 3.0,
+      "minBoxSizeMeters": 2.0,
+      "tipRadiusMeters": 0.35,
+      "boxAlpha01": 0.35
+    },
+    "focusPresets": [
+      { "id": "hero", "keyword": "Hero", "distanceCm": 15000 },
+      { "id": "village", "keyword": "Village", "distanceCm": 18000 },
+      { "id": "dummy", "keyword": "Dummy", "distanceCm": 16000 }
+    ],
+    "casePresets": [
+      {
+        "id": "readable",
+        "enableRenderCameraDebug": true,
+        "pullBackMeters": 24.0,
+        "scaleMultiplier": 3.0,
+        "drawLogicalCullingDebug": true,
+        "drawAcceptanceProbes": true,
+        "positionOffsetMeters": [0.0, 0.0, 0.0],
+        "targetOffsetMeters": [0.0, 0.0, 0.0]
+      }
+    ]
+  }
+}

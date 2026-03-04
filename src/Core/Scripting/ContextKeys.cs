@@ -109,5 +109,6 @@ namespace Ludots.Core.Scripting
         public const string RenderModelLoadFailures = "RenderModelLoadFailures";
         public const string RenderModelFallbackDraws = "RenderModelFallbackDraws";
         public const string RenderMissingModelAssetId = "RenderMissingModelAssetId";
+        public const string AcceptanceDebugConfig = "AcceptanceDebugConfig";
     }
 }

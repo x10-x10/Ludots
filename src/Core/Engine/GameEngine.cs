@@ -569,6 +569,9 @@ namespace Ludots.Core.Engine
             var presentationCommandBuffer = new PresentationCommandBuffer();
             var presentationPrefabs = new PrefabRegistry();
             var meshAssets = new MeshAssetRegistry();
+            new MeshAssetConfigLoader(ConfigPipeline, meshAssets).Load(ConfigCatalog, ConfigConflictReport);
+            var acceptanceDebugConfig = new AcceptanceDebugConfigLoader(ConfigPipeline).Load(ConfigCatalog, ConfigConflictReport);
+            Ludots.Core.Config.ComponentRegistry.SetMeshAssetKeyResolver(meshAssets.ResolveAssetIdOrZero);
             var primitiveDrawBuffer = new PrimitiveDrawBuffer();
             var transientMarkerBuffer = new TransientMarkerBuffer();
             var groundOverlayBuffer = new GroundOverlayBuffer();
@@ -579,6 +582,7 @@ namespace Ludots.Core.Engine
             BuiltinPerformerDefinitions.Register(performerDefinitions);
             var performerRuleSystem = new PerformerRuleSystem(World, presentationEventStream, presentationCommandBuffer, performerDefinitions, graphProgramRegistry, performerGraphApi, GlobalContext);
             var performerRuntimeSystem = new PerformerRuntimeSystem(World, presentationPrefabs, presentationCommandBuffer, primitiveDrawBuffer, transientMarkerBuffer, performerInstances);
+            var performerTemplateBindingSystem = new PerformerTemplateBindingSystem(World, performerDefinitions, performerInstances);
             var performerEmitSystem = new PerformerEmitSystem(World, performerInstances, performerDefinitions, groundOverlayBuffer, primitiveDrawBuffer, worldHudBuffer, graphProgramRegistry, performerGraphApi, GlobalContext,
                 entityColorResolver: (world, entity) => Ludots.Core.Presentation.Utils.TeamColorResolver.Resolve(world, entity));
             new PerformerDefinitionConfigLoader(ConfigPipeline, performerDefinitions, Ludots.Core.Gameplay.GAS.Registry.AttributeRegistry.GetId).Load();
@@ -678,6 +682,7 @@ namespace Ludots.Core.Engine
             GlobalContext[ContextKeys.PresentationCommandBuffer] = presentationCommandBuffer;
             GlobalContext[ContextKeys.PresentationPrefabRegistry] = presentationPrefabs;
             GlobalContext[ContextKeys.PresentationMeshAssetRegistry] = meshAssets;
+            GlobalContext[ContextKeys.AcceptanceDebugConfig] = acceptanceDebugConfig;
             _primitiveDrawBuffer = primitiveDrawBuffer;
             _gasPresentationEvents = gasPresentationEvents;
             _groundOverlayBuffer = groundOverlayBuffer;
@@ -806,6 +811,8 @@ namespace Ludots.Core.Engine
             RegisterPresentationSystem(performerRuleSystem);
             // PerformerRuntimeSystem consumes commands, manages instance lifecycle.
             RegisterPresentationSystem(performerRuntimeSystem);
+            // Template performer binding creates/maintains instances declared in EntityTemplate.
+            RegisterPresentationSystem(performerTemplateBindingSystem);
             // PerformerEmitSystem ticks instances, evaluates visibility/bindings, outputs to draw buffers.
             // Also handles entity-scoped definitions (replaces WorldHudCollectorSystem).
             RegisterPresentationSystem(performerEmitSystem);
