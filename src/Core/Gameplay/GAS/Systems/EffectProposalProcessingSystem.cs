@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Arch.System;
@@ -30,6 +32,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
     public sealed class EffectProposalProcessingSystem : BaseSystem<World, float>, ITimeSlicedSystem
     {
+        private static int _debugProposalLogsRemaining = 36;
         private readonly EffectRequestQueue _queue;
         private readonly GasBudget _budget;
         private readonly EffectTemplateRegistry _templates;
@@ -300,6 +303,20 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     }
 
                     var req = _queue[_rootCursor++];
+                    if (_debugProposalLogsRemaining > 0)
+                    {
+                        _debugProposalLogsRemaining--;
+                        // #region agent log
+                        File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
+                        {
+                            hypothesisId = "H3",
+                            location = "EffectProposalProcessingSystem:Update",
+                            message = "Dequeued root effect request",
+                            data = new { rootId = req.RootId, templateId = req.TemplateId, sourceId = req.Source.Id, targetId = req.Target.Id, queueCountSnapshot = _rootCountSnapshot, rootCursor = _rootCursor },
+                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        }) + "\n");
+                        // #endregion
+                    }
                     if (!World.IsAlive(req.Target))
                     {
                         workUnits++;
@@ -308,6 +325,20 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
                     if (_templates == null || req.TemplateId <= 0 || !_templates.TryGet(req.TemplateId, out var rootTpl))
                     {
+                        if (_debugProposalLogsRemaining > 0)
+                        {
+                            _debugProposalLogsRemaining--;
+                            // #region agent log
+                            File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
+                            {
+                                hypothesisId = "H3",
+                                location = "EffectProposalProcessingSystem:Update",
+                                message = "Template missing while processing request",
+                                data = new { rootId = req.RootId, templateId = req.TemplateId, templatesNull = _templates == null },
+                                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                            }) + "\n");
+                            // #endregion
+                        }
                         workUnits++;
                         continue;
                     }
@@ -801,6 +832,20 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 EffectModifierOps.Apply(in e.Modifiers, ref attr);
                                 float after = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
                                 float delta = after - before;
+                                if (_debugProposalLogsRemaining > 0)
+                                {
+                                    _debugProposalLogsRemaining--;
+                                    // #region agent log
+                                    File.AppendAllText("/opt/cursor/logs/debug.log", JsonSerializer.Serialize(new
+                                    {
+                                        hypothesisId = "H4",
+                                        location = "EffectProposalProcessingSystem:Resolve",
+                                        message = "Pure instant modifier applied",
+                                        data = new { rootId = e.RootId, templateId = e.TemplateId, targetId = e.Target.Id, primaryAttrId, before, after, delta, modifierCount = e.Modifiers.Count },
+                                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                                    }) + "\n");
+                                    // #endregion
+                                }
                                 if (_presentationEvents != null && delta != 0f)
                                 {
                                     _presentationEvents.Publish(new GasPresentationEvent

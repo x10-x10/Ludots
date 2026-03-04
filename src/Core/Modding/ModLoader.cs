@@ -258,22 +258,14 @@ namespace Ludots.Core.Modding
                 bool primaryExists = File.Exists(primary);
                 bool debugExists = !string.IsNullOrWhiteSpace(debugFallback) && File.Exists(debugFallback);
 
-#if DEBUG
-                if (debugExists)
+                // Deterministic resolution:
+                // 1) Prefer manifest 'main' path when present.
+                // 2) Fall back to Debug only when primary is missing.
+                //    (Opt-in env var keeps the old "prefer debug" behavior for local iteration.)
+                bool preferDebug = IsTruthyEnv(Environment.GetEnvironmentVariable("LUDOTS_PREFER_DEBUG_MOD_DLL"));
+                if (preferDebug && debugExists)
                 {
                     dllPath = debugFallback;
-                    return true;
-                }
-#endif
-
-                if (primaryExists && debugExists)
-                {
-                    var primaryTime = File.GetLastWriteTimeUtc(primary);
-                    var debugTime = File.GetLastWriteTimeUtc(debugFallback);
-                    if (debugTime > primaryTime)
-                    {
-                        dllPath = debugFallback;
-                    }
                     return true;
                 }
 
@@ -324,6 +316,15 @@ namespace Ludots.Core.Modding
             var debugFull = Path.GetFullPath(Path.Combine(modDirFull, debugRelative.Replace('/', Path.DirectorySeparatorChar)));
             if (!debugFull.StartsWith(modDirFull, StringComparison.OrdinalIgnoreCase)) return null;
             return debugFull;
+        }
+
+        private static bool IsTruthyEnv(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("on", StringComparison.OrdinalIgnoreCase);
         }
 
         private static List<string> FindAllBuiltDllCandidates(string modDir, string modName)

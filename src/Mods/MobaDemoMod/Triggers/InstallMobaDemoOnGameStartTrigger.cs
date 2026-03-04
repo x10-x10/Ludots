@@ -1,13 +1,15 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Arch.Core;
+using CoreInputMod.Triggers;
 using Ludots.Core.Config;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS;
-using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.Camera;
+using Ludots.Core.Mathematics;
 using Ludots.Core.Modding;
 using Ludots.Core.Presentation.Commands;
-using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Scripting;
 using MobaDemoMod.Presentation;
 
@@ -63,46 +65,42 @@ namespace MobaDemoMod.Triggers
                 engine.RegisterSystem(new Ludots.Core.Gameplay.GAS.Systems.AbilityMoveWorldCmSystem(engine.World, engine.EventBus, mobaConfig.Movement.SpeedCmPerSec, mobaConfig.Movement.StopRadiusCm), SystemGroup.AbilityActivation);
             }
 
-            // ── 选择系统 ──
-            // PresentationCommandBuffer 用于实体锚点的 Performer 生命周期管理
+            // ── 选择系统回调（CoreInputMod 已注册系统，此处注入 MOBA 视觉反馈）──
             PresentationCommandBuffer cmdBuffer = null;
             if (engine.GlobalContext.TryGetValue(ContextKeys.PresentationCommandBuffer, out var cmdObj) && cmdObj is PresentationCommandBuffer pcb)
                 cmdBuffer = pcb;
 
-            var clickSelect = new EntityClickSelectSystem(engine.World, engine.GlobalContext, engine.SpatialQueries);
-            // 选中指示器：通过 Performer 直接 API 管理（定义 5002）
-            var capturedCmdBuffer = cmdBuffer;
-            clickSelect.OnEntitySelected = (worldCm, entity) =>
+            if (engine.GlobalContext.TryGetValue(InstallCoreInputOnGameStartTrigger.EntitySelectionCallbacksKey, out var selObj) &&
+                selObj is List<System.Action<WorldCmInt2, Entity>> selectionCallbacks)
             {
-                if (capturedCmdBuffer == null) return;
-                // 销毁旧选中 scope
-                capturedCmdBuffer.TryAdd(new PresentationCommand
+                var capturedCmdBuffer = cmdBuffer;
+                selectionCallbacks.Add((worldCm, entity) =>
                 {
-                    Kind = PresentationCommandKind.DestroyPerformerScope,
-                    IdA = mobaConfig.Presentation.SelectionScopeId
-                });
-                // 若选中了有效实体，创建新指示器
-                if (engine.World.IsAlive(entity))
-                {
+                    if (capturedCmdBuffer == null) return;
                     capturedCmdBuffer.TryAdd(new PresentationCommand
                     {
-                        Kind = PresentationCommandKind.CreatePerformer,
-                        IdA = mobaConfig.Presentation.SelectionIndicatorDefId,
-                        IdB = mobaConfig.Presentation.SelectionScopeId,
-                        Source = entity
+                        Kind = PresentationCommandKind.DestroyPerformerScope,
+                        IdA = mobaConfig.Presentation.SelectionScopeId
                     });
-                }
-            };
-            engine.RegisterPresentationSystem(clickSelect);
-            
-            var gasSelection = new GasSelectionResponseSystem(engine.World, engine.GlobalContext, engine.SpatialQueries);
-            engine.RegisterPresentationSystem(gasSelection);
+                    if (engine.World.IsAlive(entity))
+                    {
+                        capturedCmdBuffer.TryAdd(new PresentationCommand
+                        {
+                            Kind = PresentationCommandKind.CreatePerformer,
+                            IdA = mobaConfig.Presentation.SelectionIndicatorDefId,
+                            IdB = mobaConfig.Presentation.SelectionScopeId,
+                            Source = entity
+                        });
+                    }
+                });
+            }
+            else
+            {
+                _ctx.Log("[MobaDemoMod] CoreInput selection callback bus missing; selection indicator callback not installed.");
+            }
 
-            // Core 通用输入响应系统
-            engine.RegisterPresentationSystem(new GasInputResponseSystem(engine.World, engine.GlobalContext));
-
-            // 单位渲染由 performers.json 定义 5001（entity-scoped Marker3D）驱动
-            // 团队颜色由 EntityColor 绑定解析
+            // 单位主体渲染由 VisualModelPrimitiveEmitSystem 负责。
+            // 这里仅注入选择与演示相关表现回调。
 
             var session = context.Get<Ludots.Core.Gameplay.GameSession>(ContextKeys.GameSession);
             if (session != null && session.Camera.Controller == null)
