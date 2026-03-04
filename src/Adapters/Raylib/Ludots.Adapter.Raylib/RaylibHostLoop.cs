@@ -9,6 +9,7 @@ using Ludots.Core.Map.Hex;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Navigation2D.Runtime;
 using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.DebugDraw;
 using Ludots.Core.Presentation.Hud;
@@ -80,15 +81,25 @@ namespace Ludots.Adapter.Raylib
                 var cameraAdapter = new RaylibCameraAdapter(initialCamera);
                 var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter);
 
-                IScreenProjector screenProjector = new RaylibScreenProjector(cameraAdapter);
+                var viewController = new RaylibViewController(cameraAdapter);
+                engine.GlobalContext[ContextKeys.ViewController] = viewController;
+
+                var screenProjector = new CoreScreenProjector(engine.GameSession.Camera, viewController);
                 engine.GlobalContext[ContextKeys.ScreenProjector] = screenProjector;
                 engine.GlobalContext[ContextKeys.ScreenRayProvider] = new RaylibScreenRayProvider(cameraAdapter);
 
-                ValidateRequiredContextBeforeLoop(engine);
-
-                var viewController = new RaylibViewController(cameraAdapter);
                 var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController);
                 engine.RegisterPresentationSystem(cullingSystem);
+
+                if (engine.GlobalContext.TryGetValue(ContextKeys.PresentationWorldHudBuffer, out var whObj) && whObj is WorldHudBatchBuffer worldHud &&
+                    engine.GlobalContext.TryGetValue(ContextKeys.PresentationScreenHudBuffer, out var shObj) && shObj is ScreenHudBatchBuffer screenHud)
+                {
+                    engine.GlobalContext.TryGetValue(ContextKeys.PresentationWorldHudStrings, out var strObj);
+                    var worldHudStrings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
+                    engine.RegisterPresentationSystem(new WorldHudToScreenSystem(engine.World, worldHud, worldHudStrings, screenProjector, viewController, screenHud));
+                }
+
+                ValidateRequiredContextBeforeLoop(engine);
 
                 engine.Start();
                 if (string.IsNullOrWhiteSpace(config.StartupMapId))
@@ -100,10 +111,23 @@ namespace Ludots.Adapter.Raylib
                 var debugDrawRenderer = new RaylibDebugDrawRenderer { PlaneY = 0.35f };
                 using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Instanced);
 
+                int lastW = screenWidth;
+                int lastH = screenHeight;
+
                 while (!Rl.WindowShouldClose())
                 {
                     try
                     {
+                        int w = Rl.GetScreenWidth();
+                        int h = Rl.GetScreenHeight();
+                        if (w != lastW || h != lastH)
+                        {
+                            lastW = w;
+                            lastH = h;
+                            uiRenderer.Resize(w, h);
+                            uiRoot.Resize(w, h);
+                        }
+
                         float dt = Rl.GetFrameTime();
 
                         navAgentDeltaPerTeam = 0;
@@ -187,7 +211,7 @@ namespace Ludots.Adapter.Raylib
                         foreach (var chunk in wpQuery) wpCount += chunk.Count;
                         Rl.DrawText($"WorldPositionCm Entities: {wpCount}", 10, 34, 20, Raylib_cs.Color.YELLOW);
 
-                        RenderWorldHud(engine, screenProjector, screenWidth, screenHeight);
+                        DrawScreenHud(engine);
 
                         if (drawSkiaUi && uiRoot.IsDirty)
                         {
@@ -200,10 +224,11 @@ namespace Ludots.Adapter.Raylib
                             uiRenderer.Draw();
                         }
 
-                        Rl.DrawFPS(screenWidth - 100, 10);
-                        Rl.DrawText($"Scale | Grid=1.00m | HexWidth={HexCoordinates.HexWidth:F3}m | RowSpacing={HexCoordinates.RowSpacing:F3}m | HeightScale={terrainRenderer.HeightScale:F2}", 10, screenHeight - 35, 20, Raylib_cs.Color.WHITE);
+                        var res = viewController.Resolution;
+                        Rl.DrawFPS((int)(res.X - 100), 10);
+                        Rl.DrawText($"Scale | Grid=1.00m | HexWidth={HexCoordinates.HexWidth:F3}m | RowSpacing={HexCoordinates.RowSpacing:F3}m | HeightScale={terrainRenderer.HeightScale:F2}", 10, (int)(res.Y - 35), 20, Raylib_cs.Color.WHITE);
                         DrawOverlay(drawTerrain, drawPrimitives, drawDebugDraw, drawSkiaUi, engine, primitiveRenderer);
-                        DrawScreenOverlays(engine, screenWidth, screenHeight);
+                        DrawScreenOverlays(engine, (int)res.X, (int)res.Y);
 
                         Rl.EndDrawing();
                     }
@@ -293,37 +318,24 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
-        private static void RenderWorldHud(GameEngine engine, IScreenProjector projector, int screenWidth, int screenHeight)
+        private static void DrawScreenHud(GameEngine engine)
         {
-            if (!engine.GlobalContext.TryGetValue(ContextKeys.PresentationWorldHudBuffer, out var hudObj)) return;
+            if (!engine.GlobalContext.TryGetValue(ContextKeys.PresentationScreenHudBuffer, out var hudObj)) return;
             engine.GlobalContext.TryGetValue(ContextKeys.PresentationWorldHudStrings, out var strObj);
-            if (hudObj is not WorldHudBatchBuffer hud) return;
+            if (hudObj is not ScreenHudBatchBuffer hud) return;
             var strings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
-
-            const int maxBarDim = 512;
-            const int margin = 200;
 
             var span = hud.GetSpan();
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly var item = ref span[i];
-                Vector2 screen = projector.WorldToScreen(item.WorldPosition);
-                if (float.IsNaN(screen.X) || float.IsNaN(screen.Y) || float.IsInfinity(screen.X) || float.IsInfinity(screen.Y))
-                    continue;
-
-                float x = screen.X - item.Width * 0.5f;
-                float y = screen.Y;
-
-                int ix = (int)x;
-                int iy = (int)y;
+                int ix = (int)item.ScreenX;
+                int iy = (int)item.ScreenY;
                 int iw = (int)item.Width;
                 int ih = (int)item.Height;
 
                 if (item.Kind == WorldHudItemKind.Bar)
                 {
-                    if (iw <= 0 || ih <= 0 || iw > maxBarDim || ih > maxBarDim) continue;
-                    if (ix + iw < -margin || iy + ih < -margin || ix > screenWidth + margin || iy > screenHeight + margin) continue;
-
                     var bg = ToRaylibColor(item.Color0);
                     var fg = ToRaylibColor(item.Color1);
 

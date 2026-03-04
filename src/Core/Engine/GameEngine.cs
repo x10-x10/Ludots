@@ -685,6 +685,8 @@ namespace Ludots.Core.Engine
             GlobalContext[ContextKeys.PresentationPrimitiveDrawBuffer] = primitiveDrawBuffer;
             GlobalContext[ContextKeys.PresentationWorldHudBuffer] = worldHudBuffer;
             GlobalContext[ContextKeys.PresentationWorldHudStrings] = worldHudStrings;
+            var screenHudBuffer = new ScreenHudBatchBuffer();
+            GlobalContext[ContextKeys.PresentationScreenHudBuffer] = screenHudBuffer;
             GlobalContext[ContextKeys.ScreenOverlayBuffer] = new ScreenOverlayBuffer();
             GlobalContext[ContextKeys.TransientMarkerBuffer] = transientMarkerBuffer;
             GlobalContext[ContextKeys.GasPresentationEventBuffer] = gasPresentationEvents;
@@ -704,6 +706,9 @@ namespace Ludots.Core.Engine
                 return new Orbit3CCameraController(cfg, services.Input);
             });
             GlobalContext[ContextKeys.CameraControllerRegistry] = cameraControllers;
+            var cameraPresetRegistry = new CameraPresetRegistry();
+            new CameraPresetLoader(ConfigPipeline, cameraPresetRegistry).Load(ConfigCatalog, ConfigConflictReport);
+            GlobalContext[ContextKeys.CameraPresetRegistry] = cameraPresetRegistry;
             RegisterSystem(new GasBudgetResetSystem(gasBudget), SystemGroup.SchemaUpdate);
             RegisterSystem(schemaUpdateSystem, SystemGroup.SchemaUpdate);
             
@@ -1085,6 +1090,20 @@ namespace Ludots.Core.Engine
             if (cam == null) return;
 
             var state = GameSession.Camera.State;
+
+            // Apply preset first if PresetId is set
+            if (!string.IsNullOrWhiteSpace(cam.PresetId) &&
+                GlobalContext.TryGetValue(ContextKeys.CameraPresetRegistry, out var regObj) &&
+                regObj is CameraPresetRegistry presetReg &&
+                presetReg.TryGet(cam.PresetId, out var preset))
+            {
+                state.DistanceCm = preset.DistanceCm;
+                state.Pitch = preset.Pitch;
+                state.FovYDeg = preset.FovYDeg;
+                state.Yaw = preset.Yaw;
+            }
+
+            // Explicit fields override preset
             if (cam.TargetXCm.HasValue || cam.TargetYCm.HasValue)
                 state.TargetCm = new System.Numerics.Vector2(cam.TargetXCm ?? 0f, cam.TargetYCm ?? 0f);
             if (cam.Yaw.HasValue) state.Yaw = cam.Yaw.Value;
