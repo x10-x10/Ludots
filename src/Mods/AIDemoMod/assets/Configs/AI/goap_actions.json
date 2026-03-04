@@ -1,6 +1,6 @@
 [
   {
-    "Id": "Submit.Attack",
+    "id": "Submit.Attack",
     "Cost": 1,
     "Pre": { "Mask": [], "Values": [] },
     "Post": { "Mask": [], "Values": [] },

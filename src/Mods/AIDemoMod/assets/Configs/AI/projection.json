@@ -1,6 +1,6 @@
 [
   {
-    "Id": "HasEnemy.FromTarget",
+    "id": "HasEnemy.FromTarget",
     "Atom": "HasEnemy",
     "Op": "EntityIsNonNull",
     "EntityKey": 1000

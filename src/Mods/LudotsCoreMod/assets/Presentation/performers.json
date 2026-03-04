@@ -1,6 +1,6 @@
 [
   {
-    "id": 9010,
+    "id": "9010",
     "visualKind": "WorldBar",
     "entityScope": "AllWithAttributes",
     "visibility": { "inline": "OwnerCullVisible" },
@@ -45,7 +45,7 @@
     ]
   },
   {
-    "id": 9011,
+    "id": "9011",
     "visualKind": "WorldText",
     "entityScope": "AllWithAttributes",
     "visibility": { "inline": "OwnerCullVisible" },

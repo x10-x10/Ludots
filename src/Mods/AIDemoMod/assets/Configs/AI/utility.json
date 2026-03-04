@@ -1,6 +1,6 @@
 [
   {
-    "Id": "Attack.Goap",
+    "id": "Attack.Goap",
     "GoalPresetId": 1,
     "PlanningStrategyId": 1,
     "Weight": 1.0,

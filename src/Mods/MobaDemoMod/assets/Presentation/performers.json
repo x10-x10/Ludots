@@ -1,7 +1,7 @@
 [
   {
     "_comment": "单位方块渲染 - entity-scoped, 查询所有有 VisualTransform 的实体",
-    "id": 5001,
+    "id": "5001",
     "visualKind": "Marker3D",
     "entityScope": "AllWithVisualTransform",
     "meshOrShapeId": 1,
@@ -17,7 +17,7 @@
   },
   {
     "_comment": "选中指示器 - instance-scoped, 黄色球体悬浮在选中单位头顶",
-    "id": 5002,
+    "id": "5002",
     "visualKind": "Marker3D",
     "meshOrShapeId": 2,
     "defaultColor": [1, 1, 0, 1],
@@ -27,7 +27,7 @@
   },
   {
     "_comment": "选区范围标记 - instance-scoped, 紫色扁球短暂闪烁(CircleEnemy)",
-    "id": 5003,
+    "id": "5003",
     "visualKind": "Marker3D",
     "meshOrShapeId": 2,
     "defaultColor": [0.8, 0.2, 1.0, 0.75],
@@ -42,7 +42,7 @@
   },
   {
     "_comment": "技能范围圈 - instance-scoped, 瞄准时的地面圆形指示器",
-    "id": 5004,
+    "id": "5004",
     "visualKind": "GroundOverlay",
     "meshOrShapeId": 0,
     "defaultColor": [0.3, 0.7, 1.0, 0.2],

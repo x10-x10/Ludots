@@ -1,6 +1,6 @@
 [
   {
-    "Id": "Goal.Attack",
+    "id": "Goal.Attack",
     "GoalPresetId": 1,
     "HeuristicWeight": 1,
     "Goal": { "Mask": ["HasEnemy"], "Values": ["HasEnemy"] }

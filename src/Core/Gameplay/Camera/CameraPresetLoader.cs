@@ -19,7 +19,7 @@ namespace Ludots.Core.Gameplay.Camera
 
         public void Load(ConfigCatalog catalog = null, ConfigConflictReport report = null)
         {
-            var entry = ConfigPipeline.GetEntryOrDefault(catalog, "Camera/presets.json", ConfigMergePolicy.ArrayById, "Id");
+            var entry = ConfigPipeline.GetEntryOrDefault(catalog, "Camera/presets.json", ConfigMergePolicy.ArrayById, "id");
             var merged = _pipeline.MergeArrayByIdFromCatalog(in entry, report);
             if (merged == null || merged.Count == 0) return;
 
