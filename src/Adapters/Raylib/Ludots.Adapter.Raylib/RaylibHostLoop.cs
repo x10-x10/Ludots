@@ -451,21 +451,7 @@ namespace Ludots.Adapter.Raylib
             Rl.DrawLine3D(a, b, ToRaylibColor(item.BorderColor));
         }
 
-        private static Color ToRaylibColor(Vector4 c)
-        {
-            byte r = (byte)(Clamp01(c.X) * 255f);
-            byte g = (byte)(Clamp01(c.Y) * 255f);
-            byte b = (byte)(Clamp01(c.Z) * 255f);
-            byte a = (byte)(Clamp01(c.W) * 255f);
-            return new Color(r, g, b, a);
-        }
-
-        private static float Clamp01(float v)
-        {
-            if (v < 0f) return 0f;
-            if (v > 1f) return 1f;
-            return v;
-        }
+        private static Color ToRaylibColor(Vector4 c) => RaylibColorUtil.ToRaylibColor(in c);
 
         private static void ApplyOverlayToggles(ref bool drawTerrain, ref bool drawPrimitives, ref bool drawDebugDraw, ref bool drawSkiaUi, ref int navAgentDeltaPerTeam, ref bool navAgentReset, Navigation2DRuntime? navRuntime)
         {
