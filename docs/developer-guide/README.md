@@ -68,3 +68,7 @@
 18. [版本收束处置矩阵（分支 / PR / Issue）](18_convergence_disposition_matrix.md)
     *   open PR 与远端分支的处置建议（merge/cherry-pick/close）
     *   issue 关闭/保留建议与证据映射
+19. [资产导入架构与自定义模型支持](19_asset_import_architecture.md)
+    *   资产表与 Raylib 渲染管线现状
+    *   六边形架构下的资产边界与缺口
+    *   自定义模型导入的改进方案与实施顺序
