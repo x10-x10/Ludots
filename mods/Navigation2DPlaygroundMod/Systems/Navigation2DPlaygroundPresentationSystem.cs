@@ -8,6 +8,7 @@ using Ludots.Core.Navigation2D.Runtime;
 using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.DebugDraw;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 
@@ -49,6 +50,7 @@ namespace Navigation2DPlaygroundMod.Systems
             AppendSolidPrimitives();
             AppendDesiredVelocity();
             AppendFlowFieldDebug();
+            AppendControlOverlay();
         }
 
         public void AfterUpdate(in float t)
@@ -182,6 +184,53 @@ namespace Navigation2DPlaygroundMod.Systems
 
             _debugDraw.Lines.Add(new DebugDrawLine2D { A = to, B = to - left * headLen, Thickness = 1f, Color = color });
             _debugDraw.Lines.Add(new DebugDrawLine2D { A = to, B = to - right * headLen, Thickness = 1f, Color = color });
+        }
+
+        private void AppendControlOverlay()
+        {
+            if (!_engine.GlobalContext.TryGetValue(ContextKeys.ScreenOverlayBuffer, out var overlayObj) ||
+                overlayObj is not ScreenOverlayBuffer overlay)
+            {
+                return;
+            }
+
+            bool flowEnabled = false;
+            bool flowDebug = false;
+            int flowMode = 0;
+            int flowIters = 0;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DRuntime, out var navObj) &&
+                navObj is Navigation2DRuntime navRuntime)
+            {
+                flowEnabled = navRuntime.FlowEnabled;
+                flowDebug = navRuntime.FlowDebugEnabled;
+                flowMode = navRuntime.FlowDebugMode;
+                flowIters = navRuntime.FlowIterationsPerTick;
+            }
+
+            int agentsPerTeam = 0;
+            int liveTotal = 0;
+            int flowDbgLines = 0;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_AgentsPerTeam, out var aptObj) && aptObj is int apt) agentsPerTeam = apt;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_LiveAgentsTotal, out var ltObj) && ltObj is int lt) liveTotal = lt;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_FlowDebugLines, out var fdlObj) && fdlObj is int fdl) flowDbgLines = fdl;
+
+            int x = 16;
+            int y = 180;
+            int w = 500;
+            int h = 150;
+            var bg = new Vector4(0.04f, 0.05f, 0.08f, 0.68f);
+            var border = new Vector4(0.35f, 0.75f, 1f, 0.5f);
+            var title = new Vector4(0.9f, 0.95f, 1f, 1f);
+            var text = new Vector4(0.85f, 0.9f, 0.95f, 1f);
+            var hint = new Vector4(0.68f, 0.78f, 0.9f, 0.95f);
+
+            overlay.AddRect(x, y, w, h, bg, border);
+            overlay.AddText(x + 10, y + 8, "Navigation2D Playground", 16, title);
+            overlay.AddText(x + 10, y + 30, $"FlowEnabled={flowEnabled}  FlowDebug={flowDebug}  Mode={flowMode}  Iter={flowIters}", 14, text);
+            overlay.AddText(x + 10, y + 50, $"Agents/team={agentsPerTeam}  Live={liveTotal}  FlowDbgLines={flowDbgLines}", 14, text);
+            overlay.AddText(x + 10, y + 76, "G ToggleFlow | H ToggleDebug | J CycleMode", 13, hint);
+            overlay.AddText(x + 10, y + 94, "U +Iter | Y -Iter | K +500/team | L -500/team", 13, hint);
+            overlay.AddText(x + 10, y + 112, "R ResetScenario", 13, hint);
         }
     }
 }

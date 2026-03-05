@@ -3,11 +3,14 @@ using Arch.Core;
 using Arch.System;
 using Ludots.Core.Components;
 using Ludots.Core.Engine;
+using Ludots.Core.Input.Runtime;
 using Ludots.Core.Mathematics.FixedPoint;
 using Ludots.Core.Navigation2D.Components;
+using Ludots.Core.Navigation2D.Runtime;
 using Ludots.Core.Physics2D.Components;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Scripting;
+using Navigation2DPlaygroundMod.Input;
 
 namespace Navigation2DPlaygroundMod.Systems
 {
@@ -15,6 +18,7 @@ namespace Navigation2DPlaygroundMod.Systems
     {
         private readonly GameEngine _engine;
         private readonly World _world;
+        private PlayerInputHandler? _input;
 
         private static readonly QueryDescription _scenarioQuery = new QueryDescription()
             .WithAll<NavPlaygroundTeam>();
@@ -39,30 +43,70 @@ namespace Navigation2DPlaygroundMod.Systems
         public void Update(in float deltaTime)
         {
             if (!Navigation2DPlaygroundState.Enabled) return;
+            ResolveInput();
+            if (_input == null) return;
 
-            bool shouldRespawn = false;
-
-            if (_engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_ResetScenario, out var resetObj) &&
-                resetObj is bool reset && reset)
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DRuntime, out var runtimeObj) &&
+                runtimeObj is Navigation2DRuntime navRuntime)
             {
-                _engine.GlobalContext.Remove(ContextKeys.Navigation2DPlayground_ResetScenario);
-                shouldRespawn = true;
+                HandlePressed(Navigation2DPlaygroundInputActions.ToggleFlowEnabled, () =>
+                {
+                    navRuntime.FlowEnabled = !navRuntime.FlowEnabled;
+                });
+                HandlePressed(Navigation2DPlaygroundInputActions.ToggleFlowDebug, () =>
+                {
+                    navRuntime.FlowDebugEnabled = !navRuntime.FlowDebugEnabled;
+                });
+                HandlePressed(Navigation2DPlaygroundInputActions.CycleFlowDebugMode, () =>
+                {
+                    navRuntime.FlowDebugMode = (navRuntime.FlowDebugMode + 1) % 3;
+                });
+                HandlePressed(Navigation2DPlaygroundInputActions.IncreaseFlowIterations, () =>
+                {
+                    navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick + 512, 0, 131072);
+                });
+                HandlePressed(Navigation2DPlaygroundInputActions.DecreaseFlowIterations, () =>
+                {
+                    navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick - 512, 0, 131072);
+                });
             }
 
-            if (_engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_AgentDeltaPerTeam, out var deltaObj) &&
-                deltaObj is int delta && delta != 0)
+            HandlePressed(Navigation2DPlaygroundInputActions.IncreaseAgentsPerTeam, () =>
             {
-                _engine.GlobalContext.Remove(ContextKeys.Navigation2DPlayground_AgentDeltaPerTeam);
+                AdjustAgentsPerTeam(500);
+            });
+            HandlePressed(Navigation2DPlaygroundInputActions.DecreaseAgentsPerTeam, () =>
+            {
+                AdjustAgentsPerTeam(-500);
+            });
+            HandlePressed(Navigation2DPlaygroundInputActions.ResetScenario, RespawnScenario);
+        }
 
-                int next = Navigation2DPlaygroundState.AgentsPerTeam + delta;
-                if (next < 0) next = 0;
-                if (next > 25000) next = 25000;
-                Navigation2DPlaygroundState.AgentsPerTeam = next;
-                shouldRespawn = true;
+        private void ResolveInput()
+        {
+            if (_input != null) return;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.InputHandler, out var inputObj) &&
+                inputObj is PlayerInputHandler handler)
+            {
+                _input = handler;
             }
+        }
 
-            if (!shouldRespawn) return;
+        private void HandlePressed(string actionId, Action onPressed)
+        {
+            if (_input!.PressedThisFrame(actionId))
+            {
+                onPressed();
+            }
+        }
 
+        private void AdjustAgentsPerTeam(int delta)
+        {
+            int next = Navigation2DPlaygroundState.AgentsPerTeam + delta;
+            if (next < 0) next = 0;
+            if (next > 25000) next = 25000;
+            if (next == Navigation2DPlaygroundState.AgentsPerTeam) return;
+            Navigation2DPlaygroundState.AgentsPerTeam = next;
             RespawnScenario();
         }
 
