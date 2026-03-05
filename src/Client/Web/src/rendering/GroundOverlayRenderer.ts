@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { GroundOverlayItem } from '../core/FrameProtocol';
+import type { GroundOverlayItem } from '../core/FrameDecoder';
 
 /**
  * Renders ground-projected overlay shapes (circles, rings, lines).
@@ -37,12 +37,12 @@ export class GroundOverlayRenderer {
         const step = (Math.PI * 2) / segs;
         for (let s = 0; s < segs; s++) {
           const a0 = s * step, a1 = (s + 1) * step;
-          positions[idx] = ov.centerX + Math.cos(a0) * ov.radius;
-          positions[idx + 1] = ov.centerY;
-          positions[idx + 2] = ov.centerZ + Math.sin(a0) * ov.radius;
-          positions[idx + 3] = ov.centerX + Math.cos(a1) * ov.radius;
-          positions[idx + 4] = ov.centerY;
-          positions[idx + 5] = ov.centerZ + Math.sin(a1) * ov.radius;
+          positions[idx] = ov.cx + Math.cos(a0) * ov.radius;
+          positions[idx + 1] = ov.cy;
+          positions[idx + 2] = ov.cz + Math.sin(a0) * ov.radius;
+          positions[idx + 3] = ov.cx + Math.cos(a1) * ov.radius;
+          positions[idx + 4] = ov.cy;
+          positions[idx + 5] = ov.cz + Math.sin(a1) * ov.radius;
           colors[idx] = r; colors[idx + 1] = g; colors[idx + 2] = b;
           colors[idx + 3] = r; colors[idx + 4] = g; colors[idx + 5] = b;
           idx += 6;
@@ -50,8 +50,8 @@ export class GroundOverlayRenderer {
       } else if (ov.shape === 2) {
         const dx = Math.cos(ov.rotation) * ov.length;
         const dz = Math.sin(ov.rotation) * ov.length;
-        positions[idx] = ov.centerX; positions[idx + 1] = ov.centerY; positions[idx + 2] = ov.centerZ;
-        positions[idx + 3] = ov.centerX + dx; positions[idx + 4] = ov.centerY; positions[idx + 5] = ov.centerZ + dz;
+        positions[idx] = ov.cx; positions[idx + 1] = ov.cy; positions[idx + 2] = ov.cz;
+        positions[idx + 3] = ov.cx + dx; positions[idx + 4] = ov.cy; positions[idx + 5] = ov.cz + dz;
         colors[idx] = r; colors[idx + 1] = g; colors[idx + 2] = b;
         colors[idx + 3] = r; colors[idx + 4] = g; colors[idx + 5] = b;
         idx += 6;

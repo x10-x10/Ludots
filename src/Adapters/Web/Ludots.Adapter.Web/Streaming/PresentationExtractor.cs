@@ -1,4 +1,5 @@
 using System;
+using Ludots.Adapter.Web.Services;
 using Ludots.Core.Engine;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.DebugDraw;
@@ -17,16 +18,18 @@ namespace Ludots.Adapter.Web.Streaming
         private readonly GameEngine _engine;
         private readonly BinaryFrameEncoder _fullEncoder;
         private readonly DeltaCompressor _deltaCompressor;
-        private readonly Services.WebCameraAdapter _cameraAdapter;
+        private readonly WebCameraAdapter _cameraAdapter;
+        private readonly WebUiSystem _uiSystem;
         private uint _frameNumber;
         private int _fullFrameInterval = 30;
         private int _framesSinceFullFrame;
         private byte[] _snapshot = new byte[256 * 1024];
 
-        public PresentationExtractor(GameEngine engine, Services.WebCameraAdapter cameraAdapter)
+        public PresentationExtractor(GameEngine engine, WebCameraAdapter cameraAdapter, WebUiSystem uiSystem)
         {
             _engine = engine;
             _cameraAdapter = cameraAdapter;
+            _uiSystem = uiSystem;
             _fullEncoder = new BinaryFrameEncoder();
             _deltaCompressor = new DeltaCompressor();
         }
@@ -41,6 +44,9 @@ namespace Ludots.Adapter.Web.Streaming
             WorldHudBatchBuffer? worldHud = _engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer);
             ScreenHudBatchBuffer? screenHud = _engine.GetService(CoreServiceKeys.PresentationScreenHudBuffer);
             DebugDrawCommandBuffer? debugDraw = _engine.GetService(CoreServiceKeys.DebugDrawCommandBuffer);
+            ScreenOverlayBuffer? screenOverlay = _engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
+
+            _uiSystem.TryConsume(out string? uiHtml, out string? uiCss);
 
             var camera = _cameraAdapter.CurrentState;
             long timestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -53,7 +59,8 @@ namespace Ludots.Adapter.Web.Streaming
             {
                 deltaOk = _deltaCompressor.TryEncodeDelta(
                     _frameNumber, simTick, timestampMs, in camera,
-                    primitives, groundOverlays, worldHud, debugDraw
+                    primitives, groundOverlays, worldHud, debugDraw,
+                    screenOverlay, uiHtml, uiCss
                 );
             }
 
@@ -62,6 +69,7 @@ namespace Ludots.Adapter.Web.Streaming
                 int len = _deltaCompressor.EncodedLength;
                 EnsureSnapshot(len);
                 _deltaCompressor.CopyTo(_snapshot);
+                ClearConsumedBuffers(screenOverlay);
                 return (_snapshot, len);
             }
             else
@@ -69,13 +77,20 @@ namespace Ludots.Adapter.Web.Streaming
                 _framesSinceFullFrame = 0;
                 _fullEncoder.Encode(
                     _frameNumber, simTick, timestampMs, in camera,
-                    primitives, groundOverlays, worldHud, screenHud, debugDraw
+                    primitives, groundOverlays, worldHud, screenHud, debugDraw,
+                    screenOverlay, uiHtml, uiCss
                 );
                 int len = _fullEncoder.EncodedLength;
                 EnsureSnapshot(len);
                 _fullEncoder.CopyTo(_snapshot);
+                ClearConsumedBuffers(screenOverlay);
                 return (_snapshot, len);
             }
+        }
+
+        private static void ClearConsumedBuffers(ScreenOverlayBuffer? screenOverlay)
+        {
+            screenOverlay?.Clear();
         }
 
         private void EnsureSnapshot(int required)

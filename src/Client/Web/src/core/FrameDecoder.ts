@@ -1,4 +1,5 @@
 const MSG_FULL = 0x01;
+const MSG_MESH_MAP = 0x03;
 const MSG_DELTA = 0x05;
 
 const SEC_END = 0x00;
@@ -7,6 +8,8 @@ const SEC_PRIMITIVES = 0x02;
 const SEC_GROUND_OVERLAYS = 0x03;
 const SEC_WORLD_HUD = 0x04;
 const SEC_SCREEN_HUD = 0x05;
+const SEC_UI_HTML = 0x09;
+const SEC_SCREEN_OVERLAY = 0x0a;
 const SEC_DEBUG_LINES = 0x10;
 const SEC_DEBUG_CIRCLES = 0x11;
 const SEC_DEBUG_BOXES = 0x12;
@@ -66,6 +69,26 @@ export interface ScreenHudItem {
   fontSize: number;
 }
 
+export interface ScreenOverlayItem {
+  kind: number;
+  x: number; y: number;
+  width: number; height: number;
+  fontSize: number;
+  cr: number; cg: number; cb: number; ca: number;
+  bgr: number; bgg: number; bgb: number; bga: number;
+  text: string;
+}
+
+export interface UiHtml {
+  html: string;
+  css: string;
+}
+
+export interface MeshMapEntry {
+  id: number;
+  key: string;
+}
+
 export interface DecodedFrame {
   frameNumber: number;
   simTick: number;
@@ -77,19 +100,45 @@ export interface DecodedFrame {
   debugBoxes: DebugBox[];
   groundOverlays: GroundOverlayItem[];
   screenHud: ScreenHudItem[];
+  screenOverlays: ScreenOverlayItem[];
+  uiHtml?: UiHtml;
 }
 
 export class FrameDecoder {
   private _prevFrame: DecodedFrame | null = null;
+  private _meshMap: MeshMapEntry[] | null = null;
+  private _textDecoder = new TextDecoder();
+
+  get meshMap(): MeshMapEntry[] | null { return this._meshMap; }
 
   decode(buffer: ArrayBuffer): DecodedFrame | null {
     const v = new DataView(buffer);
-    if (v.byteLength < 17) return null;
+    if (v.byteLength < 3) return null;
 
     const msgType = v.getUint8(0);
+    if (msgType === MSG_MESH_MAP) {
+      this.decodeMeshMap(v);
+      return null;
+    }
+    if (v.byteLength < 17) return null;
     if (msgType === MSG_FULL) return this.decodeFull(v);
     if (msgType === MSG_DELTA) return this.decodeDelta(v);
     return null;
+  }
+
+  private decodeMeshMap(v: DataView): void {
+    const count = v.getUint16(1, true);
+    const entries: MeshMapEntry[] = [];
+    let p = 3;
+    for (let i = 0; i < count; i++) {
+      const id = v.getInt32(p, true); p += 4;
+      const keyLen = v.getUint16(p, true); p += 2;
+      const keyBytes = new Uint8Array(v.buffer, v.byteOffset + p, keyLen);
+      const key = this._textDecoder.decode(keyBytes);
+      p += keyLen;
+      entries.push({ id, key });
+    }
+    this._meshMap = entries;
   }
 
   private decodeFull(v: DataView): DecodedFrame {
@@ -112,6 +161,8 @@ export class FrameDecoder {
         case SEC_GROUND_OVERLAYS: p = this.readGroundOverlays(frame, v, p, itemCount); break;
         case SEC_WORLD_HUD: p += byteLen; break;
         case SEC_SCREEN_HUD: p = this.readScreenHud(frame, v, p, itemCount); break;
+        case SEC_UI_HTML: p = this.readUiHtml(frame, v, p); break;
+        case SEC_SCREEN_OVERLAY: p = this.readScreenOverlays(frame, v, p, itemCount); break;
         case SEC_DEBUG_LINES: p = this.readDebugLines(frame, v, p, itemCount); break;
         case SEC_DEBUG_CIRCLES: p = this.readDebugCircles(frame, v, p, itemCount); break;
         case SEC_DEBUG_BOXES: p = this.readDebugBoxes(frame, v, p, itemCount); break;
@@ -144,6 +195,8 @@ export class FrameDecoder {
         case SEC_GROUND_OVERLAYS: p = this.readGroundOverlays(frame, v, p, itemCount); break;
         case SEC_WORLD_HUD: p += byteLen; break;
         case SEC_SCREEN_HUD: p = this.readScreenHud(frame, v, p, itemCount); break;
+        case SEC_UI_HTML: p = this.readUiHtml(frame, v, p); break;
+        case SEC_SCREEN_OVERLAY: p = this.readScreenOverlays(frame, v, p, itemCount); break;
         case SEC_DEBUG_LINES: p = this.readDebugLines(frame, v, p, itemCount); break;
         case SEC_DEBUG_CIRCLES: p = this.readDebugCircles(frame, v, p, itemCount); break;
         case SEC_DEBUG_BOXES: p = this.readDebugBoxes(frame, v, p, itemCount); break;
@@ -236,6 +289,66 @@ export class FrameDecoder {
     return p;
   }
 
+  private readScreenOverlays(frame: DecodedFrame, v: DataView, p: number, count: number): number {
+    const stringIds: number[] = [];
+    const items: ScreenOverlayItem[] = [];
+    for (let i = 0; i < count; i++) {
+      items.push({
+        kind: v.getUint8(p),
+        x: v.getInt32(p + 1, true),
+        y: v.getInt32(p + 5, true),
+        width: v.getInt32(p + 9, true),
+        height: v.getInt32(p + 13, true),
+        fontSize: v.getInt32(p + 17, true),
+        cr: v.getFloat32(p + 21, true), cg: v.getFloat32(p + 25, true),
+        cb: v.getFloat32(p + 29, true), ca: v.getFloat32(p + 33, true),
+        bgr: v.getFloat32(p + 37, true), bgg: v.getFloat32(p + 41, true),
+        bgb: v.getFloat32(p + 45, true), bga: v.getFloat32(p + 49, true),
+        text: '',
+      });
+      stringIds.push(v.getUint16(p + 53, true));
+      p += 55;
+    }
+
+    const stringCount = v.getUint16(p, true); p += 2;
+    const strings: string[] = [];
+    for (let i = 0; i < stringCount; i++) {
+      const len = v.getUint16(p, true); p += 2;
+      const bytes = new Uint8Array(v.buffer, v.byteOffset + p, len);
+      strings.push(this._textDecoder.decode(bytes));
+      p += len;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const sid = stringIds[i];
+      if (items[i].kind === 0 && sid < strings.length) {
+        items[i].text = strings[sid];
+      }
+    }
+
+    frame.screenOverlays = items;
+    return p;
+  }
+
+  private readUiHtml(frame: DecodedFrame, v: DataView, p: number): number {
+    const htmlLen = v.getInt32(p, true); p += 4;
+    let html = '';
+    if (htmlLen > 0) {
+      const bytes = new Uint8Array(v.buffer, v.byteOffset + p, htmlLen);
+      html = this._textDecoder.decode(bytes);
+      p += htmlLen;
+    }
+    const cssLen = v.getInt32(p, true); p += 4;
+    let css = '';
+    if (cssLen > 0) {
+      const bytes = new Uint8Array(v.buffer, v.byteOffset + p, cssLen);
+      css = this._textDecoder.decode(bytes);
+      p += cssLen;
+    }
+    frame.uiHtml = { html, css };
+    return p;
+  }
+
   private readDebugLines(frame: DecodedFrame, v: DataView, p: number, count: number): number {
     frame.debugLines = [];
     for (let i = 0; i < count; i++) {
@@ -282,7 +395,7 @@ export class FrameDecoder {
       frameNumber: 0, simTick: 0, timestampMs: 0,
       camera: { posX: 0, posY: 10, posZ: 10, tgtX: 0, tgtY: 0, tgtZ: 0, upX: 0, upY: 1, upZ: 0, fov: 60 },
       primitives: [], debugLines: [], debugCircles: [], debugBoxes: [],
-      groundOverlays: [], screenHud: [],
+      groundOverlays: [], screenHud: [], screenOverlays: [],
     };
   }
 
@@ -296,6 +409,8 @@ export class FrameDecoder {
       debugBoxes: [...f.debugBoxes],
       groundOverlays: [...f.groundOverlays],
       screenHud: [...f.screenHud],
+      screenOverlays: [],
+      uiHtml: undefined,
     };
   }
 }

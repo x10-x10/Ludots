@@ -1,9 +1,12 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.WebSockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Ludots.Adapter.Web.Protocol;
 using Ludots.Adapter.Web.Services;
 using Ludots.Core.Diagnostics;
 
@@ -16,6 +19,7 @@ namespace Ludots.Adapter.Web.Streaming
         private readonly WebInputBackend _inputBackend;
         private readonly WebViewController _viewController;
         private readonly ConcurrentDictionary<string, ClientSession> _sessions = new();
+        private volatile byte[]? _meshMapMessage;
 
         public bool HasClients => !_sessions.IsEmpty;
         public int ClientCount => _sessions.Count;
@@ -24,6 +28,34 @@ namespace Ludots.Adapter.Web.Streaming
         {
             _inputBackend = inputBackend;
             _viewController = viewController;
+        }
+
+        /// <summary>
+        /// Sets the mesh asset registry mapping to send to newly connected clients.
+        /// Format: [MsgType(1)] [Count(2)] [Entries: Id(4) + KeyLen(2) + KeyUTF8(...)]
+        /// </summary>
+        public void SetMeshMap(Dictionary<int, string> idToKey)
+        {
+            int totalSize = 1 + 2;
+            foreach (var kvp in idToKey)
+                totalSize += 4 + 2 + Encoding.UTF8.GetByteCount(kvp.Value);
+
+            var buf = new byte[totalSize];
+            buf[0] = FrameProtocol.MsgTypeMeshMap;
+            BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(1), (ushort)idToKey.Count);
+            int pos = 3;
+            foreach (var kvp in idToKey)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(pos), kvp.Key);
+                pos += 4;
+                int keyLen = Encoding.UTF8.GetByteCount(kvp.Value);
+                BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(pos), (ushort)keyLen);
+                pos += 2;
+                Encoding.UTF8.GetBytes(kvp.Value, buf.AsSpan(pos));
+                pos += keyLen;
+            }
+
+            _meshMapMessage = buf;
         }
 
         public async Task HandleClientAsync(WebSocket ws, CancellationToken ct)
@@ -35,6 +67,13 @@ namespace Ludots.Adapter.Web.Streaming
 
             try
             {
+                byte[]? meshMap = _meshMapMessage;
+                if (meshMap != null)
+                {
+                    await ws.SendAsync(
+                        new ArraySegment<byte>(meshMap), WebSocketMessageType.Binary, true, ct);
+                }
+
                 var receiveTask = ReceiveLoopAsync(session, ct);
                 var sendTask = SendLoopAsync(session, ct);
                 await Task.WhenAny(receiveTask, sendTask);

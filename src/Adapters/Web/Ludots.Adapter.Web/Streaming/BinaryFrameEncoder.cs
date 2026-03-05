@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Text;
 using Ludots.Adapter.Web.Protocol;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.DebugDraw;
@@ -44,7 +45,10 @@ namespace Ludots.Adapter.Web.Streaming
             GroundOverlayBuffer? groundOverlays,
             WorldHudBatchBuffer? worldHud,
             ScreenHudBatchBuffer? screenHud,
-            DebugDrawCommandBuffer? debugDraw)
+            DebugDrawCommandBuffer? debugDraw,
+            ScreenOverlayBuffer? screenOverlay = null,
+            string? uiHtml = null,
+            string? uiCss = null)
         {
             _pos = 0;
             EnsureCapacity(FrameProtocol.FrameHeaderSize);
@@ -60,6 +64,8 @@ namespace Ludots.Adapter.Web.Streaming
             WriteWorldHud(worldHud);
             WriteScreenHud(screenHud);
             WriteDebugDraw(debugDraw);
+            WriteScreenOverlay(screenOverlay);
+            WriteUiHtml(uiHtml, uiCss);
 
             EnsureCapacity(1);
             _buffer[_pos++] = FrameProtocol.SectionEnd;
@@ -245,6 +251,89 @@ namespace Ludots.Adapter.Web.Streaming
                     _buffer[_pos++] = box.Color.A;
                 }
             }
+        }
+
+        private void WriteScreenOverlay(ScreenOverlayBuffer? buf)
+        {
+            if (buf == null || buf.Count == 0) return;
+
+            var span = buf.GetSpan();
+            int count = span.Length;
+
+            int startPos = _pos;
+            WriteSectionHeader(FrameProtocol.SectionScreenOverlay, (ushort)count, 0);
+
+            for (int i = 0; i < count; i++)
+            {
+                ref readonly var item = ref span[i];
+                EnsureCapacity(55);
+                _buffer[_pos++] = (byte)item.Kind;
+                WriteInt32(item.X);
+                WriteInt32(item.Y);
+                WriteInt32(item.Width);
+                WriteInt32(item.Height);
+                WriteInt32(item.FontSize);
+                WriteFloat(item.Color.X); WriteFloat(item.Color.Y); WriteFloat(item.Color.Z); WriteFloat(item.Color.W);
+                WriteFloat(item.BackgroundColor.X); WriteFloat(item.BackgroundColor.Y); WriteFloat(item.BackgroundColor.Z); WriteFloat(item.BackgroundColor.W);
+                EnsureCapacity(2);
+                BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)item.StringId);
+                _pos += 2;
+            }
+
+            int stringCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                ref readonly var item = ref span[i];
+                if (item.Kind == ScreenOverlayItemKind.Text)
+                    stringCount = Math.Max(stringCount, item.StringId + 1);
+            }
+
+            EnsureCapacity(2);
+            BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)stringCount);
+            _pos += 2;
+
+            for (int i = 0; i < stringCount; i++)
+            {
+                string? s = buf.GetString(i);
+                if (s == null) s = "";
+                int byteCount = Encoding.UTF8.GetByteCount(s);
+                EnsureCapacity(2 + byteCount);
+                BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)byteCount);
+                _pos += 2;
+                Encoding.UTF8.GetBytes(s, _buffer.AsSpan(_pos));
+                _pos += byteCount;
+            }
+
+            int totalBytes = _pos - startPos - FrameProtocol.SectionHeaderSize;
+            BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(startPos + 3), totalBytes);
+        }
+
+        private void WriteUiHtml(string? html, string? css)
+        {
+            if (html == null && css == null) return;
+
+            int startPos = _pos;
+            WriteSectionHeader(FrameProtocol.SectionUiHtml, 1, 0);
+
+            byte[] htmlBytes = html != null ? Encoding.UTF8.GetBytes(html) : Array.Empty<byte>();
+            byte[] cssBytes = css != null ? Encoding.UTF8.GetBytes(css) : Array.Empty<byte>();
+
+            EnsureCapacity(4 + htmlBytes.Length + 4 + cssBytes.Length);
+            WriteInt32(htmlBytes.Length);
+            if (htmlBytes.Length > 0)
+            {
+                htmlBytes.CopyTo(_buffer.AsSpan(_pos));
+                _pos += htmlBytes.Length;
+            }
+            WriteInt32(cssBytes.Length);
+            if (cssBytes.Length > 0)
+            {
+                cssBytes.CopyTo(_buffer.AsSpan(_pos));
+                _pos += cssBytes.Length;
+            }
+
+            int totalBytes = _pos - startPos - FrameProtocol.SectionHeaderSize;
+            BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(startPos + 3), totalBytes);
         }
 
         private void WriteSectionHeader(byte sectionType, ushort itemCount, int byteLength)
