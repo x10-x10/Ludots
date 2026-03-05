@@ -5,6 +5,7 @@ using Ludots.Core.Components;
 using Ludots.Core.Config;
 using Ludots.Core.Gameplay;
 using Ludots.Core.Gameplay.Camera;
+using Ludots.Core.Gameplay.Camera.FollowTargets;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Map;
 using Ludots.Core.Modding;
@@ -38,6 +39,9 @@ namespace MobaDemoMod.Triggers
             var session = context.Get(CoreServiceKeys.GameSession);
             if (session == null) return Task.CompletedTask;
 
+            // Wire camera follow target: SelectedEntity → LocalPlayer fallback chain
+            session.Camera.FollowTarget = new SelectedEntityFollowTarget(engine.World, engine.GlobalContext);
+
             var world = engine.World;
             var q = new QueryDescription().WithAll<PlayerOwner, WorldPositionCm>();
             var chunks = world.Query(in q);
@@ -52,7 +56,7 @@ namespace MobaDemoMod.Triggers
                     var pos2d = p.ToVector2();
                     session.Camera.FollowTargetPositionCm = pos2d;
                     session.Camera.State.TargetCm = pos2d;
-                    _ctx.Log("[MobaDemoMod] Camera centered on local player.");
+                    _ctx.Log("[MobaDemoMod] Camera follow target set to SelectedEntity → LocalPlayer.");
                     return Task.CompletedTask;
                 }
             }

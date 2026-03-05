@@ -1,0 +1,55 @@
+{
+  "interactionMode": "AimCast",
+  "mappings": [
+    {
+      "actionId": "Skill1",
+      "trigger": "PressedThisFrame",
+      "orderTagKey": "castAbility",
+      "argsTemplate": { "i0": 0 },
+      "requireSelection": false,
+      "selectionType": "Position",
+      "isSkillMapping": true,
+      "modifierBehavior": "QueueOnModifier"
+    },
+    {
+      "actionId": "Skill2",
+      "trigger": "PressedThisFrame",
+      "orderTagKey": "castAbility",
+      "argsTemplate": { "i0": 1 },
+      "requireSelection": false,
+      "selectionType": "Entity",
+      "isSkillMapping": true,
+      "modifierBehavior": "QueueOnModifier"
+    },
+    {
+      "actionId": "Skill3",
+      "trigger": "PressedThisFrame",
+      "orderTagKey": "castAbility",
+      "argsTemplate": { "i0": 2 },
+      "requireSelection": false,
+      "selectionType": "None",
+      "isSkillMapping": true,
+      "modifierBehavior": "QueueOnModifier"
+    },
+    {
+      "actionId": "Command",
+      "trigger": "PressedThisFrame",
+      "orderTagKey": "castAbility",
+      "argsTemplate": { "i0": 4 },
+      "requireSelection": true,
+      "selectionType": "Position",
+      "isSkillMapping": false,
+      "modifierBehavior": "QueueOnModifier"
+    },
+    {
+      "actionId": "Stop",
+      "trigger": "PressedThisFrame",
+      "orderTagKey": "stop",
+      "argsTemplate": {},
+      "requireSelection": false,
+      "selectionType": "None",
+      "isSkillMapping": false,
+      "modifierBehavior": "IgnoreModifier"
+    }
+  ]
+}

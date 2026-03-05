@@ -1,0 +1,12 @@
+{
+  "interactionMode": "TargetFirst",
+  "mappings": [
+    { "actionId": "Skill1", "trigger": "PressedThisFrame", "orderTagKey": "castAbility", "argsTemplate": { "i0": 0 }, "selectionType": "Entity", "isSkillMapping": true },
+    { "actionId": "Skill2", "trigger": "PressedThisFrame", "orderTagKey": "castAbility", "argsTemplate": { "i0": 1 }, "selectionType": "None", "isSkillMapping": true },
+    { "actionId": "Skill3", "trigger": "PressedThisFrame", "orderTagKey": "castAbility", "argsTemplate": { "i0": 2 }, "selectionType": "Entity", "isSkillMapping": true },
+    { "actionId": "Skill4", "trigger": "PressedThisFrame", "orderTagKey": "castAbility", "argsTemplate": { "i0": 3 }, "selectionType": "Entity", "isSkillMapping": true },
+    { "actionId": "Skill5", "trigger": "PressedThisFrame", "orderTagKey": "castAbility", "argsTemplate": { "i0": 4 }, "selectionType": "Entity", "isSkillMapping": true },
+    { "actionId": "Skill6", "trigger": "PressedThisFrame", "orderTagKey": "castAbility", "argsTemplate": { "i0": 5 }, "selectionType": "None", "isSkillMapping": true },
+    { "actionId": "Stop", "trigger": "PressedThisFrame", "orderTagKey": "stop", "argsTemplate": {}, "selectionType": "None", "isSkillMapping": false }
+  ]
+}

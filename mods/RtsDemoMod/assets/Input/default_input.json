@@ -1,0 +1,27 @@
+{
+  "actions": [
+    { "id": "Skill1", "name": "Gameplay_Skill1", "type": "Button" },
+    { "id": "Skill2", "name": "Gameplay_Skill2", "type": "Button" },
+    { "id": "Skill3", "name": "Gameplay_Skill3", "type": "Button" },
+    { "id": "Select", "name": "Gameplay_Select", "type": "Button" },
+    { "id": "Command", "name": "Gameplay_Command", "type": "Button" },
+    { "id": "Stop", "name": "Gameplay_Stop", "type": "Button" },
+    { "id": "Cancel", "name": "Gameplay_Cancel", "type": "Button" }
+  ],
+  "contexts": [
+    {
+      "id": "Rts_Gameplay",
+      "name": "RTS Gameplay",
+      "priority": 50,
+      "bindings": [
+        { "actionId": "Skill1", "path": "<Keyboard>/q" },
+        { "actionId": "Skill2", "path": "<Keyboard>/w" },
+        { "actionId": "Skill3", "path": "<Keyboard>/e" },
+        { "actionId": "Select", "path": "<Mouse>/LeftButton" },
+        { "actionId": "Command", "path": "<Mouse>/RightButton" },
+        { "actionId": "Stop", "path": "<Keyboard>/s" },
+        { "actionId": "Cancel", "path": "<Keyboard>/Escape" }
+      ]
+    }
+  ]
+}

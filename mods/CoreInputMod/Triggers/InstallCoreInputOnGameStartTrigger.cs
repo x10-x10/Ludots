@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Arch.Core;
+using CoreInputMod.Systems;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Mathematics;
@@ -60,8 +61,10 @@ namespace CoreInputMod.Triggers
             engine.RegisterPresentationSystem(gasSelection);
 
             engine.RegisterPresentationSystem(new GasInputResponseSystem(engine.World, engine.GlobalContext));
+            engine.RegisterPresentationSystem(new SkillBarOverlaySystem(engine.World, engine.GlobalContext));
+            engine.RegisterPresentationSystem(new TabTargetCycleSystem(engine.World, engine.GlobalContext, engine.SpatialQueries));
 
-            _ctx.Log("[CoreInputMod] EntityClickSelect, GasSelectionResponse, GasInputResponse registered");
+            _ctx.Log("[CoreInputMod] EntityClickSelect, GasSelectionResponse, GasInputResponse, SkillBar, TabTarget registered");
             return Task.CompletedTask;
         }
     }

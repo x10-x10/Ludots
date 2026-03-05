@@ -114,6 +114,16 @@
       "id": "CameraLock",
       "name": "Gameplay_CameraLock",
       "type": "Button"
+    },
+    {
+      "id": "TabTarget",
+      "name": "Gameplay_TabTarget",
+      "type": "Button"
+    },
+    {
+      "id": "TabTargetReverse",
+      "name": "Gameplay_TabTargetReverse",
+      "type": "Button"
     }
   ],
   "contexts": [
