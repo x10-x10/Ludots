@@ -6,9 +6,9 @@ using Ludots.Core.Mathematics;
 namespace Ludots.Core.Presentation.Coordinates
 {
     /// <summary>
-    /// Coordinate mapper for Raylib (Right-handed, Y-Up).
+    /// Coordinate mapper for right-handed, Y-Up coordinate systems (e.g. Raylib, OpenGL).
     /// </summary>
-    public class RaylibCoordinateMapper : ICoordinateMapper
+    public class RightHandedYUpMapper : ICoordinateMapper
     {
         public float ScaleFactor => 0.001f;
 

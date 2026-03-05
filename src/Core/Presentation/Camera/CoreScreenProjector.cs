@@ -6,7 +6,6 @@ namespace Ludots.Core.Presentation.Camera
 {
     /// <summary>
     /// Core implementation of IScreenProjector. Platform-agnostic projection using CameraState + IViewController.
-    /// Replaces adapter-specific projectors (e.g. RaylibScreenProjector) for consistent cross-platform behavior.
     /// </summary>
     public sealed class CoreScreenProjector : IScreenProjector
     {
