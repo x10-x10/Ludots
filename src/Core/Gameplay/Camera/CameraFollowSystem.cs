@@ -22,6 +22,12 @@ namespace Ludots.Core.Gameplay.Camera
 
         public void Update(float dt)
         {
+            // Pump ICameraFollowTarget → FollowTargetPositionCm each frame
+            if (_camera.FollowTarget != null)
+            {
+                _camera.FollowTargetPositionCm = _camera.FollowTarget.GetPosition();
+            }
+
             var mode = _camera.FollowMode;
             if (mode == CameraFollowMode.None)
             {

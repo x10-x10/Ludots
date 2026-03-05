@@ -28,8 +28,18 @@ namespace Ludots.Core.Gameplay.Camera
         /// <summary>
         /// World position (cm) of the follow target, set externally each frame.
         /// Null means no valid follow target.
+        /// Written by CameraFollowTargetSystem from <see cref="FollowTarget"/> each frame,
+        /// or directly by mod triggers for one-shot initialization.
         /// </summary>
         public Vector2? FollowTargetPositionCm { get; set; }
+
+        /// <summary>
+        /// Pluggable follow target provider (Cinemachine-style).
+        /// When set, CameraFollowTargetSystem reads position from this each frame
+        /// and writes it to <see cref="FollowTargetPositionCm"/>.
+        /// Set to null to disable automatic tracking.
+        /// </summary>
+        public ICameraFollowTarget? FollowTarget { get; set; }
 
         /// <summary>
         /// Sets the active camera controller.

@@ -1,5 +1,5 @@
 {
   "startupMapId": "arpg_entry",
-  "startupInputContexts": ["Default_Gameplay"]
+  "startupInputContexts": ["Default_Gameplay", "Arpg_Gameplay"]
 }
 

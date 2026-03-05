@@ -1,11 +1,12 @@
 {
   "name": "ArpgDemoMod",
   "version": "1.0.0",
-  "description": "ARPG demo mod for production GAS validation.",
+  "description": "ARPG demo mod: WoW-style TargetFirst + Tab-target + TPS chase camera + 6-slot skill bar.",
   "main": "bin/net8.0/ArpgDemoMod.dll",
   "priority": 0,
   "dependencies": {
-    "LudotsCoreMod": "^1.0.0"
+    "LudotsCoreMod": "^1.0.0",
+    "CoreInputMod": "^1.0.0"
   }
 }
 

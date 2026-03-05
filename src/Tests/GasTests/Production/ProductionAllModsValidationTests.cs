@@ -90,7 +90,7 @@ namespace Ludots.Tests.GAS.Production
 
             yield return new TestCaseData(new ModCase(
                     "ArpgDemoMod",
-                    new[] { "LudotsCoreMod", "ArpgDemoMod" },
+                    new[] { "LudotsCoreMod", "CoreInputMod", "ArpgDemoMod" },
                     true))
                 .SetName("ProdModSmoke_ArpgDemoMod");
 

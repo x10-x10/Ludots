@@ -313,7 +313,7 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine("[ARPG] 进入暗黑风地下城。");
             sb.AppendLine("═══════════════════════════════════════════");
 
-            RunWithEngine(new[] { "LudotsCoreMod", "ArpgDemoMod" }, "arpg_entry", engine =>
+            RunWithEngine(new[] { "LudotsCoreMod", "CoreInputMod", "ArpgDemoMod" }, "arpg_entry", engine =>
             {
                 var world = engine.World;
                 var (hero, enemy) = FindEntities2(world, "ArpgHero", "ArpgEnemy");
@@ -493,7 +493,7 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine("[RTS] 进入即时战略战场 (3 阵营: 人族/虫族/神族)。");
             sb.AppendLine("═══════════════════════════════════════════");
 
-            RunWithEngine(new[] { "LudotsCoreMod", "RtsDemoMod" }, "rts_entry", engine =>
+            RunWithEngine(new[] { "LudotsCoreMod", "CoreInputMod", "RtsDemoMod" }, "rts_entry", engine =>
             {
                 var world = engine.World;
 

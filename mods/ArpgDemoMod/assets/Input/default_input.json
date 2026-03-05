@@ -1,0 +1,35 @@
+{
+  "actions": [
+    { "id": "Skill1", "name": "Gameplay_Skill1", "type": "Button" },
+    { "id": "Skill2", "name": "Gameplay_Skill2", "type": "Button" },
+    { "id": "Skill3", "name": "Gameplay_Skill3", "type": "Button" },
+    { "id": "Skill4", "name": "Gameplay_Skill4", "type": "Button" },
+    { "id": "Skill5", "name": "Gameplay_Skill5", "type": "Button" },
+    { "id": "Skill6", "name": "Gameplay_Skill6", "type": "Button" },
+    { "id": "Select", "name": "Gameplay_Select", "type": "Button" },
+    { "id": "Command", "name": "Gameplay_Command", "type": "Button" },
+    { "id": "Stop", "name": "Gameplay_Stop", "type": "Button" },
+    { "id": "Cancel", "name": "Gameplay_Cancel", "type": "Button" }
+  ],
+  "contexts": [
+    {
+      "id": "Arpg_Gameplay",
+      "name": "ARPG Gameplay",
+      "priority": 50,
+      "bindings": [
+        { "actionId": "Skill1", "path": "<Keyboard>/1" },
+        { "actionId": "Skill2", "path": "<Keyboard>/2" },
+        { "actionId": "Skill3", "path": "<Keyboard>/3" },
+        { "actionId": "Skill4", "path": "<Keyboard>/4" },
+        { "actionId": "Skill5", "path": "<Keyboard>/5" },
+        { "actionId": "Skill6", "path": "<Keyboard>/6" },
+        { "actionId": "Select", "path": "<Mouse>/LeftButton" },
+        { "actionId": "Command", "path": "<Mouse>/RightButton" },
+        { "actionId": "Stop", "path": "<Keyboard>/s" },
+        { "actionId": "Cancel", "path": "<Keyboard>/Escape" },
+        { "actionId": "TabTarget", "path": "<Keyboard>/tab" },
+        { "actionId": "TabTargetReverse", "path": "<Keyboard>/backquote" }
+      ]
+    }
+  ]
+}
