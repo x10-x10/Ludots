@@ -63,16 +63,14 @@ namespace Ludots.Core.Gameplay.GAS.Presentation
             if (slot.AbilityId <= 0) return result;
 
             bool hasTimedTags = world.Has<TimedTagBuffer>(entity);
-            bool hasBlockTags = abilityRegistry != null &&
-                                abilityRegistry.TryGet(slot.AbilityId, out var def) &&
-                                def.HasActivationBlockTags;
-
-            if (hasTimedTags && hasBlockTags)
+            if (hasTimedTags && abilityRegistry != null &&
+                abilityRegistry.TryGet(slot.AbilityId, out var def) &&
+                def.HasActivationBlockTags)
             {
                 ref var timedTags = ref world.Get<TimedTagBuffer>(entity);
                 ref var blockTags = ref def.ActivationBlockTags;
                 FindLongestCooldown(ref timedTags, ref blockTags.BlockedAny, currentTick,
-                    out result.CooldownRemainingTicks, out result.CooldownTotalTicks);
+                    out result.CooldownRemainingTicks, out result.CooldownTotalTicks, in def);
                 result.IsOnCooldown = result.CooldownRemainingTicks > 0;
             }
 
@@ -82,7 +80,8 @@ namespace Ludots.Core.Gameplay.GAS.Presentation
 
         private static unsafe void FindLongestCooldown(
             ref TimedTagBuffer timedTags, ref GameplayTagContainer blockedAny,
-            int currentTick, out int remainingTicks, out int totalTicks)
+            int currentTick, out int remainingTicks, out int totalTicks,
+            in AbilityDefinition def)
         {
             remainingTicks = 0;
             totalTicks = 0;
@@ -96,9 +95,22 @@ namespace Ludots.Core.Gameplay.GAS.Presentation
                 if (remaining > remainingTicks)
                 {
                     remainingTicks = remaining;
-                    totalTicks = expireAt;
+                    totalTicks = LookupTagClipDuration(in def.ExecSpec, tagId);
+                    if (totalTicks <= 0) totalTicks = remaining;
                 }
             }
+        }
+
+        private static unsafe int LookupTagClipDuration(in AbilityExecSpec spec, int tagId)
+        {
+            for (int i = 0; i < spec.ItemCount; i++)
+            {
+                var kind = spec.GetKind(i);
+                if (kind != ExecItemKind.TagClip && kind != ExecItemKind.TagClipTarget) continue;
+                if (spec.GetTagId(i) == tagId)
+                    return spec.GetDurationTicks(i);
+            }
+            return 0;
         }
     }
 }
