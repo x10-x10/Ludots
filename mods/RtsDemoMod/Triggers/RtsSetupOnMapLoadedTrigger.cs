@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Arch.Core;
 using Ludots.Core.Components;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Modding;
 using Ludots.Core.Scripting;
@@ -34,13 +35,20 @@ namespace RtsDemoMod.Triggers
 
             var world = engine.World;
             var q = new QueryDescription().WithAll<Name>();
+            Entity localPlayer = default;
             world.Query(in q, (Entity e, ref Name name) =>
             {
-                // Ensure all named entities have tag components for GAS interaction
                 if (!world.Has<GameplayTagContainer>(e)) world.Add(e, new GameplayTagContainer());
                 if (!world.Has<TagCountContainer>(e)) world.Add(e, new TagCountContainer());
                 if (!world.Has<TimedTagBuffer>(e)) world.Add(e, new TimedTagBuffer());
+
+                if (localPlayer == default && world.Has<PlayerOwner>(e) &&
+                    world.Get<PlayerOwner>(e).PlayerId == 1)
+                    localPlayer = e;
             });
+
+            if (localPlayer != default)
+                engine.GlobalContext[CoreServiceKeys.LocalPlayerEntity.Name] = localPlayer;
 
             return Task.CompletedTask;
         }

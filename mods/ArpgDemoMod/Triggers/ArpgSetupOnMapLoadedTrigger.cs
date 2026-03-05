@@ -48,12 +48,16 @@ namespace ArpgDemoMod.Triggers
                     heroEntity = e;
             });
 
-            // Wire follow target: hero entity for TPS/AlwaysFollow camera
-            var session = context.Get(CoreServiceKeys.GameSession);
-            if (session != null && heroEntity != default)
+            if (heroEntity != default)
             {
-                session.Camera.FollowTarget = new EntityFollowTarget(world, heroEntity);
-                _ctx.Log("[ArpgDemoMod] Camera follow target set to hero entity.");
+                engine.GlobalContext[CoreServiceKeys.LocalPlayerEntity.Name] = heroEntity;
+
+                var session = context.Get(CoreServiceKeys.GameSession);
+                if (session != null)
+                {
+                    session.Camera.FollowTarget = new EntityFollowTarget(world, heroEntity);
+                    _ctx.Log("[ArpgDemoMod] Camera follow target set to hero entity.");
+                }
             }
 
             return Task.CompletedTask;
