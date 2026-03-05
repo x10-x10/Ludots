@@ -44,7 +44,7 @@ Target framework: .NET 8.0. Test framework: NUnit 4.2.2 with BenchmarkDotNet.
 - `src/Tools/` — ModLauncher (CLI/GUI), Editor Bridge, NavBake
 - `src/Libraries/` — Source-integrated: Arch ECS, Arch.Extended, DotRecast, Raylib-cs
 - `src/Tests/` — GasTests (core gameplay), ArchitectureTests (boundaries), ModdingTest
-- `docs/developer-guide/` — 11 detailed architecture guides (Chinese)
+- `docs/developer-guide/` — 20 detailed architecture guides (Chinese)
 
 ### Hexagonal Architecture (Adapter Pattern)
 
@@ -125,3 +125,14 @@ Tests follow AAA (Arrange/Act/Assert). Test class: `<Subsystem>Tests`. Test meth
 | Startup entrypoints | `docs/developer-guide/09_startup_entrypoints.md` |
 | Map/Mod spatial services | `docs/developer-guide/10_map_mod_spatial.md` |
 | GAS layered architecture & Sinks | `docs/developer-guide/11_gas_layered_architecture.md` |
+| Feature development workflow | `docs/developer-guide/19_feature_development_workflow.md` |
+
+## AI Agent Workflow (Anti-Hallucination Rules)
+
+Before writing any code, AI agents MUST follow the workflow defined in `docs/developer-guide/19_feature_development_workflow.md`. Key rules:
+
+1. **Search before code**: For every non-BCL type or method you reference, search the codebase to confirm it exists and verify its signature. Never assume an API exists.
+2. **Read docs first**: Before implementing a feature, read `docs/developer-guide/README.md` to find relevant architecture docs, then read those docs.
+3. **List reuse vs new**: Explicitly list which existing classes/registries/systems you will reuse and which you will create new. The repo has 20+ registries (see `19_feature_development_workflow.md` §7.1).
+4. **No parallel infrastructure**: Do not create new Registry, event system, config loader, or component base class without first confirming none of the existing 20+ registries or pipelines can serve the purpose.
+5. **Post-generation verification**: After generating code, search-verify every `new` construction, method call, and type reference against the actual codebase. Fix hallucinated references immediately.
