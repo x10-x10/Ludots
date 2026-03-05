@@ -57,6 +57,7 @@ namespace Ludots.Core.Scripting
         public const string PresentationWorldHudStrings = "PresentationWorldHudStrings";
         public const string PresentationScreenHudBuffer = "PresentationScreenHudBuffer";
         public const string ScreenOverlayBuffer = "ScreenOverlayBuffer";
+        public const string RenderDebugState = "RenderDebugState";
         public const string WorldSizeSpec = "WorldSizeSpec";
         public const string SpatialCoordinateConverter = "SpatialCoordinateConverter";
         public const string SpatialQueryService = "SpatialQueryService";
@@ -99,8 +100,6 @@ namespace Ludots.Core.Scripting
         public const string SystemFactoryRegistry = "SystemFactoryRegistry";
         public const string TriggerDecoratorRegistry = "TriggerDecoratorRegistry";
 
-        public const string Navigation2DPlayground_AgentDeltaPerTeam = "Navigation2DPlayground_AgentDeltaPerTeam";
-        public const string Navigation2DPlayground_ResetScenario = "Navigation2DPlayground_ResetScenario";
         public const string Navigation2DPlayground_AgentsPerTeam = "Navigation2DPlayground_AgentsPerTeam";
         public const string Navigation2DPlayground_LiveAgentsTotal = "Navigation2DPlayground_LiveAgentsTotal";
         public const string Navigation2DPlayground_FlowDebugLines = "Navigation2DPlayground_FlowDebugLines";

@@ -17,6 +17,7 @@ using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Scripting;
 using Ludots.Core.Physics2D.Components;
 using Ludots.Core.Physics2D.Systems;
+using Navigation2DPlaygroundMod.Input;
 using Navigation2DPlaygroundMod.Systems;
 
 namespace Navigation2DPlaygroundMod.Triggers
@@ -25,6 +26,8 @@ namespace Navigation2DPlaygroundMod.Triggers
     {
         private readonly IModContext _ctx;
         private bool _installed;
+        private bool _inputContextActive;
+        private const string InputContextId = Navigation2DPlaygroundInputContexts.Playground;
 
         public EnableNavigation2DPlaygroundOnEntryTrigger(IModContext ctx)
         {
@@ -75,6 +78,13 @@ namespace Navigation2DPlaygroundMod.Triggers
                 var input = context.Get<PlayerInputHandler>(ContextKeys.InputHandler);
                 if (session != null && input != null)
                 {
+                    if (!_inputContextActive)
+                    {
+                        EnsurePlaygroundInputSchema(input);
+                        input.PushContext(InputContextId);
+                        _inputContextActive = true;
+                    }
+
                     session.Camera.State.TargetCm = System.Numerics.Vector2.Zero;
                         session.Camera.State.Pitch = 65f;
                         session.Camera.State.DistanceCm = 18000f;
@@ -98,9 +108,32 @@ namespace Navigation2DPlaygroundMod.Triggers
             else
             {
                 Navigation2DPlaygroundState.Enabled = false;
+                var input = context.Get<PlayerInputHandler>(ContextKeys.InputHandler);
+                if (input != null && _inputContextActive)
+                {
+                    input.PopContext(InputContextId);
+                    _inputContextActive = false;
+                }
             }
 
             return Task.CompletedTask;
+        }
+
+        private static void EnsurePlaygroundInputSchema(PlayerInputHandler input)
+        {
+            if (!input.HasContext(Navigation2DPlaygroundInputContexts.Playground))
+            {
+                throw new InvalidOperationException($"Missing input context: {Navigation2DPlaygroundInputContexts.Playground}");
+            }
+
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.ToggleFlowEnabled)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.ToggleFlowEnabled}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.ToggleFlowDebug)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.ToggleFlowDebug}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.CycleFlowDebugMode)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.CycleFlowDebugMode}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.IncreaseFlowIterations)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.IncreaseFlowIterations}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.DecreaseFlowIterations)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.DecreaseFlowIterations}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.IncreaseAgentsPerTeam)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.IncreaseAgentsPerTeam}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.DecreaseAgentsPerTeam)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.DecreaseAgentsPerTeam}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.ResetScenario)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.ResetScenario}");
         }
     }
 }

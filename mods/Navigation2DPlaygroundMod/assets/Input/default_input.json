@@ -1,0 +1,29 @@
+{
+  "actions": [
+    { "id": "Nav2D_ToggleFlowEnabled", "name": "Nav2D_ToggleFlowEnabled", "type": "Button" },
+    { "id": "Nav2D_ToggleFlowDebug", "name": "Nav2D_ToggleFlowDebug", "type": "Button" },
+    { "id": "Nav2D_CycleFlowDebugMode", "name": "Nav2D_CycleFlowDebugMode", "type": "Button" },
+    { "id": "Nav2D_IncreaseFlowIterations", "name": "Nav2D_IncreaseFlowIterations", "type": "Button" },
+    { "id": "Nav2D_DecreaseFlowIterations", "name": "Nav2D_DecreaseFlowIterations", "type": "Button" },
+    { "id": "Nav2D_IncreaseAgentsPerTeam", "name": "Nav2D_IncreaseAgentsPerTeam", "type": "Button" },
+    { "id": "Nav2D_DecreaseAgentsPerTeam", "name": "Nav2D_DecreaseAgentsPerTeam", "type": "Button" },
+    { "id": "Nav2D_ResetScenario", "name": "Nav2D_ResetScenario", "type": "Button" }
+  ],
+  "contexts": [
+    {
+      "id": "Navigation2D_Playground",
+      "name": "Navigation2D Playground",
+      "priority": 100,
+      "bindings": [
+        { "actionId": "Nav2D_ToggleFlowEnabled", "path": "<Keyboard>/g" },
+        { "actionId": "Nav2D_ToggleFlowDebug", "path": "<Keyboard>/h" },
+        { "actionId": "Nav2D_CycleFlowDebugMode", "path": "<Keyboard>/j" },
+        { "actionId": "Nav2D_IncreaseFlowIterations", "path": "<Keyboard>/u" },
+        { "actionId": "Nav2D_DecreaseFlowIterations", "path": "<Keyboard>/y" },
+        { "actionId": "Nav2D_IncreaseAgentsPerTeam", "path": "<Keyboard>/k" },
+        { "actionId": "Nav2D_DecreaseAgentsPerTeam", "path": "<Keyboard>/l" },
+        { "actionId": "Nav2D_ResetScenario", "path": "<Keyboard>/r" }
+      ]
+    }
+  ]
+}

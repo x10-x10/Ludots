@@ -567,6 +567,7 @@ namespace Ludots.Core.Engine
             var screenHudBuffer = new ScreenHudBatchBuffer();
             GlobalContext[ContextKeys.PresentationScreenHudBuffer] = screenHudBuffer;
             GlobalContext[ContextKeys.ScreenOverlayBuffer] = new ScreenOverlayBuffer();
+            GlobalContext[ContextKeys.RenderDebugState] = new RenderDebugState();
             GlobalContext[ContextKeys.TransientMarkerBuffer] = transientMarkerBuffer;
             GlobalContext[ContextKeys.GasPresentationEventBuffer] = gasPresentationEvents;
             GlobalContext[ContextKeys.GroundOverlayBuffer] = groundOverlayBuffer;

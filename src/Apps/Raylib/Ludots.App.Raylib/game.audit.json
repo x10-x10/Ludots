@@ -8,6 +8,7 @@
   "TargetFps": 60,
   "ModPaths": [
     "../../../../../../../mods/LudotsCoreMod",
-    "../../../../../../../mods/AuditPlaygroundMod"
+    "../../../../../../../mods/AuditPlaygroundMod",
+    "../../../../../../../mods/DiagnosticsOverlayMod"
   ]
 }

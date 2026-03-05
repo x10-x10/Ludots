@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Arch.Core;
 using Arch.System;
+using DiagnosticsOverlayMod.Input;
 using Ludots.Core.Components;
 using Ludots.Core.Config;
 using Ludots.Core.Engine;
@@ -11,6 +13,8 @@ using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Input.Runtime;
+using Ludots.Core.Map.Hex;
+using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Scripting;
 
@@ -19,15 +23,15 @@ namespace DiagnosticsOverlayMod.Systems
     public sealed class DiagnosticsOverlaySystem : ISystem<float>
     {
         private readonly GameEngine _engine;
-        private IInputBackend? _input;
+        private PlayerInputHandler? _input;
 
         private enum Panel { None, Config, Mods, Attributes }
         private Panel _activePanel = Panel.None;
-        private bool _prevF5, _prevF6, _prevF7, _prevF8, _prevSpace;
         private bool _turnBasedMode;
         private TurnBasedPacemaker? _turnPacemaker;
         private IPacemaker? _savedRealtime;
         private int _turnCount;
+        private static readonly QueryDescription WorldPositionQuery = new QueryDescription().WithAll<WorldPositionCm>();
 
         private string[]? _configLines;
         private string[]? _modLines;
@@ -49,17 +53,25 @@ namespace DiagnosticsOverlayMod.Systems
         {
             ResolveInput();
             if (_input == null) return;
+            var renderDebugState = ResolveRenderDebugState();
 
-            HandleToggle("<Keyboard>/f5", ref _prevF5, Panel.Config);
-            HandleToggle("<Keyboard>/f6", ref _prevF6, Panel.Mods);
-            HandleToggle("<Keyboard>/f7", ref _prevF7, Panel.Attributes);
+            HandleRenderDebugToggle(DiagnosticsOverlayInputActions.ToggleTerrain, () => renderDebugState.DrawTerrain = !renderDebugState.DrawTerrain);
+            HandleRenderDebugToggle(DiagnosticsOverlayInputActions.TogglePrimitives, () => renderDebugState.DrawPrimitives = !renderDebugState.DrawPrimitives);
+            HandleRenderDebugToggle(DiagnosticsOverlayInputActions.ToggleDebugDraw, () => renderDebugState.DrawDebugDraw = !renderDebugState.DrawDebugDraw);
+            HandleRenderDebugToggle(DiagnosticsOverlayInputActions.ToggleSkiaUi, () => renderDebugState.DrawSkiaUi = !renderDebugState.DrawSkiaUi);
+
+            HandleToggle(DiagnosticsOverlayInputActions.ToggleConfigPanel, Panel.Config);
+            HandleToggle(DiagnosticsOverlayInputActions.ToggleModsPanel, Panel.Mods);
+            HandleToggle(DiagnosticsOverlayInputActions.ToggleAttributesPanel, Panel.Attributes);
             HandleTurnBasedToggle();
             HandleTurnStep();
 
-            if (_activePanel == Panel.None && !_turnBasedMode) return;
-
             if (!_engine.GlobalContext.TryGetValue(ContextKeys.ScreenOverlayBuffer, out var obj) ||
                 obj is not ScreenOverlayBuffer overlay) return;
+
+            RenderRuntimeHud(overlay, renderDebugState, t);
+
+            if (_activePanel == Panel.None && !_turnBasedMode) return;
 
             var bg = new Vector4(0f, 0f, 0f, 0.7f);
             var border = new Vector4(0.3f, 0.8f, 1f, 0.6f);
@@ -92,17 +104,38 @@ namespace DiagnosticsOverlayMod.Systems
         private void ResolveInput()
         {
             if (_input != null) return;
-            if (_engine.GlobalContext.TryGetValue(ContextKeys.InputBackend, out var inputObj) &&
-                inputObj is IInputBackend backend)
-                _input = backend;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.InputHandler, out var inputObj) &&
+                inputObj is PlayerInputHandler input)
+            {
+                _input = input;
+            }
         }
 
-        private void HandleToggle(string path, ref bool prev, Panel panel)
+        private void HandleToggle(string actionId, Panel panel)
         {
-            bool down = _input!.GetButton(path);
-            if (down && !prev)
+            if (_input!.PressedThisFrame(actionId))
+            {
                 _activePanel = _activePanel == panel ? Panel.None : panel;
-            prev = down;
+            }
+        }
+
+        private void HandleRenderDebugToggle(string actionId, Action toggle)
+        {
+            if (_input!.PressedThisFrame(actionId))
+            {
+                toggle();
+            }
+        }
+
+        private RenderDebugState ResolveRenderDebugState()
+        {
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.RenderDebugState, out var debugObj) &&
+                debugObj is RenderDebugState state)
+            {
+                return state;
+            }
+
+            throw new InvalidOperationException($"{ContextKeys.RenderDebugState} must be present in GlobalContext.");
         }
 
         private void BuildConfigInfo()
@@ -205,8 +238,7 @@ namespace DiagnosticsOverlayMod.Systems
 
         private void HandleTurnBasedToggle()
         {
-            bool down = _input!.GetButton("<Keyboard>/f8");
-            if (down && !_prevF8)
+            if (_input!.PressedThisFrame(DiagnosticsOverlayInputActions.ToggleTurnBased))
             {
                 _turnBasedMode = !_turnBasedMode;
                 if (_turnBasedMode)
@@ -222,19 +254,16 @@ namespace DiagnosticsOverlayMod.Systems
                     _turnPacemaker = null;
                 }
             }
-            _prevF8 = down;
         }
 
         private void HandleTurnStep()
         {
             if (!_turnBasedMode || _turnPacemaker == null) return;
-            bool down = _input!.GetButton("<Keyboard>/space");
-            if (down && !_prevSpace)
+            if (_input!.PressedThisFrame(DiagnosticsOverlayInputActions.StepTurn))
             {
                 _turnPacemaker.Step();
                 _turnCount++;
             }
-            _prevSpace = down;
         }
 
         private static void RenderPanel(ScreenOverlayBuffer overlay, string title, string[] lines, Vector4 bg, Vector4 border, Vector4 titleColor, Vector4 textColor)
@@ -257,5 +286,55 @@ namespace DiagnosticsOverlayMod.Systems
                 y += lineHeight;
             }
         }
+
+        private void RenderRuntimeHud(ScreenOverlayBuffer overlay, RenderDebugState renderDebugState, float dt)
+        {
+            int primitives = 0;
+            int primitivesDropped = 0;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.PresentationPrimitiveDrawBuffer, out var drawObj) &&
+                drawObj is Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer draw)
+            {
+                primitives = draw.Count;
+                primitivesDropped = draw.DroppedSinceClear;
+            }
+
+            int wpCount = 0;
+            foreach (ref var chunk in _engine.World.Query(in WorldPositionQuery))
+            {
+                wpCount += chunk.Count;
+            }
+
+            var camera = _engine.GameSession.Camera.State;
+            string vertexMapStatus = _engine.VertexMap == null
+                ? "NULL"
+                : $"{_engine.VertexMap.WidthInChunks}x{_engine.VertexMap.HeightInChunks}";
+
+            int fps = dt > 0.0001f ? (int)MathF.Round(1f / dt) : 0;
+            int x = 16;
+            int y = 16;
+            int w = 620;
+            int h = 156;
+            if (_engine.GlobalContext.TryGetValue(ContextKeys.ViewController, out var viewObj) &&
+                viewObj is IViewController view)
+            {
+                x = Math.Max(16, (int)view.Resolution.X - w - 16);
+            }
+
+            var bg = new Vector4(0f, 0f, 0f, 0.62f);
+            var border = new Vector4(0.6f, 0.75f, 1f, 0.5f);
+            var title = new Vector4(1f, 0.95f, 0.4f, 1f);
+            var text = new Vector4(0.9f, 0.95f, 1f, 1f);
+
+            overlay.AddRect(x, y, w, h, bg, border);
+            overlay.AddText(x + 10, y + 8, $"Runtime HUD | FPS={fps}", 16, title);
+            overlay.AddText(x + 10, y + 30, $"VertexMap: {vertexMapStatus} | Primitives: {primitives} (Dropped: {primitivesDropped}) | WorldPositionCm: {wpCount}", 14, text);
+            overlay.AddText(x + 10, y + 50, $"Camera: Target=({camera.TargetCm.X:F0},{camera.TargetCm.Y:F0})cm Pitch={camera.Pitch:F1} Dist={camera.DistanceCm:F0}cm", 14, text);
+            overlay.AddText(x + 10, y + 70, $"Scale: Grid=1.00m | HexWidth={HexCoordinates.HexWidth:F3}m | RowSpacing={HexCoordinates.RowSpacing:F3}m", 14, text);
+            overlay.AddText(x + 10, y + 92, $"F9 Terrain[{OnOff(renderDebugState.DrawTerrain)}]  F10 Primitive[{OnOff(renderDebugState.DrawPrimitives)}]", 14, text);
+            overlay.AddText(x + 10, y + 112, $"F11 DebugDraw[{OnOff(renderDebugState.DrawDebugDraw)}]  F12 SkiaUI[{OnOff(renderDebugState.DrawSkiaUi)}]", 14, text);
+            overlay.AddText(x + 10, y + 132, "F5 Config | F6 Mods | F7 Attributes | F8 TurnBased", 13, new Vector4(0.7f, 0.8f, 0.9f, 0.95f));
+        }
+
+        private static string OnOff(bool enabled) => enabled ? "ON" : "OFF";
     }
 }
