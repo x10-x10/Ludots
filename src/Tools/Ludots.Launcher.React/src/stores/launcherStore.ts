@@ -2,9 +2,12 @@ import { create } from "zustand";
 import {
   fetchMods, fetchPresets, fetchReadme, fetchChangelog,
   fetchWorkspaceSources, addWorkspaceSource, checkHealth,
-  buildAllMods, launchGame, createMod, generateSln,
+  createMod, buildAllMods, launchGame, generateSln,
   type ModInfo, type GamePreset,
 } from "@/lib/api";
+
+export type ViewMode = "card" | "list";
+export type BuildState = "idle" | "building" | "done" | "error";
 
 interface LauncherState {
   mods: ModInfo[];
@@ -14,101 +17,121 @@ interface LauncherState {
   activeMods: Set<string>;
   bridgeOnline: boolean;
   loading: boolean;
+  viewMode: ViewMode;
+  search: string;
 
   readme: string | null;
   changelog: string | null;
   detailTab: "info" | "readme" | "changelog";
+
+  buildLog: string;
+  buildState: BuildState;
+  buildProgress: number;
+  buildTotal: number;
+  launching: boolean;
+
   workspaceSources: string[];
   showWorkspace: boolean;
-  buildLog: string;
-  building: boolean;
-  launching: boolean;
+  showCreateDialog: boolean;
 
   init: () => Promise<void>;
   selectPreset: (id: string) => void;
   selectMod: (id: string | null) => void;
   toggleMod: (id: string) => void;
-  setDetailTab: (tab: "info" | "readme" | "changelog") => void;
-  addSource: (path: string) => Promise<boolean>;
-  toggleWorkspace: () => void;
+  setViewMode: (m: ViewMode) => void;
+  setSearch: (s: string) => void;
+  setDetailTab: (t: "info" | "readme" | "changelog") => void;
+
   buildActive: () => Promise<void>;
   launch: () => Promise<void>;
   createNewMod: (id: string, template: string) => Promise<boolean>;
   generateSlnForMod: (modId: string) => Promise<string | null>;
-  appendLog: (msg: string) => void;
+
+  addSource: (path: string) => Promise<boolean>;
+  toggleWorkspace: () => void;
+  toggleCreateDialog: () => void;
 }
 
-function resolveDeps(modId: string, byId: Map<string, ModInfo>, out: Set<string>) {
-  if (out.has(modId)) return;
-  const mod = byId.get(modId);
+function resolveDeps(id: string, byId: Map<string, ModInfo>, out: Set<string>) {
+  if (out.has(id)) return;
+  const mod = byId.get(id);
   if (!mod) return;
   for (const dep of Object.keys(mod.dependencies)) resolveDeps(dep, byId, out);
-  out.add(modId);
+  out.add(id);
 }
 
-function findDependents(modId: string, byId: Map<string, ModInfo>, active: Set<string>): string[] {
-  const result: string[] = [];
-  for (const id of active) {
-    const mod = byId.get(id);
-    if (mod && mod.id !== modId && Object.keys(mod.dependencies).includes(modId))
-      result.push(id);
+function findDependents(id: string, byId: Map<string, ModInfo>, active: Set<string>): string[] {
+  const r: string[] = [];
+  for (const a of active) {
+    const m = byId.get(a);
+    if (m && m.id !== id && Object.keys(m.dependencies).includes(id)) r.push(a);
   }
+  return r;
+}
+
+function topoSort(ids: string[], mods: ModInfo[]): string[] {
+  const byId = new Map(mods.map(m => [m.id, m]));
+  const set = new Set(ids);
+  const result: string[] = [];
+  const visited = new Set<string>();
+  function visit(id: string) {
+    if (visited.has(id) || !set.has(id)) return;
+    visited.add(id);
+    const m = byId.get(id);
+    if (m) for (const d of Object.keys(m.dependencies)) visit(d);
+    result.push(id);
+  }
+  for (const id of ids) visit(id);
   return result;
 }
 
-function modPathToId(p: string): string {
-  return p.replace(/\\/g, "/").split("/").pop() ?? p;
-}
-
-function presetToActive(preset?: GamePreset): Set<string> {
-  if (!preset) return new Set();
-  return new Set(preset.modPaths.map(modPathToId));
+function modPathToId(p: string): string { return p.replace(/\\/g, "/").split("/").pop() ?? p; }
+function presetToActive(p?: GamePreset): Set<string> {
+  return p ? new Set(p.modPaths.map(modPathToId)) : new Set();
 }
 
 export const useLauncherStore = create<LauncherState>((set, get) => ({
   mods: [], presets: [], selectedPresetId: null, selectedModId: null,
   activeMods: new Set(), bridgeOnline: false, loading: true,
+  viewMode: "card", search: "",
   readme: null, changelog: null, detailTab: "info",
-  workspaceSources: [], showWorkspace: false,
-  buildLog: "", building: false, launching: false,
+  buildLog: "", buildState: "idle", buildProgress: 0, buildTotal: 0, launching: false,
+  workspaceSources: [], showWorkspace: false, showCreateDialog: false,
 
   init: async () => {
     set({ loading: true });
     const online = await checkHealth();
     if (!online) { set({ bridgeOnline: false, loading: false }); return; }
-    const [mods, presets, sources] = await Promise.all([
-      fetchMods(), fetchPresets(), fetchWorkspaceSources(),
-    ]);
-    const first = presets.length > 0 ? presets[0] : undefined;
+    const [mods, presets, sources] = await Promise.all([fetchMods(), fetchPresets(), fetchWorkspaceSources()]);
+    const first = presets.find(p => p.id === "default") ?? presets[0];
     set({
-      mods, presets, workspaceSources: sources,
-      bridgeOnline: true, loading: false,
-      selectedPresetId: first?.id ?? null,
-      activeMods: presetToActive(first),
+      mods, presets, workspaceSources: sources, bridgeOnline: true, loading: false,
+      selectedPresetId: first?.id ?? null, activeMods: presetToActive(first),
+      selectedModId: mods.length > 0 ? mods[0].id : null,
     });
+    if (mods.length > 0) get().selectMod(mods[0].id);
   },
 
   selectPreset: (id) => {
-    const preset = get().presets.find((p) => p.id === id);
-    set({ selectedPresetId: id, activeMods: presetToActive(preset) });
+    const p = get().presets.find(x => x.id === id);
+    set({ selectedPresetId: id, activeMods: presetToActive(p) });
   },
 
   selectMod: async (id) => {
     set({ selectedModId: id, readme: null, changelog: null, detailTab: "info" });
     if (!id) return;
-    const mod = get().mods.find((m) => m.id === id);
+    const mod = get().mods.find(m => m.id === id);
     if (!mod) return;
-    if (mod.hasReadme) fetchReadme(id).then((c) => { if (get().selectedModId === id) set({ readme: c }); });
-    if (mod.changelogFile) fetchChangelog(id).then((c) => { if (get().selectedModId === id) set({ changelog: c }); });
+    if (mod.hasReadme) fetchReadme(id).then(c => { if (get().selectedModId === id) set({ readme: c }); });
+    if (mod.changelogFile) fetchChangelog(id).then(c => { if (get().selectedModId === id) set({ changelog: c }); });
   },
 
   toggleMod: (id) => {
     const { mods, activeMods } = get();
-    const byId = new Map(mods.map((m) => [m.id, m]));
+    const byId = new Map(mods.map(m => [m.id, m]));
     const next = new Set(activeMods);
     if (next.has(id)) {
-      const deps = findDependents(id, byId, next);
-      for (const d of deps) next.delete(d);
+      for (const d of findDependents(id, byId, next)) next.delete(d);
       next.delete(id);
     } else {
       resolveDeps(id, byId, next);
@@ -116,104 +139,61 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     set({ activeMods: next, selectedPresetId: null });
   },
 
-  setDetailTab: (tab) => set({ detailTab: tab }),
-  toggleWorkspace: () => set((s) => ({ showWorkspace: !s.showWorkspace })),
+  setViewMode: (m) => set({ viewMode: m }),
+  setSearch: (s) => set({ search: s }),
+  setDetailTab: (t) => set({ detailTab: t }),
+  toggleWorkspace: () => set(s => ({ showWorkspace: !s.showWorkspace })),
+  toggleCreateDialog: () => set(s => ({ showCreateDialog: !s.showCreateDialog })),
+
+  buildActive: async () => {
+    const { mods, activeMods } = get();
+    const sorted = topoSort([...activeMods], mods);
+    set({ buildState: "building", buildLog: "", buildProgress: 0, buildTotal: sorted.length });
+
+    const res = await buildAllMods(sorted);
+    let log = "";
+    let hasError = false;
+    if (res.results) {
+      for (let i = 0; i < res.results.length; i++) {
+        const r = res.results[i];
+        const icon = r.ok ? "✓" : "✗";
+        log += `[${i + 1}/${sorted.length}] ${icon} ${r.id}\n`;
+        if (r.output) log += r.output.split("\n").slice(-3).join("\n") + "\n";
+        if (!r.ok) hasError = true;
+        set({ buildProgress: i + 1, buildLog: log });
+      }
+    }
+    set({ buildState: hasError ? "error" : "done" });
+  },
+
+  launch: async () => {
+    const { selectedPresetId, activeMods, mods } = get();
+    set({ launching: true });
+    const modPaths = [...activeMods].map(id => {
+      const m = mods.find(x => x.id === id);
+      return m?.rootPath ?? id;
+    });
+    await launchGame(selectedPresetId ?? undefined, selectedPresetId ? undefined : modPaths);
+    setTimeout(() => set({ launching: false }), 2000);
+  },
+
+  createNewMod: async (id, template) => {
+    const res = await createMod(id, template);
+    if (res.ok) { await get().init(); set({ showCreateDialog: false }); }
+    return res.ok;
+  },
+
+  generateSlnForMod: async (modId) => {
+    const res = await generateSln(modId);
+    return res.ok ? (res.slnPath ?? null) : null;
+  },
 
   addSource: async (path) => {
     const ok = await addWorkspaceSource(path);
     if (ok) {
-      const sources = await fetchWorkspaceSources();
-      const mods = await fetchMods();
+      const [sources, mods] = await Promise.all([fetchWorkspaceSources(), fetchMods()]);
       set({ workspaceSources: sources, mods });
     }
     return ok;
-  },
-
-  appendLog: (msg) => set((s) => ({ buildLog: s.buildLog + msg + "\n" })),
-
-  buildActive: async () => {
-    const { mods, activeMods } = get();
-    const byId = new Map(mods.map((m) => [m.id, m]));
-    const ordered: string[] = [];
-    const visited = new Set<string>();
-    function topoSort(id: string) {
-      if (visited.has(id)) return;
-      visited.add(id);
-      const mod = byId.get(id);
-      if (mod) for (const dep of Object.keys(mod.dependencies)) topoSort(dep);
-      ordered.push(id);
-    }
-    for (const id of activeMods) topoSort(id);
-
-    set({ building: true, buildLog: `Building ${ordered.length} mod(s)...\n` });
-    try {
-      const res = await buildAllMods(ordered);
-      if (res.ok && res.results) {
-        for (const r of res.results) {
-          get().appendLog(`[${r.id}] ${r.ok ? "OK" : "FAIL"}`);
-          if (r.output) get().appendLog(r.output);
-        }
-      } else {
-        get().appendLog("Build request failed.");
-      }
-    } catch (e) {
-      get().appendLog(`Error: ${e}`);
-    }
-    set({ building: false });
-  },
-
-  launch: async () => {
-    const { selectedPresetId, activeMods, presets, mods } = get();
-    set({ launching: true });
-    get().appendLog("Launching game...");
-    try {
-      let modPaths: string[] | undefined;
-      if (!selectedPresetId) {
-        modPaths = [...activeMods].map((id) => {
-          const mod = mods.find((m) => m.id === id);
-          return mod?.rootPath ?? id;
-        });
-      }
-      const res = await launchGame(selectedPresetId ?? undefined, modPaths);
-      if (res.ok) {
-        get().appendLog(`Game launched (PID: ${res.pid})`);
-      } else {
-        get().appendLog(`Launch failed: ${res.error ?? "unknown error"}`);
-      }
-    } catch (e) {
-      get().appendLog(`Launch error: ${e}`);
-    }
-    set({ launching: false });
-  },
-
-  createNewMod: async (id, template) => {
-    try {
-      const res = await createMod(id, template);
-      if (res.ok) {
-        get().appendLog(`Mod "${id}" created.`);
-        await get().init();
-        return true;
-      }
-      get().appendLog(`Create mod failed: ${res.error ?? "unknown"}`);
-      return false;
-    } catch (e) {
-      get().appendLog(`Create mod error: ${e}`);
-      return false;
-    }
-  },
-
-  generateSlnForMod: async (modId) => {
-    try {
-      const res = await generateSln(modId);
-      if (res.ok && res.slnPath) {
-        get().appendLog(`.sln generated: ${res.slnPath}`);
-        return res.slnPath;
-      }
-      get().appendLog(`Generate .sln failed: ${res.error ?? "unknown"}`);
-      return null;
-    } catch (e) {
-      get().appendLog(`Generate .sln error: ${e}`);
-      return null;
-    }
   },
 }));
