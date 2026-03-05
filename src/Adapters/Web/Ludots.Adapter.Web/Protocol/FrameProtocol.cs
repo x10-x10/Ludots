@@ -8,6 +8,7 @@ namespace Ludots.Adapter.Web.Protocol
     public static class FrameProtocol
     {
         public const byte MsgTypeFrame = 0x01;
+        public const byte MsgTypeMeshMap = 0x03;
         public const byte MsgTypeDelta = 0x05;
 
         public const byte SectionEnd = 0x00;
@@ -16,6 +17,8 @@ namespace Ludots.Adapter.Web.Protocol
         public const byte SectionGroundOverlays = 0x03;
         public const byte SectionWorldHud = 0x04;
         public const byte SectionScreenHud = 0x05;
+        public const byte SectionUiHtml = 0x09;
+        public const byte SectionScreenOverlay = 0x0A;
         public const byte SectionDebugLines = 0x10;
         public const byte SectionDebugCircles = 0x11;
         public const byte SectionDebugBoxes = 0x12;
@@ -37,7 +40,7 @@ namespace Ludots.Adapter.Web.Protocol
 
     public static class WireGroundOverlayItem
     {
-        public const int SizeInBytes = 69; // shape(1) + center(12) + 5floats(20) + fill(16) + border(16) + borderWidth(4)
+        public const int SizeInBytes = 73; // shape(1) + center(12) + 6floats(24) + fill(16) + border(16) + borderWidth(4)
     }
 
     public static class WireWorldHudItem

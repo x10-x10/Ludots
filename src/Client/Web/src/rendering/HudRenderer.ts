@@ -1,4 +1,4 @@
-import type { ScreenHudItem, DebugLine, DebugCircle, DebugBox } from '../core/FrameDecoder';
+import type { ScreenHudItem, ScreenOverlayItem, DebugLine, DebugCircle, DebugBox } from '../core/FrameDecoder';
 
 export class HudRenderer {
   private readonly _canvas: HTMLCanvasElement;
@@ -90,6 +90,31 @@ export class HudRenderer {
       ctx.strokeStyle = this.rgbaBytes(b.r, b.g, b.b, b.a);
       ctx.lineWidth = Math.max(1, b.thickness * 0.5);
       ctx.strokeRect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1]);
+    }
+  }
+
+  drawScreenOverlays(items: ScreenOverlayItem[]): void {
+    const ctx = this._ctx;
+    const OVERLAY_TEXT = 0;
+    const OVERLAY_RECT = 1;
+
+    for (const item of items) {
+      if (item.kind === OVERLAY_TEXT) {
+        const fontSize = item.fontSize <= 0 ? 16 : item.fontSize;
+        ctx.font = `${fontSize}px monospace`;
+        ctx.fillStyle = this.rgba(item.cr, item.cg, item.cb, item.ca);
+        if (item.text) {
+          ctx.fillText(item.text, item.x, item.y + fontSize);
+        }
+      } else if (item.kind === OVERLAY_RECT) {
+        if (item.width <= 0 || item.height <= 0) continue;
+        ctx.fillStyle = this.rgba(item.bgr, item.bgg, item.bgb, item.bga);
+        ctx.fillRect(item.x, item.y, item.width, item.height);
+        if (item.ca > 0.01) {
+          ctx.strokeStyle = this.rgba(item.cr, item.cg, item.cb, item.ca);
+          ctx.strokeRect(item.x, item.y, item.width, item.height);
+        }
+      }
     }
   }
 

@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Ludots.Adapter.Web.Streaming;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Engine;
+using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Rendering;
@@ -59,12 +61,15 @@ namespace Ludots.Adapter.Web
 
             ValidateRequiredContext(engine);
 
-            var extractor = new PresentationExtractor(engine, cameraAdapter);
+            var uiSystem = (Services.WebUiSystem)engine.GetService(CoreServiceKeys.UISystem)!;
+            var extractor = new PresentationExtractor(engine, cameraAdapter, uiSystem);
 
             engine.Start();
             if (string.IsNullOrWhiteSpace(config.StartupMapId))
                 throw new InvalidOperationException("Invalid game.json: 'StartupMapId' cannot be empty.");
             engine.LoadMap(config.StartupMapId);
+
+            BuildAndSendMeshMap(engine, setup.Transport);
 
             Log.Info(in LogChannel, $"Web host loop started (target {targetFps} fps, map={config.StartupMapId})");
 
@@ -126,6 +131,23 @@ namespace Ludots.Adapter.Web
                 setup.Transport.Dispose();
                 Log.Info(in LogChannel, "Web host loop stopped.");
             }
+        }
+
+        private static void BuildAndSendMeshMap(GameEngine engine, WebTransportLayer transport)
+        {
+            var meshRegistry = engine.GetService(CoreServiceKeys.PresentationMeshAssetRegistry);
+            if (meshRegistry == null) return;
+
+            var map = new Dictionary<int, string>();
+            for (int id = 1; id < 4096; id++)
+            {
+                string name = meshRegistry.GetName(id);
+                if (string.IsNullOrEmpty(name)) break;
+                map[id] = name;
+            }
+
+            if (map.Count > 0)
+                transport.SetMeshMap(map);
         }
 
         private static void ValidateRequiredContext(GameEngine engine)

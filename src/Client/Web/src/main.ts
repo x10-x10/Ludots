@@ -3,8 +3,9 @@ import { FrameDecoder, type DecodedFrame } from './core/FrameDecoder';
 import { InputCapture } from './input/InputCapture';
 import { EntityManager } from './rendering/EntityManager';
 import { HudRenderer } from './rendering/HudRenderer';
+import { GroundOverlayRenderer } from './rendering/GroundOverlayRenderer';
 import { PositionInterpolator } from './rendering/PositionInterpolator';
-import { ControlPanel } from './ui/ControlPanel';
+import { UiOverlay } from './rendering/UiOverlay';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x111111);
@@ -34,8 +35,9 @@ const decoder = new FrameDecoder();
 const inputCapture = new InputCapture(renderer.domElement);
 const entityManager = new EntityManager(scene);
 const hudRenderer = new HudRenderer(hudCanvas);
+const groundOverlayRenderer = new GroundOverlayRenderer(scene);
 const interpolator = new PositionInterpolator();
-const controlPanel = new ControlPanel(inputCapture.encoder);
+const uiOverlay = new UiOverlay();
 
 let _lastFrame: DecodedFrame | null = null;
 let _frameCount = 0;
@@ -43,6 +45,7 @@ let _bytesReceived = 0;
 let _lastStatTime = performance.now();
 let _displayFps = 0;
 let _displayKbps = 0;
+let _meshMapApplied = false;
 
 function connectWebSocket(): void {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -50,9 +53,22 @@ function connectWebSocket(): void {
   const ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
 
-  ws.addEventListener('open', () => console.log('[WS] Connected'));
+  let inputInterval: ReturnType<typeof setInterval> | null = null;
+
+  ws.addEventListener('open', () => {
+    console.log('[WS] Connected');
+    inputInterval = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        if (inputInterval) { clearInterval(inputInterval); inputInterval = null; }
+        return;
+      }
+      ws.send(inputCapture.encoder.encode());
+    }, 50);
+  });
   ws.addEventListener('close', () => {
     console.log('[WS] Disconnected, reconnecting in 2s...');
+    if (inputInterval) { clearInterval(inputInterval); inputInterval = null; }
+    _meshMapApplied = false;
     setTimeout(connectWebSocket, 2000);
   });
   ws.addEventListener('error', () => ws.close());
@@ -62,16 +78,17 @@ function connectWebSocket(): void {
     _bytesReceived += ev.data.byteLength;
 
     const frame = decoder.decode(ev.data);
+
+    if (!_meshMapApplied && decoder.meshMap) {
+      entityManager.applyMeshMap(decoder.meshMap);
+      _meshMapApplied = true;
+    }
+
     if (!frame) return;
     _lastFrame = frame;
 
     interpolator.pushFrame(frame.primitives, frame.timestampMs);
   });
-
-  const inputInterval = setInterval(() => {
-    if (ws.readyState !== WebSocket.OPEN) { clearInterval(inputInterval); return; }
-    ws.send(inputCapture.encoder.encode());
-  }, 50);
 }
 
 function worldToScreen2D(worldX: number, worldY: number): [number, number] | null {
@@ -120,6 +137,7 @@ function animate(): void {
     camera.updateProjectionMatrix();
 
     entityManager.update(interpolator.getInterpolated());
+    groundOverlayRenderer.update(_lastFrame.groundOverlays);
 
     hudRenderer.clear();
     hudRenderer.drawDebugOverlay(
@@ -127,6 +145,9 @@ function animate(): void {
       worldToScreen2D,
     );
     hudRenderer.drawScreenHud(_lastFrame.screenHud);
+    hudRenderer.drawScreenOverlays(_lastFrame.screenOverlays);
+
+    uiOverlay.update(_lastFrame.uiHtml);
   }
 
   renderer.render(scene, camera);
@@ -143,7 +164,6 @@ function animate(): void {
     const entities = _lastFrame?.primitives.length ?? 0;
     const tick = _lastFrame?.simTick ?? 0;
     statsEl.textContent = `FPS: ${_displayFps} | ${_displayKbps.toFixed(1)} KB/s | Entities: ${entities} | Tick: ${tick}`;
-    controlPanel.updateStats(_displayFps, _displayKbps, entities, tick);
   }
 }
 
