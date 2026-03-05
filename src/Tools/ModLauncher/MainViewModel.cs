@@ -737,7 +737,7 @@ namespace Ludots.ModLauncher
                 return assetCsproj;
             }
 
-            var repoProject = Path.Combine(_rootDir, "src", "Mods", mod.Name, $"{mod.Name}.csproj");
+            var repoProject = Path.Combine(_rootDir, "mods", mod.Name, $"{mod.Name}.csproj");
             if (File.Exists(repoProject))
             {
                 return repoProject;
@@ -773,7 +773,7 @@ namespace Ludots.ModLauncher
                     fullModPath = Path.Combine(_rootDir, mod.Path);
                 }
 
-                var repoProject = Path.Combine(_rootDir, "src", "Mods", mod.Name, $"{mod.Name}.csproj");
+                var repoProject = Path.Combine(_rootDir, "mods", mod.Name, $"{mod.Name}.csproj");
                 if (File.Exists(repoProject))
                 {
                     StatusMessage = $"Using repo project for {mod.Name}: {repoProject}";
@@ -891,7 +891,7 @@ namespace Ludots.ModLauncher
             {
                 _rootDir = dir.FullName;
                 _assetsDir = Path.Combine(_rootDir, "assets");
-                _modsDir = Path.Combine(_rootDir, "src", "Mods");
+                _modsDir = Path.Combine(_rootDir, "mods");
                 
                 // Let's find the Raylib app build output
                 _gameExePath = Path.Combine(_rootDir, "src", "Apps", "Raylib", "Ludots.App.Raylib", "bin", "Release", "net8.0", "Ludots.App.Raylib.exe");

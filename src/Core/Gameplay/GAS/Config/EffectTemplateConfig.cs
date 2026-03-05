@@ -69,10 +69,6 @@ namespace Ludots.Core.Gameplay.GAS.Config
         /// </summary>
         public StackConfig Stack { get; set; }
 
-        // Legacy fields (ForceXAttribute, ForceYAttribute, DurationType, DurationFrames,
-        // PeriodFrames, OnApplyEffect, OnPeriodEffect, OnExpireEffect, OnRemoveEffect) have
-        // been fully removed. ApplyForce2D now uses configParams with type "attribute" for
-        // target attributes. Callbacks use phaseGraphs. Duration uses the "duration" block.
     }
 
     public sealed class ModifierConfig

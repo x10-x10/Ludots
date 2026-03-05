@@ -630,8 +630,7 @@ static class EditorRepo
             }
         }
 
-        ScanModsRoot(Path.Combine(repoRoot, "src", "Mods"));
-        ScanModsRoot(Path.Combine(repoRoot, "assets", "Mods"));
+        ScanModsRoot(Path.Combine(repoRoot, "mods"));
 
         return mods.Values.OrderBy(m => m.Priority).ThenBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
     }

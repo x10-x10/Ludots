@@ -606,7 +606,7 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "src", "Mods");
+            string modsRoot = Path.Combine(repoRoot, "mods");
 
             var modPaths = new List<string>(mods.Length);
             for (int i = 0; i < mods.Length; i++)

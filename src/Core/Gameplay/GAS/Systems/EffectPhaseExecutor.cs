@@ -66,7 +66,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         }
 
         /// <summary>
-        /// Execute a single phase for an effect (legacy overload without listener dispatch).
+        /// Execute a single phase for an effect (overload without listener dispatch).
         /// </summary>
         public void ExecutePhase(
             World world,

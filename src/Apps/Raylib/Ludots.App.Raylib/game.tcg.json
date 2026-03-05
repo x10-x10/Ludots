@@ -1,6 +1,6 @@
 {
   "ModPaths": [
-    "../../../../../../Mods/LudotsCoreMod",
-    "../../../../../../Mods/TcgDemoMod"
+    "../../../../../../../mods/LudotsCoreMod",
+    "../../../../../../../mods/TcgDemoMod"
   ]
 }

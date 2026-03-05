@@ -22,7 +22,7 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "src", "Mods");
+            string modsRoot = Path.Combine(repoRoot, "mods");
 
             var engine = new GameEngine();
             try

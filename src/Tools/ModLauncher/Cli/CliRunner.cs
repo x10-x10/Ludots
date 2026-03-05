@@ -89,7 +89,7 @@ namespace Ludots.ModLauncher.Cli
             {
                 _rootDir = rootDir;
                 _assetsDir = Path.Combine(_rootDir, "assets");
-                _modsDir = Path.Combine(_rootDir, "src", "Mods");
+                _modsDir = Path.Combine(_rootDir, "mods");
                 _gameExePath = Path.Combine(_rootDir, "src", "Apps", "Raylib", "Ludots.App.Raylib", "bin", "Release", "net8.0", "Ludots.App.Raylib.exe");
                 _gameJsonPath = Path.Combine(Path.GetDirectoryName(_gameExePath) ?? _rootDir, "game.json");
                 _config = config ?? new ModLauncherConfig();

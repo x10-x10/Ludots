@@ -32,7 +32,7 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "src", "Mods");
+            string modsRoot = Path.Combine(repoRoot, "mods");
             string reportPath = Path.Combine(repoRoot, "artifacts", "GasProductionReport.md");
 
             var scenarios = new List<ScenarioResult>();

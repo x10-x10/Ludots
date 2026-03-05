@@ -110,7 +110,7 @@ namespace Ludots.Core.Gameplay.GAS.Config
 
             if (string.IsNullOrWhiteSpace(cfg.Lifetime))
             {
-                throw new InvalidOperationException($"Effect template '{cfg.Id}' in {relativePath}: 'lifetime' field is required. Legacy 'durationType' schema is no longer supported.");
+                throw new InvalidOperationException($"Effect template '{cfg.Id}' in {relativePath}: 'lifetime' field is required.");
             }
 
             // New schema: explicit lifetime field + Duration block
@@ -166,9 +166,6 @@ namespace Ludots.Core.Gameplay.GAS.Config
                     modifiers.Add(attrId, op, m.Value);
                 }
             }
-
-            // Legacy callback fields (onApplyEffect, etc.) have been removed from EffectTemplateConfig.
-            // If old JSON configs contain them, System.Text.Json will silently ignore unknown properties.
 
             // ── Phase Graph bindings ──
             var behaviorTemplate = default(EffectPhaseGraphBindings);
@@ -391,8 +388,8 @@ namespace Ludots.Core.Gameplay.GAS.Config
             throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: unsupported targetResolver.shape '{shape}'.");
         }
 
-        // ── Legacy TeamFilter → RelationshipFilter migration ──
-        // Mapping table: old teamFilter vocabulary → canonical RelationshipFilter names.
+        // ── TeamFilter vocabulary mapping ──
+        // Mapping table: teamFilter vocabulary → canonical RelationshipFilter names.
         // Lives in the Loader (migration boundary), NOT in RelationshipFilterUtil (clean API).
         private static ContextSlot ParseContextSlot(string slot, ContextSlot defaultValue)
         {

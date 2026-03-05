@@ -62,7 +62,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private int _callbackDropped;
 
         /// <summary>
-        /// Records effects whose phase graphs need execution (separate from legacy callbacks).
+        /// Records effects whose phase graphs need execution.
         /// Stores the effect's own template ID and context for phase graph execution.
         /// </summary>
         private struct PhaseGraphEntry

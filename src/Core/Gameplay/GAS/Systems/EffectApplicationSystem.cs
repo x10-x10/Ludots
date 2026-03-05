@@ -104,7 +104,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly EffectTemplateRegistry _templates;
         private readonly ISpatialQueryService _spatialQueries;
 
-        // ── Phase Graph execution (optional, null = legacy-only mode) ──
+        // ── Phase Graph execution (optional) ──
         private readonly EffectPhaseExecutor _phaseExecutor;
         private readonly Ludots.Core.NodeLibraries.GASGraph.IGraphRuntimeApi _graphApi;
         private readonly Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi _graphApiHost;
@@ -238,9 +238,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 ExecutePhaseForEffect(effectEntity, in context, in tplData2, EffectPhaseId.OnApply);
                             }
                         }
-
-                        // Note: Legacy EffectCallbackComponent has been removed.
-                        // OnApply callbacks are now handled via Phase Graph bindings.
 
                         if (isInstant)
                         {
