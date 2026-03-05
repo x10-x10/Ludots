@@ -4,6 +4,9 @@ using System.Threading.Tasks;
 using Arch.Core;
 using Ludots.Core.Components;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay;
+using Ludots.Core.Gameplay.Camera;
+using Ludots.Core.Gameplay.Camera.FollowTargets;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Scripting;
 using Ludots.Core.Modding;
@@ -30,18 +33,28 @@ namespace ArpgDemoMod.Triggers
 
             var world = engine.World;
             var q = new QueryDescription().WithAll<Name>();
+            Entity heroEntity = default;
             world.Query(in q, (Entity e, ref Name name) =>
             {
                 if (!string.Equals(name.Value, "ArpgHero", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(name.Value, "ArpgEnemy", StringComparison.OrdinalIgnoreCase))
-                {
                     return;
-                }
 
                 if (!world.Has<GameplayTagContainer>(e)) world.Add(e, new GameplayTagContainer());
                 if (!world.Has<TagCountContainer>(e)) world.Add(e, new TagCountContainer());
                 if (!world.Has<TimedTagBuffer>(e)) world.Add(e, new TimedTagBuffer());
+
+                if (string.Equals(name.Value, "ArpgHero", StringComparison.OrdinalIgnoreCase))
+                    heroEntity = e;
             });
+
+            // Wire follow target: hero entity for TPS/AlwaysFollow camera
+            var session = context.Get(CoreServiceKeys.GameSession);
+            if (session != null && heroEntity != default)
+            {
+                session.Camera.FollowTarget = new EntityFollowTarget(world, heroEntity);
+                _ctx.Log("[ArpgDemoMod] Camera follow target set to hero entity.");
+            }
 
             return Task.CompletedTask;
         }

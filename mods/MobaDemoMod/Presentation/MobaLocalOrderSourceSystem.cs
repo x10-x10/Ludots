@@ -73,6 +73,7 @@ namespace MobaDemoMod.Presentation
             // Load input-order mappings from mod assets via VFS
             var config = LoadInputOrderMappings();
             _inputOrderMapping = new InputOrderMappingSystem(input, config);
+            _globals[CoreInputMod.Systems.SkillBarOverlaySystem.SkillBarKeyLabelsKey] = new[] { "Q", "W", "E", "R" };
             
             // Tag key resolver
             _inputOrderMapping.SetTagKeyResolver(key => key switch

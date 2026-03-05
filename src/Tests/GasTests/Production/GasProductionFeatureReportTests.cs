@@ -41,7 +41,7 @@ namespace Ludots.Tests.GAS.Production
                 scenarios.Add(RunScenario("MOBA", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "CoreInputMod", "MobaDemoMod" }, "entry", RunMobaScenario));
                 scenarios.Add(RunScenario("TCG/Modify", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "TcgDemoMod" }, "tcg_modify", RunTcgModifyScenario));
                 scenarios.Add(RunScenario("TCG/Hook", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "TcgDemoMod" }, "tcg_hook", RunTcgHookScenario));
-                scenarios.Add(RunScenario("ARPG", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "ArpgDemoMod" }, "arpg_entry", RunArpgScenario));
+                scenarios.Add(RunScenario("ARPG", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "CoreInputMod", "ArpgDemoMod" }, "arpg_entry", RunArpgScenario));
                 scenarios.Add(RunScenario("4X", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "FourXDemoMod" }, "fourx_entry", RunFourXScenario));
             }
             finally

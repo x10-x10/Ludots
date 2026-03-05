@@ -1,6 +1,11 @@
 {
+  "WindowWidth": 1280,
+  "WindowHeight": 720,
+  "WindowTitle": "Ludots Engine — ARPG Demo (WoW)",
+  "TargetFps": 60,
   "ModPaths": [
     "../../../../../../../mods/LudotsCoreMod",
+    "../../../../../../../mods/CoreInputMod",
     "../../../../../../../mods/ArpgDemoMod"
   ]
 }

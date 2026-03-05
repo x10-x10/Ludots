@@ -1,6 +1,11 @@
 {
+  "WindowWidth": 1280,
+  "WindowHeight": 720,
+  "WindowTitle": "Ludots Engine — RTS Demo (SC2)",
+  "TargetFps": 60,
   "ModPaths": [
     "../../../../../../../mods/LudotsCoreMod",
+    "../../../../../../../mods/CoreInputMod",
     "../../../../../../../mods/RtsDemoMod"
   ]
 }

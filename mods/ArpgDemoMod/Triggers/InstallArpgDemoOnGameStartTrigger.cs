@@ -1,10 +1,17 @@
 using System.Threading.Tasks;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Modding;
 using Ludots.Core.Scripting;
+using ArpgDemoMod.Presentation;
 
 namespace ArpgDemoMod.Triggers
 {
+    /// <summary>
+    /// Registers ARPG order source on game start.
+    /// Camera is driven by map DefaultCamera PresetId "TPS" (AlwaysFollow).
+    /// Follow target is wired in <see cref="ArpgSetupOnMapLoadedTrigger"/>.
+    /// </summary>
     public sealed class InstallArpgDemoOnGameStartTrigger : Trigger
     {
         private const string InstalledKey = "ArpgDemoMod.Installed";
@@ -22,13 +29,18 @@ namespace ArpgDemoMod.Triggers
             if (engine == null) return Task.CompletedTask;
 
             if (engine.GlobalContext.TryGetValue(InstalledKey, out var installedObj) &&
-                installedObj is bool installed &&
-                installed)
+                installedObj is bool installed && installed)
             {
                 return Task.CompletedTask;
             }
             engine.GlobalContext[InstalledKey] = true;
             _ctx.Log("[ArpgDemoMod] Ability definitions loaded via GAS/abilities.json");
+
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.OrderQueue.Name, out var oq) && oq is OrderQueue orders)
+            {
+                engine.RegisterPresentationSystem(new ArpgLocalOrderSourceSystem(engine.World, engine.GlobalContext, orders, _ctx));
+                _ctx.Log("[ArpgDemoMod] ArpgLocalOrderSourceSystem registered");
+            }
 
             return Task.CompletedTask;
         }
