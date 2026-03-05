@@ -3,6 +3,7 @@
     "id": "rts_scv",
     "components": {
       "Name": { "Value": "SCV" },
+      "PlayerOwner": { "PlayerId": 1 },
       "Team": { "Id": 1 },
       "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
       "AttributeBuffer": { "base": { "Health": 60, "Minerals": 500 } },

@@ -3,6 +3,7 @@
     "id": "arpg_hero",
     "components": {
       "Name": { "Value": "ArpgHero" },
+      "PlayerOwner": { "PlayerId": 1 },
       "Team": { "Id": 1 },
       "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
       "AttributeBuffer": { "base": { "Health": 100, "Armor": 0 } },
