@@ -5,8 +5,8 @@
 ## 目录
 
 0.  [编码标准](00_coding_standards.md)
-    *   ECS 硬性约束、组件/系统命名、Commit 格式
-    *   测试规范与 AAA 模式
+    *   **核心架构铁律**：六边形架构与无头测试、一切皆 Mod、四个禁止（fallback/向后兼容/重复造轮子/跨越职责）
+    *   ECS 硬性约束、组件/系统命名、Commit 格式、测试规范
 1.  [Feature 开发工作流](01_feature_development_workflow.md)
     *   发现阶段（已有能力检索清单）
     *   设计阶段（挂靠点、API 引用验证）
