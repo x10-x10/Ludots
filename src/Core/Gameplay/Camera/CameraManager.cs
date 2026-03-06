@@ -21,6 +21,11 @@ namespace Ludots.Core.Gameplay.Camera
         public ICameraController Controller { get; private set; }
 
         /// <summary>
+        /// Optional virtual-camera brain that can drive the camera state before input behaviors run.
+        /// </summary>
+        public VirtualCameraBrain VirtualCameraBrain { get; private set; }
+
+        /// <summary>
         /// Camera follow mode from the active preset.
         /// </summary>
         public CameraFollowMode FollowMode { get; set; }
@@ -39,12 +44,28 @@ namespace Ludots.Core.Gameplay.Camera
             Controller = controller;
         }
 
+        public void SetVirtualCameraBrain(VirtualCameraBrain brain)
+        {
+            VirtualCameraBrain = brain ?? throw new ArgumentNullException(nameof(brain));
+        }
+
         /// <summary>
         /// Updates the camera state using the active controller.
         /// Should be called once per frame by the GameSession.
         /// </summary>
         public void Update(float dt)
         {
+            if (VirtualCameraBrain != null && VirtualCameraBrain.HasActiveCamera)
+            {
+                VirtualCameraBrain.ApplyToState(State, FollowTargetPositionCm, dt);
+                if (VirtualCameraBrain.AllowsInput && Controller != null)
+                {
+                    Controller.Update(State, dt);
+                    VirtualCameraBrain.CapturePostControllerState(State);
+                }
+                return;
+            }
+
             if (Controller != null)
             {
                 Controller.Update(State, dt);

@@ -86,6 +86,9 @@ namespace Ludots.Core.Scripting
         public const string CameraControllerRequest = "CameraControllerRequest";
         public const string CameraControllerRegistry = "CameraControllerRegistry";
         public const string CameraPresetRegistry = "CameraPresetRegistry";
+        public const string VirtualCameraRegistry = "VirtualCameraRegistry";
+        public const string VirtualCameraBrain = "VirtualCameraBrain";
+        public const string VirtualCameraRequest = "VirtualCameraRequest";
         public const string LocalPlayerEntity = "LocalPlayerEntity";
         public const string SelectedEntity = "SelectedEntity";
         public const string HoveredEntity = "HoveredEntity";

@@ -602,6 +602,11 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.PerformerDefinitionRegistry, performerDefinitions);
             SetService(CoreServiceKeys.PerformerInstanceBuffer, performerInstances);
             var cameraControllers = new CameraControllerRegistry();
+            var virtualCameraRegistry = new VirtualCameraRegistry();
+            var virtualCameraBrain = new VirtualCameraBrain(virtualCameraRegistry);
+            GameSession.Camera.SetVirtualCameraBrain(virtualCameraBrain);
+            SetService(CoreServiceKeys.VirtualCameraRegistry, virtualCameraRegistry);
+            SetService(CoreServiceKeys.VirtualCameraBrain, virtualCameraBrain);
             cameraControllers.Register(CameraControllerIds.Orbit3C, (configObj, services) =>
             {
                 Orbit3CCameraConfig cfg = configObj switch
@@ -998,6 +1003,8 @@ namespace Ludots.Core.Engine
         {
             var cam = mapConfig?.DefaultCamera;
             var state = GameSession.Camera.State;
+            var virtualCameraBrain = GetService(CoreServiceKeys.VirtualCameraBrain);
+            virtualCameraBrain?.Clear();
             CameraPreset preset = null;
 
             var presetReg = GetService(CoreServiceKeys.CameraPresetRegistry);
@@ -1046,6 +1053,14 @@ namespace Ludots.Core.Engine
                             $"CameraFollowSystem created (mode={preset.FollowMode} action={preset.FollowActionId})");
                     }
                 }
+            }
+
+            if (cam != null && !string.IsNullOrWhiteSpace(cam.VirtualCameraId))
+            {
+                var brain = virtualCameraBrain
+                    ?? throw new InvalidOperationException("VirtualCameraBrain is missing.");
+
+                brain.Activate(cam.VirtualCameraId, state, cam.VirtualCameraBlendDuration);
             }
 
             Diagnostics.Log.Info(in LogChannels.Engine, $"Applied DefaultCamera: yaw={state.Yaw} pitch={state.Pitch} dist={state.DistanceCm}cm fov={state.FovYDeg}");
@@ -1539,7 +1554,11 @@ namespace Ludots.Core.Engine
         {
             _inputRuntimeSystem?.Update(dt);
             ApplyCameraControllerRequest();
-            _cameraFollowSystem?.Update(dt);
+            ApplyVirtualCameraRequest();
+            if (GameSession.Camera.VirtualCameraBrain == null || !GameSession.Camera.VirtualCameraBrain.HasActiveCamera)
+            {
+                _cameraFollowSystem?.Update(dt);
+            }
             GameSession.Update(dt);
 
             _primitiveDrawBuffer?.Clear();
@@ -1573,6 +1592,18 @@ namespace Ludots.Core.Engine
             var controller = registry.Create(request, new CameraControllerBuildServices(input, viewport));
             GameSession.Camera.SetController(controller);
             GlobalContext.Remove(CoreServiceKeys.CameraControllerRequest.Name);
+        }
+
+        private void ApplyVirtualCameraRequest()
+        {
+            var request = GetService(CoreServiceKeys.VirtualCameraRequest);
+            if (request == null) return;
+
+            var brain = GetService(CoreServiceKeys.VirtualCameraBrain)
+                ?? throw new InvalidOperationException("Virtual camera brain is missing.");
+
+            brain.Activate(request.Id, GameSession.Camera.State, request.BlendDurationSeconds);
+            GlobalContext.Remove(CoreServiceKeys.VirtualCameraRequest.Name);
         }
     }
 }

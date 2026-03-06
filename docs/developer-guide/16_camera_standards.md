@@ -97,11 +97,26 @@ MapConfig 可通过 `PresetId` 引用预设，显式字段覆盖预设值：
 
 或使用 `PresetId` 引用预设（见上文）。
 
+当地图希望显式进入虚拟相机链路时，可在 `DefaultCamera` 中额外声明：
+
+```json
+{
+  "DefaultCamera": {
+    "VirtualCameraId": "intro_closeup",
+    "VirtualCameraBlendDuration": 0.35
+  }
+}
+```
+
+- `VirtualCameraId`：指向运行时已注册的 `VirtualCameraDefinition.Id`
+- `VirtualCameraBlendDuration`：覆盖该虚拟相机默认 blend 时长（秒）
+
 ### 加载优先级
 
 1. `MapConfig.DefaultCamera` — 地图级配置（基础）
-2. Mod Trigger — 可覆盖（如 MobaDemoMod 设置 DistanceCm=25000）
-3. 运行时用户操作 — 滚轮缩放、右键旋转
+2. 若声明 `VirtualCameraId`，`ApplyDefaultCamera(mapConfig)` 会在地图加载时激活对应虚拟相机
+3. Mod Trigger — 可继续覆盖 `CameraState` 或显式发起虚拟相机切换
+4. 运行时用户操作 — 滚轮缩放、右键旋转（仅在当前虚拟相机允许输入时生效）
 
 ### Editor 行为
 
@@ -111,7 +126,8 @@ MapConfig 可通过 `PresetId` 引用预设，显式字段覆盖预设值：
 
 ### Engine 行为
 
-- `GameEngine.LoadMap()` 调用 `ApplyDefaultCamera(mapConfig)` 设置 `CameraState`
+- `GameEngine.LoadMap()` 调用 `ApplyDefaultCamera(mapConfig)` 设置基础 `CameraState`
+- 若 `DefaultCamera.VirtualCameraId` 非空，则同一阶段激活对应虚拟相机
 - 在 `MapLoaded` 事件之前执行，Mod trigger 可以覆盖
 
 ## 标准默认值

@@ -44,6 +44,16 @@ namespace Ludots.Core.Config
         /// </summary>
         public string PresetId { get; set; }
 
+        /// <summary>
+        /// Optional registered virtual-camera ID. When set, the engine activates this virtual camera on map load.
+        /// </summary>
+        public string VirtualCameraId { get; set; }
+
+        /// <summary>
+        /// Optional blend duration override (seconds) when activating <see cref="VirtualCameraId"/>.
+        /// </summary>
+        public float? VirtualCameraBlendDuration { get; set; }
+
         public float? TargetXCm { get; set; }
         public float? TargetYCm { get; set; }
         public float? Yaw { get; set; }

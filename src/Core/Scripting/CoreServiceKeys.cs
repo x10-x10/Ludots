@@ -83,6 +83,9 @@ namespace Ludots.Core.Scripting
         public static readonly ServiceKey<CameraControllerRequest> CameraControllerRequest = new("CameraControllerRequest");
         public static readonly ServiceKey<CameraControllerRegistry> CameraControllerRegistry = new("CameraControllerRegistry");
         public static readonly ServiceKey<CameraPresetRegistry> CameraPresetRegistry = new("CameraPresetRegistry");
+        public static readonly ServiceKey<VirtualCameraRegistry> VirtualCameraRegistry = new("VirtualCameraRegistry");
+        public static readonly ServiceKey<VirtualCameraBrain> VirtualCameraBrain = new("VirtualCameraBrain");
+        public static readonly ServiceKey<VirtualCameraRequest> VirtualCameraRequest = new("VirtualCameraRequest");
 
         // --- GAS Core ---
         public static readonly ServiceKey<IClock> Clock = new("Clock");

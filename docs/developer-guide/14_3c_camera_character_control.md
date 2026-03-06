@@ -126,6 +126,29 @@ public class CameraManager
 - 初始化时 `State` 为默认 `CameraState`
 - `Controller` 初始为 null；`Update()` 对 null 安全
 
+### 2.4.1 VirtualCameraBrain — 虚拟相机混合层
+
+`src/Core/Gameplay/Camera/VirtualCameraBrain.cs`
+
+自 2026-03 起，`CameraManager` 可选挂接 `VirtualCameraBrain`。它的职责类似 Cinemachine Brain，但仍输出同一个 `CameraState`：
+
+- 维护当前激活的虚拟相机定义（`VirtualCameraDefinition`）
+- 按 blend 曲线在当前镜头与目标镜头之间平滑过渡
+- 在 `TargetSource=FollowTarget` 时直接读取 `CameraManager.FollowTargetPositionCm`
+- 仅在虚拟相机允许时，把 `ICameraController` 作为“用户输入修正层”叠加到虚拟相机结果上
+
+运行时顺序为：
+
+1. `VirtualCameraBrain.ApplyToState(...)` 先写入本帧目标 `CameraState`
+2. 若该虚拟相机 `AllowUserInput=true`，再由 `ICameraController.Update(...)` 叠加输入
+3. `VirtualCameraBrain.CapturePostControllerState(...)` 回收用户修改，使 orbit/zoom 等输入能跨帧持续
+
+这意味着：
+
+- **虚拟相机负责镜头选择与混合**
+- **控制器负责输入驱动的 orbit/pan/zoom**
+- **CameraPresenter 只做最终渲染投影和平滑，不负责虚拟机位切换**
+
 ### 2.5 CameraControllerRegistry — 工厂注册
 
 `src/Core/Gameplay/Camera/CameraControllerRegistry.cs`
@@ -175,6 +198,8 @@ position = target + (offsetX, vDist, offsetZ)
 - 首帧直接 snap
 - 后续帧：`t = clamp(SmoothSpeed × dt, 0, 1)`，`position = lerp(current, desired, t)`
 - 默认 `SmoothSpeed = 10.0`
+
+这里的 `SmoothSpeed` 只是**最终渲染相机**的输出滤波；虚拟相机之间的 shot blend 由 `VirtualCameraBrain` 负责，不应再把镜头切换逻辑写进 `CameraPresenter`。
 
 **万向锁防御**：
 - 当 `|dot(forward, UnitY)| > 0.99` 时（即 Pitch ≈ 90°），Up 向量从 `UnitY` 切换为 `UnitZ`
