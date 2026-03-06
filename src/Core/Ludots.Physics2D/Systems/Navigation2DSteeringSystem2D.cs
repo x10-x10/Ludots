@@ -8,7 +8,6 @@ using Ludots.Core.Mathematics.FixedPoint;
 using Ludots.Core.Navigation2D.Avoidance;
 using Ludots.Core.Navigation2D.Components;
 using Ludots.Core.Navigation2D.Runtime;
-using Ludots.Core.Navigation2D.Spatial;
 using Ludots.Core.Physics;
 using Ludots.Core.Physics2D.Components;
 
@@ -20,8 +19,12 @@ namespace Ludots.Core.Physics2D.Systems
             .WithAll<NavAgent2D, Position2D, Velocity2D, NavKinematics2D>()
             .WithNone<ForceInput2D>();
 
+        private static readonly QueryDescription _needsDesiredVelocity = new QueryDescription()
+            .WithAll<NavAgent2D, Position2D, Velocity2D, NavKinematics2D>()
+            .WithNone<NavDesiredVelocity2D>();
+
         private static readonly QueryDescription _agentQuery = new QueryDescription()
-            .WithAll<NavAgent2D, Position2D, Velocity2D, NavKinematics2D, ForceInput2D>();
+            .WithAll<NavAgent2D, Position2D, Velocity2D, NavKinematics2D, ForceInput2D, NavDesiredVelocity2D>();
 
         private static readonly QueryDescription _flowGoalQuery = new QueryDescription()
             .WithAll<NavFlowGoal2D>();
@@ -29,7 +32,7 @@ namespace Ludots.Core.Physics2D.Systems
         private readonly Navigation2DRuntime _runtime;
         private readonly CommandBuffer _commandBuffer = new();
 
-        private const int MaxNeighborsHard = 16;
+        private const int MaxNeighborsHard = 64;
 
         public Navigation2DSteeringSystem2D(World world, Navigation2DRuntime runtime) : base(world)
         {
@@ -38,7 +41,7 @@ namespace Ludots.Core.Physics2D.Systems
 
         public override void Update(in float deltaTime)
         {
-            EnsureForceInput();
+            EnsureSteeringOutputs();
 
             TryApplyFlowGoal();
             if (_runtime.FlowEnabled)
@@ -50,76 +53,88 @@ namespace Ludots.Core.Physics2D.Systems
             }
 
             BuildAgentSoA();
-            _runtime.CellMap.Build(_runtime.AgentSoA.PositionsCm.AsSpan());
+            var agentSoA = _runtime.AgentSoA;
+            var positions = agentSoA.Positions.AsSpan();
+            _runtime.CellMap.Build(positions);
 
             float dt = deltaTime > 1e-6f ? deltaTime : 1e-6f;
+            float invDt = 1f / dt;
+
+            var velocities = agentSoA.Velocities.AsSpan();
+            var radii = agentSoA.Radii.AsSpan();
+            var maxSpeeds = agentSoA.MaxSpeeds.AsSpan();
+            var maxAccels = agentSoA.MaxAccels.AsSpan();
+            var neighborDistances = agentSoA.NeighborDistances.AsSpan();
+            var timeHorizons = agentSoA.TimeHorizons.AsSpan();
+            var maxNeighbors = agentSoA.MaxNeighbors.AsSpan();
+            var preferredVelocities = agentSoA.PreferredVelocities.AsSpan();
+            var outputForces = agentSoA.OutputForces.AsSpan();
+            var outputDesiredVelocities = agentSoA.OutputDesiredVelocities.AsSpan();
 
             Span<int> neighborIdxScratch = stackalloc int[MaxNeighborsHard];
             Span<OrcaSolver2D.Neighbor> neighborScratch = stackalloc OrcaSolver2D.Neighbor[MaxNeighborsHard];
-            Span<OrcaSolver2D.OrcaLine> lineScratch = stackalloc OrcaSolver2D.OrcaLine[MaxNeighborsHard * 2];
+            Span<OrcaSolver2D.OrcaLine> lineScratch = stackalloc OrcaSolver2D.OrcaLine[MaxNeighborsHard];
+            Span<OrcaSolver2D.OrcaLine> projectionLineScratch = stackalloc OrcaSolver2D.OrcaLine[OrcaSolver2D.MaxProjectionLines];
 
-            for (int i = 0; i < _runtime.AgentSoA.Count; i++)
+            for (int i = 0; i < agentSoA.Count; i++)
             {
-                var e = _runtime.AgentSoA.Entities[i];
-                if (!World.IsAlive(e)) continue;
+                Vector2 pos = positions[i];
+                Vector2 vel = velocities[i];
+                float radius = radii[i];
+                float maxSpeed = maxSpeeds[i];
+                float maxAccel = maxAccels[i];
+                float neighborDistance = neighborDistances[i];
+                float timeHorizon = timeHorizons[i];
+                int neighborLimit = maxNeighbors[i];
+                Vector2 preferred = preferredVelocities[i];
 
-                Fix64Vec2 posCm = _runtime.AgentSoA.PositionsCm[i];
-                Fix64Vec2 velCm = _runtime.AgentSoA.VelocitiesCmPerSec[i];
-                Fix64 radiusCm = _runtime.AgentSoA.RadiiCm[i];
-                Fix64 maxSpeed = _runtime.AgentSoA.MaxSpeedCmPerSec[i];
+                int neighborCount = 0;
+                if (neighborLimit > 0 && neighborDistance > 0f)
+                {
+                    neighborCount = _runtime.CellMap.CollectNeighbors(
+                        selfIndex: i,
+                        selfPos: pos,
+                        radius: neighborDistance,
+                        positions: positions,
+                        neighborsOut: neighborIdxScratch.Slice(0, neighborLimit));
+                }
 
-                Vector2 pos = posCm.ToVector2();
-                Vector2 vel = velCm.ToVector2();
-
-                Vector2 preferred = ComputePreferredVelocity(e, posCm, maxSpeed);
-
-                int neighborCount = _runtime.CellMap.CollectNeighbors(
-                    selfIndex: i,
-                    selfPosCm: posCm,
-                    radiusCm: World.Get<NavKinematics2D>(e).NeighborDistCm,
-                    positionsCm: _runtime.AgentSoA.PositionsCm.AsSpan(),
-                    neighborsOut: neighborIdxScratch);
-
-                int used = 0;
-                for (int n = 0; n < neighborCount && used < MaxNeighborsHard; n++)
+                for (int n = 0; n < neighborCount; n++)
                 {
                     int j = neighborIdxScratch[n];
-                    var op = _runtime.AgentSoA.PositionsCm[j].ToVector2();
-                    var ov = _runtime.AgentSoA.VelocitiesCmPerSec[j].ToVector2();
-                    float or = _runtime.AgentSoA.RadiiCm[j].ToFloat();
-                    neighborScratch[used++] = new OrcaSolver2D.Neighbor(op, ov, or);
+                    neighborScratch[n] = new OrcaSolver2D.Neighbor(positions[j], velocities[j], radii[j]);
                 }
 
-                float maxSpeedF = maxSpeed.ToFloat();
-                float timeHorizon = World.Get<NavKinematics2D>(e).TimeHorizonSec.ToFloat();
-                float selfRadius = radiusCm.ToFloat();
+                Vector2 newVel = neighborCount > 0
+                    ? OrcaSolver2D.ComputeDesiredVelocity(
+                        position: pos,
+                        velocity: vel,
+                        preferredVelocity: preferred,
+                        maxSpeed: maxSpeed,
+                        radius: radius,
+                        timeHorizon: timeHorizon,
+                        deltaTime: dt,
+                        neighbors: neighborScratch.Slice(0, neighborCount),
+                        linesScratch: lineScratch,
+                        projectionLinesScratch: projectionLineScratch)
+                    : ClampToMaxSpeed(preferred, maxSpeed);
 
-                Vector2 newVel = OrcaSolver2D.ComputeDesiredVelocity(
-                    position: pos,
-                    velocity: vel,
-                    preferredVelocity: preferred,
-                    maxSpeed: maxSpeedF,
-                    radius: selfRadius,
-                    timeHorizon: timeHorizon,
-                    deltaTime: dt,
-                    neighbors: neighborScratch.Slice(0, used),
-                    linesScratch: lineScratch);
-
-                Vector2 accel = (newVel - vel) / dt;
-                Fix64 maxAccel = World.Get<NavKinematics2D>(e).MaxAccelCmPerSec2;
-                float maxAccelF = maxAccel.ToFloat();
-                float accelLen = accel.Length();
-                if (accelLen > maxAccelF && accelLen > 1e-6f)
+                Vector2 accel = (newVel - vel) * invDt;
+                float accelLenSq = accel.LengthSquared();
+                float maxAccelSq = maxAccel * maxAccel;
+                if (accelLenSq > maxAccelSq && accelLenSq > 1e-12f)
                 {
-                    accel = accel / accelLen * maxAccelF;
+                    accel *= maxAccel / MathF.Sqrt(accelLenSq);
                 }
 
-                World.Set(e, new ForceInput2D { Force = Fix64Vec2.FromFloat(accel.X, accel.Y) });
-                World.Set(e, new NavDesiredVelocity2D { ValueCmPerSec = Fix64Vec2.FromFloat(newVel.X, newVel.Y) });
+                outputForces[i] = accel;
+                outputDesiredVelocities[i] = newVel;
             }
+
+            ApplySteeringOutputs();
         }
 
-        private void EnsureForceInput()
+        private void EnsureSteeringOutputs()
         {
             foreach (ref var chunk in World.Query(in _needsForceInput))
             {
@@ -128,6 +143,15 @@ namespace Ludots.Core.Physics2D.Systems
                 {
                     var entity = Unsafe.Add(ref entityFirst, index);
                     _commandBuffer.Add(entity, new ForceInput2D { Force = Fix64Vec2.Zero });
+                }
+            }
+
+            foreach (ref var chunk in World.Query(in _needsDesiredVelocity))
+            {
+                ref var entityFirst = ref chunk.Entity(0);
+                foreach (var index in chunk)
+                {
+                    var entity = Unsafe.Add(ref entityFirst, index);
                     _commandBuffer.Add(entity, new NavDesiredVelocity2D { ValueCmPerSec = Fix64Vec2.Zero });
                 }
             }
@@ -144,21 +168,88 @@ namespace Ludots.Core.Physics2D.Systems
 
             foreach (ref var chunk in World.Query(in _agentQuery))
             {
-                ref var entityFirst = ref chunk.Entity(0);
-                var positions = chunk.GetSpan<Position2D>();
-                var velocities = chunk.GetSpan<Velocity2D>();
-                var kins = chunk.GetSpan<NavKinematics2D>();
+                chunk.GetSpan<Position2D, Velocity2D, NavKinematics2D>(out var positionsCm, out var velocitiesCm, out var kinematics);
+
+                bool hasGoal = chunk.Has<NavGoal2D>();
+                Span<NavGoal2D> goals = default;
+                if (hasGoal)
+                {
+                    goals = chunk.GetSpan<NavGoal2D>();
+                }
+
+                bool hasFlowBinding = _runtime.FlowEnabled && chunk.Has<NavFlowBinding2D>();
+                Span<NavFlowBinding2D> flowBindings = default;
+                if (hasFlowBinding)
+                {
+                    flowBindings = chunk.GetSpan<NavFlowBinding2D>();
+                }
 
                 foreach (var index in chunk)
                 {
-                    if (_runtime.AgentSoA.Count >= _runtime.AgentSoA.Settings.MaxAgents) return;
+                    var positionCm = positionsCm[index].Value;
+                    var velocityCm = velocitiesCm[index].Linear;
+                    var kin = kinematics[index];
 
-                    var entity = Unsafe.Add(ref entityFirst, index);
-                    _runtime.AgentSoA.Entities.Add(entity);
-                    _runtime.AgentSoA.PositionsCm.Add(positions[index].Value);
-                    _runtime.AgentSoA.VelocitiesCmPerSec.Add(velocities[index].Linear);
-                    _runtime.AgentSoA.RadiiCm.Add(kins[index].RadiusCm);
-                    _runtime.AgentSoA.MaxSpeedCmPerSec.Add(kins[index].MaxSpeedCmPerSec);
+                    Vector2 position = positionCm.ToVector2();
+                    Vector2 velocity = velocityCm.ToVector2();
+                    float maxSpeed = kin.MaxSpeedCmPerSec.ToFloat();
+                    Vector2 preferredVelocity = Vector2.Zero;
+                    bool hasPreferredVelocity = false;
+
+                    if (hasFlowBinding)
+                    {
+                        var flow = _runtime.TryGetFlow(flowBindings[index].FlowId);
+                        if (flow != null && flow.TrySampleDesiredVelocityCm(positionCm, kin.MaxSpeedCmPerSec, out Fix64Vec2 desiredCm))
+                        {
+                            preferredVelocity = desiredCm.ToVector2();
+                            hasPreferredVelocity = true;
+                        }
+                    }
+
+                    if (!hasPreferredVelocity && hasGoal)
+                    {
+                        preferredVelocity = ComputeGoalPreferredVelocity(goals[index], position, maxSpeed);
+                    }
+
+                    if (!_runtime.AgentSoA.TryAdd(
+                        position,
+                        velocity,
+                        kin.RadiusCm.ToFloat(),
+                        maxSpeed,
+                        kin.MaxAccelCmPerSec2.ToFloat(),
+                        kin.NeighborDistCm.ToFloat(),
+                        kin.TimeHorizonSec.ToFloat(),
+                        ClampMaxNeighbors(kin.MaxNeighbors),
+                        preferredVelocity))
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+
+        private void ApplySteeringOutputs()
+        {
+            var outputForces = _runtime.AgentSoA.OutputForces.AsSpan();
+            var outputDesiredVelocities = _runtime.AgentSoA.OutputDesiredVelocities.AsSpan();
+            int outputIndex = 0;
+
+            foreach (ref var chunk in World.Query(in _agentQuery))
+            {
+                chunk.GetSpan<ForceInput2D, NavDesiredVelocity2D>(out var forces, out var desiredVelocities);
+                foreach (var index in chunk)
+                {
+                    Vector2 accel = outputForces[outputIndex];
+                    Vector2 desiredVelocity = outputDesiredVelocities[outputIndex];
+                    forces[index] = new ForceInput2D
+                    {
+                        Force = Fix64Vec2.FromFloat(accel.X, accel.Y)
+                    };
+                    desiredVelocities[index] = new NavDesiredVelocity2D
+                    {
+                        ValueCmPerSec = Fix64Vec2.FromFloat(desiredVelocity.X, desiredVelocity.Y)
+                    };
+                    outputIndex++;
                 }
             }
         }
@@ -187,28 +278,46 @@ namespace Ludots.Core.Physics2D.Systems
             }
         }
 
-        private Vector2 ComputePreferredVelocity(Entity e, Fix64Vec2 posCm, Fix64 maxSpeedCmPerSec)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int ClampMaxNeighbors(int maxNeighbors)
         {
-            if (_runtime.FlowEnabled && World.TryGet(e, out NavFlowBinding2D binding))
+            if (maxNeighbors <= 0)
             {
-                var flow = _runtime.TryGetFlow(binding.FlowId);
-                if (flow != null && flow.TrySampleDesiredVelocityCm(posCm, maxSpeedCmPerSec, out Fix64Vec2 desired))
-                {
-                    return desired.ToVector2();
-                }
+                return 0;
             }
 
-            if (World.TryGet(e, out NavGoal2D goal) && goal.Kind == NavGoalKind2D.Point)
+            return maxNeighbors <= MaxNeighborsHard ? maxNeighbors : MaxNeighborsHard;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector2 ClampToMaxSpeed(in Vector2 velocity, float maxSpeed)
+        {
+            float lenSq = velocity.LengthSquared();
+            float maxSpeedSq = maxSpeed * maxSpeed;
+            if (lenSq <= maxSpeedSq || lenSq <= 1e-12f)
             {
-                Vector2 delta = (goal.TargetCm - posCm).ToVector2();
-                float len = delta.Length();
-                if (len > 1e-6f)
-                {
-                    return delta / len * maxSpeedCmPerSec.ToFloat();
-                }
+                return velocity;
             }
 
-            return Vector2.Zero;
+            return velocity * (maxSpeed / MathF.Sqrt(lenSq));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector2 ComputeGoalPreferredVelocity(in NavGoal2D goal, in Vector2 position, float maxSpeed)
+        {
+            if (goal.Kind != NavGoalKind2D.Point || maxSpeed <= 0f)
+            {
+                return Vector2.Zero;
+            }
+
+            Vector2 delta = goal.TargetCm.ToVector2() - position;
+            float lenSq = delta.LengthSquared();
+            if (lenSq <= 1e-12f)
+            {
+                return Vector2.Zero;
+            }
+
+            return delta * (maxSpeed / MathF.Sqrt(lenSq));
         }
     }
 }

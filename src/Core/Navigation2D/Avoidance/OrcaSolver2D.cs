@@ -6,6 +6,8 @@ namespace Ludots.Core.Navigation2D.Avoidance
 {
     public static class OrcaSolver2D
     {
+        public const int MaxProjectionLines = 64;
+
         public readonly struct Neighbor
         {
             public readonly Vector2 Position;
@@ -35,7 +37,8 @@ namespace Ludots.Core.Navigation2D.Avoidance
             float timeHorizon,
             float deltaTime,
             ReadOnlySpan<Neighbor> neighbors,
-            Span<OrcaLine> linesScratch)
+            Span<OrcaLine> linesScratch,
+            Span<OrcaLine> projectionLinesScratch)
         {
             if (maxSpeed <= 0f) return Vector2.Zero;
             int lineCount = 0;
@@ -53,7 +56,7 @@ namespace Ludots.Core.Navigation2D.Avoidance
             int lineFail = LinearProgram2(lines, maxSpeed, preferredVelocity, ref result);
             if (lineFail < lines.Length)
             {
-                LinearProgram3(lines, lineFail, maxSpeed, ref result);
+                LinearProgram3(lines, lineFail, maxSpeed, ref result, projectionLinesScratch);
             }
 
             return result;
@@ -197,17 +200,16 @@ namespace Ludots.Core.Navigation2D.Avoidance
             return true;
         }
 
-        private static void LinearProgram3(ReadOnlySpan<OrcaLine> lines, int beginLine, float radius, ref Vector2 result)
+        private static void LinearProgram3(ReadOnlySpan<OrcaLine> lines, int beginLine, float radius, ref Vector2 result, Span<OrcaLine> projectionLinesScratch)
         {
             float distance = 0.0f;
-            const int MaxProjLines = 64;
 
             for (int i = beginLine; i < lines.Length; i++)
             {
                 if (Det(lines[i].Direction, lines[i].Point - result) > distance)
                 {
-                    if (i > MaxProjLines) return;
-                    Span<OrcaLine> projLines = stackalloc OrcaLine[MaxProjLines];
+                    if (i > projectionLinesScratch.Length) return;
+                    Span<OrcaLine> projLines = projectionLinesScratch;
                     int projCount = 0;
 
                     for (int j = 0; j < i; j++)
