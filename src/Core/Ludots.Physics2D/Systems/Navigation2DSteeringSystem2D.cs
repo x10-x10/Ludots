@@ -116,13 +116,9 @@ namespace Ludots.Core.Physics2D.Systems
                 var timeHorizons = agentSoA.TimeHorizons.AsSpan();
                 var maxNeighbors = agentSoA.MaxNeighbors.AsSpan();
                 var preferredVelocities = agentSoA.PreferredVelocities.AsSpan();
-                var outputForces = agentSoA.OutputForces.AsSpan();
-                var outputDesiredVelocities = agentSoA.OutputDesiredVelocities.AsSpan();
                 var smartStopFlags = agentSoA.SmartStopFlags.AsSpan();
 
                 Span<int> neighborIdxScratch = stackalloc int[MaxNeighborsHard];
-                Span<OrcaSolver2D.Neighbor> orcaNeighborScratch = stackalloc OrcaSolver2D.Neighbor[MaxNeighborsHard];
-                Span<SonarSolver2D.Obstacle> sonarObstacleScratch = stackalloc SonarSolver2D.Obstacle[MaxNeighborsHard];
                 Span<OrcaSolver2D.OrcaLine> lineScratch = stackalloc OrcaSolver2D.OrcaLine[MaxNeighborsHard];
                 Span<OrcaSolver2D.OrcaLine> projectionLineScratch = stackalloc OrcaSolver2D.OrcaLine[OrcaSolver2D.MaxProjectionLines];
 
@@ -159,8 +155,6 @@ namespace Ludots.Core.Physics2D.Systems
 
                     if (smartStopFlags[i] != 0)
                     {
-                        outputForces[i] = Vector2.Zero;
-                        outputDesiredVelocities[i] = Vector2.Zero;
                         force = new ForceInput2D { Force = Fix64Vec2.Zero };
                         desiredVelocity = new NavDesiredVelocity2D { ValueCmPerSec = Fix64Vec2.Zero };
                         continue;
@@ -188,12 +182,6 @@ namespace Ludots.Core.Physics2D.Systems
                         bool useOrca = ShouldUseOrca(config, velocities, vel, preferred, neighborIdxScratch.Slice(0, neighborCount));
                         if (useOrca)
                         {
-                            for (int n = 0; n < neighborCount; n++)
-                            {
-                                int j = neighborIdxScratch[n];
-                                orcaNeighborScratch[n] = new OrcaSolver2D.Neighbor(positions[j], velocities[j], radii[j]);
-                            }
-
                             newVel = OrcaSolver2D.ComputeDesiredVelocity(
                                 position: pos,
                                 velocity: vel,
@@ -202,18 +190,15 @@ namespace Ludots.Core.Physics2D.Systems
                                 radius: radius,
                                 timeHorizon: timeHorizon,
                                 deltaTime: DeltaTime,
-                                neighbors: orcaNeighborScratch.Slice(0, neighborCount),
+                                neighborIndices: neighborIdxScratch.Slice(0, neighborCount),
+                                neighborPositions: positions,
+                                neighborVelocities: velocities,
+                                neighborRadii: radii,
                                 linesScratch: lineScratch,
                                 projectionLinesScratch: projectionLineScratch);
                         }
                         else
                         {
-                            for (int n = 0; n < neighborCount; n++)
-                            {
-                                int j = neighborIdxScratch[n];
-                                sonarObstacleScratch[n] = new SonarSolver2D.Obstacle(positions[j], velocities[j], radii[j]);
-                            }
-
                             newVel = SonarSolver2D.ComputeDesiredVelocity(
                                 position: pos,
                                 velocity: vel,
@@ -221,7 +206,10 @@ namespace Ludots.Core.Physics2D.Systems
                                 maxSpeed: maxSpeed,
                                 radius: radius,
                                 timeHorizon: timeHorizon,
-                                obstacles: sonarObstacleScratch.Slice(0, neighborCount),
+                                obstacleIndices: neighborIdxScratch.Slice(0, neighborCount),
+                                obstaclePositions: positions,
+                                obstacleVelocities: velocities,
+                                obstacleRadii: radii,
                                 config: config.Sonar,
                                 fallbackToPreferredVelocity: config.Orca.FallbackToPreferredVelocity);
                         }
@@ -235,8 +223,6 @@ namespace Ludots.Core.Physics2D.Systems
                         accel *= maxAccel / MathF.Sqrt(accelLenSq);
                     }
 
-                    outputForces[i] = accel;
-                    outputDesiredVelocities[i] = newVel;
                     force = new ForceInput2D
                     {
                         Force = Fix64Vec2.FromFloat(accel.X, accel.Y)
@@ -473,7 +459,6 @@ namespace Ludots.Core.Physics2D.Systems
                     Vector2 velocity = velocityCm.ToVector2();
                     float maxSpeed = kin.MaxSpeedCmPerSec.ToFloat();
                     Vector2 preferredVelocity = Vector2.Zero;
-                    bool hasPreferredVelocity = false;
 
                     bool hasPointGoal = false;
                     Vector2 goalPosition = Vector2.Zero;
@@ -488,7 +473,17 @@ namespace Ludots.Core.Physics2D.Systems
                             hasPointGoal = true;
                             goalPosition = goal.TargetCm.ToVector2();
                             goalRadius = goal.RadiusCm.ToFloat();
-                            goalDistance = Vector2.Distance(goalPosition, position);
+
+                            Vector2 toGoal = goalPosition - position;
+                            float goalDistanceSq = toGoal.LengthSquared();
+                            if (goalDistanceSq > 1e-8f)
+                            {
+                                goalDistance = MathF.Sqrt(goalDistanceSq);
+                                if (maxSpeed > 0f)
+                                {
+                                    preferredVelocity = toGoal * (maxSpeed / goalDistance);
+                                }
+                            }
                         }
                     }
 
@@ -498,13 +493,7 @@ namespace Ludots.Core.Physics2D.Systems
                         if (flow != null && flow.TrySampleDesiredVelocityCm(positionCm, kin.MaxSpeedCmPerSec, out Fix64Vec2 desiredCm))
                         {
                             preferredVelocity = desiredCm.ToVector2();
-                            hasPreferredVelocity = true;
                         }
-                    }
-
-                    if (!hasPreferredVelocity && hasPointGoal)
-                    {
-                        preferredVelocity = ComputeGoalPreferredVelocity(goals[index], position, maxSpeed);
                     }
 
                     if (!_runtime.AgentSoA.TryAdd(
@@ -622,22 +611,5 @@ namespace Ludots.Core.Physics2D.Systems
             return Vector2.Normalize(velocity) * maxSpeed;
         }
 
-        private static Vector2 ComputeGoalPreferredVelocity(in NavGoal2D goal, in Vector2 position, float maxSpeed)
-        {
-            if (goal.Kind != NavGoalKind2D.Point || maxSpeed <= 0f)
-            {
-                return Vector2.Zero;
-            }
-
-            Vector2 toGoal = goal.TargetCm.ToVector2() - position;
-            float distance = toGoal.Length();
-            if (distance <= 1e-4f)
-            {
-                return Vector2.Zero;
-            }
-
-            Vector2 dir = toGoal / distance;
-            return dir * maxSpeed;
-        }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Ludots.Core.Navigation2D.Config;
@@ -94,6 +94,119 @@ namespace Ludots.Core.Navigation2D.Avoidance
                 }
 
                 if (config.IgnoreBehindMovingAgents && obstacle.Velocity.LengthSquared() > Epsilon * Epsilon)
+                {
+                    Vector2 offsetDir = Vector2.Normalize(predictedOffset);
+                    if (Vector2.Dot(desiredDir, offsetDir) < 0f)
+                    {
+                        continue;
+                    }
+                }
+
+                float distance = MathF.Sqrt(distanceSq);
+                float blockHalfAngle;
+                if (distance <= combinedRadius + Epsilon)
+                {
+                    blockHalfAngle = MathF.PI;
+                }
+                else
+                {
+                    float ratio = Math.Clamp(combinedRadius / distance, 0f, 1f);
+                    blockHalfAngle = MathF.Asin(ratio);
+                }
+
+                float obstacleAngle = RelativeAngle(predictedOffset, desiredDir);
+                availableCount = SubtractBlockedIntervalWrapped(
+                    available,
+                    availableCount,
+                    obstacleAngle - blockHalfAngle,
+                    obstacleAngle + blockHalfAngle);
+            }
+
+            if (ContainsAngleZero(available, availableCount))
+            {
+                return ScaleToPreferredSpeed(desiredDir, preferredLen, maxSpeed);
+            }
+
+            if (TrySelectClosestAngle(available, availableCount, out float relativeAngle))
+            {
+                float solvedAngle = preferredAngle + relativeAngle;
+                Vector2 solvedDirection = new Vector2(MathF.Cos(solvedAngle), MathF.Sin(solvedAngle));
+                return ScaleToPreferredSpeed(solvedDirection, preferredLen, maxSpeed);
+            }
+
+            if (config.BlockedStop)
+            {
+                return Vector2.Zero;
+            }
+
+            return ClampPreferred(preferredVelocity, maxSpeed, fallbackToPreferredVelocity);
+        }
+
+        public static Vector2 ComputeDesiredVelocity(
+            Vector2 position,
+            Vector2 velocity,
+            Vector2 preferredVelocity,
+            float maxSpeed,
+            float radius,
+            float timeHorizon,
+            ReadOnlySpan<int> obstacleIndices,
+            ReadOnlySpan<Vector2> obstaclePositions,
+            ReadOnlySpan<Vector2> obstacleVelocities,
+            ReadOnlySpan<float> obstacleRadii,
+            Navigation2DSonarConfig config,
+            bool fallbackToPreferredVelocity)
+        {
+            float preferredLen = preferredVelocity.Length();
+            if (preferredLen <= Epsilon || maxSpeed <= Epsilon)
+            {
+                return Vector2.Zero;
+            }
+
+            Vector2 desiredDir = preferredVelocity / preferredLen;
+            float preferredAngle = MathF.Atan2(desiredDir.Y, desiredDir.X);
+            float maxSteerAngle = DegreesToRadians(config.MaxSteerAngleDeg) * 0.5f;
+            float backwardPenaltyAngle = DegreesToRadians(config.BackwardPenaltyAngleDeg) * 0.5f;
+
+            Span<Interval> available = stackalloc Interval[MaxIntervals];
+            int availableCount = 1;
+            available[0] = new Interval(-MathF.PI, MathF.PI);
+
+            if (maxSteerAngle < MathF.PI)
+            {
+                availableCount = SubtractBlockedInterval(available, availableCount, maxSteerAngle, MathF.PI);
+                availableCount = SubtractBlockedInterval(available, availableCount, -MathF.PI, -maxSteerAngle);
+            }
+
+            if (backwardPenaltyAngle > Epsilon && velocity.LengthSquared() > Epsilon * Epsilon)
+            {
+                float backwardAngle = WrapAngle(RelativeAngle(-Vector2.Normalize(velocity), desiredDir));
+                availableCount = SubtractBlockedIntervalWrapped(
+                    available,
+                    availableCount,
+                    backwardAngle - backwardPenaltyAngle,
+                    backwardAngle + backwardPenaltyAngle);
+            }
+
+            float predictionTime = MathF.Max(0f, timeHorizon * config.PredictionTimeScale);
+            for (int i = 0; i < obstacleIndices.Length && availableCount > 0; i++)
+            {
+                int obstacleIndex = obstacleIndices[i];
+                Vector2 obstaclePosition = obstaclePositions[obstacleIndex];
+                Vector2 obstacleVelocity = obstacleVelocities[obstacleIndex];
+                float obstacleRadius = obstacleRadii[obstacleIndex];
+
+                Vector2 relativePosition = obstaclePosition - position;
+                Vector2 relativeVelocity = obstacleVelocity - velocity;
+                Vector2 predictedOffset = relativePosition + relativeVelocity * predictionTime;
+                float distanceSq = predictedOffset.LengthSquared();
+                float combinedRadius = radius + obstacleRadius;
+
+                if (distanceSq <= Epsilon)
+                {
+                    return config.BlockedStop ? Vector2.Zero : ClampPreferred(preferredVelocity, maxSpeed, fallbackToPreferredVelocity);
+                }
+
+                if (config.IgnoreBehindMovingAgents && obstacleVelocity.LengthSquared() > Epsilon * Epsilon)
                 {
                     Vector2 offsetDir = Vector2.Normalize(predictedOffset);
                     if (Vector2.Dot(desiredDir, offsetDir) < 0f)

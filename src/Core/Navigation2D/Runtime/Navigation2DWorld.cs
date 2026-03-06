@@ -20,8 +20,6 @@ namespace Ludots.Core.Navigation2D.Runtime
         public UnsafeList<float> TimeHorizons;
         public UnsafeList<int> MaxNeighbors;
         public UnsafeList<Vector2> PreferredVelocities;
-        public UnsafeList<Vector2> OutputForces;
-        public UnsafeList<Vector2> OutputDesiredVelocities;
         public UnsafeList<Vector2> GoalPositions;
         public UnsafeList<float> GoalRadii;
         public UnsafeList<float> GoalDistances;
@@ -48,8 +46,6 @@ namespace Ludots.Core.Navigation2D.Runtime
             TimeHorizons = new UnsafeList<float>(settings.MaxAgents);
             MaxNeighbors = new UnsafeList<int>(settings.MaxAgents);
             PreferredVelocities = new UnsafeList<Vector2>(settings.MaxAgents);
-            OutputForces = new UnsafeList<Vector2>(settings.MaxAgents);
-            OutputDesiredVelocities = new UnsafeList<Vector2>(settings.MaxAgents);
             GoalPositions = new UnsafeList<Vector2>(settings.MaxAgents);
             GoalRadii = new UnsafeList<float>(settings.MaxAgents);
             GoalDistances = new UnsafeList<float>(settings.MaxAgents);
@@ -93,8 +89,6 @@ namespace Ludots.Core.Navigation2D.Runtime
             TimeHorizons.Add(timeHorizon);
             MaxNeighbors.Add(maxNeighbors);
             PreferredVelocities.Add(preferredVelocity);
-            OutputForces.Add(Vector2.Zero);
-            OutputDesiredVelocities.Add(Vector2.Zero);
             GoalPositions.Add(goalPosition);
             GoalRadii.Add(goalRadius);
             GoalDistances.Add(goalDistance);
@@ -138,8 +132,6 @@ namespace Ludots.Core.Navigation2D.Runtime
             TimeHorizons.Clear();
             MaxNeighbors.Clear();
             PreferredVelocities.Clear();
-            OutputForces.Clear();
-            OutputDesiredVelocities.Clear();
             GoalPositions.Clear();
             GoalRadii.Clear();
             GoalDistances.Clear();
@@ -160,8 +152,6 @@ namespace Ludots.Core.Navigation2D.Runtime
             TimeHorizons.Dispose();
             MaxNeighbors.Dispose();
             PreferredVelocities.Dispose();
-            OutputForces.Dispose();
-            OutputDesiredVelocities.Dispose();
             GoalPositions.Dispose();
             GoalRadii.Dispose();
             GoalDistances.Dispose();
