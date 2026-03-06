@@ -191,7 +191,7 @@ public void Register(string key, Func<World, BaseSystem<World, float>> factory, 
 
 以下是仓库中已有的核心基础设施。新功能开发时优先在此基础上扩展，不要另起炉灶。
 
-### 4.1 Registry 一览
+### 6.1 Registry 一览
 
 | Registry | 位置 | 用途 |
 |----------|------|------|
@@ -215,7 +215,7 @@ public void Register(string key, Func<World, BaseSystem<World, float>> factory, 
 | `AtomRegistry` | `src/Core/Gameplay/AI/` | AI 世界状态原子 |
 | `StringIntRegistry` | `src/Core/Registry/` | 通用字符串-整数双向映射 |
 
-### 4.2 核心管线
+### 6.2 核心管线
 
 | 管线 | 入口 | 架构文档 |
 |------|------|---------|
@@ -226,7 +226,7 @@ public void Register(string key, Func<World, BaseSystem<World, float>> factory, 
 | Mod Loading | `ModLoader` → `IMod.OnLoad` | `docs/developer-guide/02_mod_architecture.md` |
 | Startup | `GameBootstrapper.InitializeFromBaseDirectory` | `docs/developer-guide/09_startup_entrypoints.md` |
 
-### 4.3 SystemGroup Phase 一览
+### 6.3 SystemGroup Phase 一览
 
 ```
 SchemaUpdate → InputCollection → PostMovement → AbilityActivation →

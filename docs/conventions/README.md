@@ -21,6 +21,21 @@
     *   构建、测试、运行命令
     *   平台特定说明（Linux / Cloud VM）
 
+## 任务 Recipes
+
+常见开发任务的最小完整示例，照着做就能产出符合架构的代码：[recipes/README.md](recipes/README.md)
+
+| Recipe | 场景 |
+|--------|------|
+| [new_mod](recipes/new_mod.md) | 新建 Mod |
+| [new_ability](recipes/new_ability.md) | 新增 GAS 技能 |
+| [new_system](recipes/new_system.md) | 新增 ECS System |
+| [new_component](recipes/new_component.md) | 新增 ECS Component |
+| [new_order](recipes/new_order.md) | 新增交互/命令 |
+| [new_presenter](recipes/new_presenter.md) | 新增表现/UI |
+| [new_config](recipes/new_config.md) | 新增配置类型 |
+| [new_trigger](recipes/new_trigger.md) | 新增事件触发器 |
+
 ## 与其他文档的关系
 
 *   **架构文档**在 `docs/developer-guide/`——描述引擎各子系统的设计与实现

@@ -98,7 +98,7 @@ Core 本身也作为 Mod 挂载。所有 gameplay 内容（技能、效果、地
 | PR #9 效果预设验收被关闭 | 核心价值已被其他方式吸收，PR 本身存在与已有链路的重复 |
 | PR #11 实体外观系统被关闭 | 有价值片段已在 `GmConsoleMod` + `RaylibPrimitiveRenderer` 重新实现 |
 
-完整 Registry 清单见 `02_ai_assisted_development.md` §4.1。
+完整 Registry 清单见 `02_ai_assisted_development.md` §6.1。
 
 #### 禁止跨越职责
 
