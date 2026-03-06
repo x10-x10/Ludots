@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Arch.LowLevel;
 
 namespace Ludots.Core.Navigation2D.Runtime
@@ -8,6 +9,8 @@ namespace Ludots.Core.Navigation2D.Runtime
     {
         public readonly Navigation2DWorldSettings Settings;
 
+        public UnsafeList<int> EntityIds;
+        public UnsafeArray<int> EntityToAgentIndex;
         public UnsafeList<Vector2> Positions;
         public UnsafeList<Vector2> Velocities;
         public UnsafeList<float> Radii;
@@ -31,6 +34,11 @@ namespace Ludots.Core.Navigation2D.Runtime
         {
             Settings = settings;
 
+            int initialEntityCapacity = Math.Max(8, settings.MaxAgents);
+            EntityIds = new UnsafeList<int>(settings.MaxAgents);
+            EntityToAgentIndex = new UnsafeArray<int>(initialEntityCapacity);
+            UnsafeArray.Fill(ref EntityToAgentIndex, -1);
+
             Positions = new UnsafeList<Vector2>(settings.MaxAgents);
             Velocities = new UnsafeList<Vector2>(settings.MaxAgents);
             Radii = new UnsafeList<float>(settings.MaxAgents);
@@ -50,6 +58,7 @@ namespace Ludots.Core.Navigation2D.Runtime
         }
 
         public bool TryAdd(
+            int entityId,
             in Vector2 position,
             in Vector2 velocity,
             float radius,
@@ -64,10 +73,16 @@ namespace Ludots.Core.Navigation2D.Runtime
             float goalRadius,
             float goalDistance)
         {
-            if (Count >= Settings.MaxAgents)
+            if (entityId < 0 || Count >= Settings.MaxAgents)
             {
                 return false;
             }
+
+            EnsureEntityIndexCapacity(entityId);
+
+            int agentIndex = Count;
+            EntityIds.Add(entityId);
+            EntityToAgentIndex[entityId] = agentIndex;
 
             Positions.Add(position);
             Velocities.Add(velocity);
@@ -88,8 +103,32 @@ namespace Ludots.Core.Navigation2D.Runtime
             return true;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGetAgentIndex(int entityId, out int agentIndex)
+        {
+            if ((uint)entityId >= (uint)EntityToAgentIndex.Length)
+            {
+                agentIndex = -1;
+                return false;
+            }
+
+            agentIndex = EntityToAgentIndex[entityId];
+            return (uint)agentIndex < (uint)Count;
+        }
+
         public void Clear()
         {
+            var entityIds = EntityIds.AsSpan();
+            for (int i = 0; i < entityIds.Length; i++)
+            {
+                int entityId = entityIds[i];
+                if ((uint)entityId < (uint)EntityToAgentIndex.Length)
+                {
+                    EntityToAgentIndex[entityId] = -1;
+                }
+            }
+
+            EntityIds.Clear();
             Positions.Clear();
             Velocities.Clear();
             Radii.Clear();
@@ -110,6 +149,8 @@ namespace Ludots.Core.Navigation2D.Runtime
 
         public void Dispose()
         {
+            EntityIds.Dispose();
+            EntityToAgentIndex.Dispose();
             Positions.Dispose();
             Velocities.Dispose();
             Radii.Dispose();
@@ -126,6 +167,24 @@ namespace Ludots.Core.Navigation2D.Runtime
             GoalDistances.Dispose();
             HasPointGoals.Dispose();
             SmartStopFlags.Dispose();
+        }
+
+        private void EnsureEntityIndexCapacity(int entityId)
+        {
+            if ((uint)entityId < (uint)EntityToAgentIndex.Length)
+            {
+                return;
+            }
+
+            int oldLength = EntityToAgentIndex.Length;
+            int newLength = Math.Max(8, oldLength);
+            while (newLength <= entityId)
+            {
+                newLength *= 2;
+            }
+
+            EntityToAgentIndex = UnsafeArray.Resize(ref EntityToAgentIndex, newLength);
+            EntityToAgentIndex.AsSpan().Slice(oldLength, newLength - oldLength).Fill(-1);
         }
     }
 }

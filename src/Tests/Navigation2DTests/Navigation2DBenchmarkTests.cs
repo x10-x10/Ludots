@@ -1,4 +1,5 @@
-﻿using System;
+using Schedulers;
+using System;
 using System.Diagnostics;
 using Arch.Core;
 using Ludots.Core.Mathematics.FixedPoint;
@@ -26,6 +27,17 @@ namespace Ludots.Tests.Navigation2D
 
         private static void RunBenchmark(Navigation2DAvoidanceMode mode, string label)
         {
+            if (World.SharedJobScheduler == null)
+            {
+                World.SharedJobScheduler = new JobScheduler(new JobScheduler.Config
+                {
+                    ThreadPrefixName = "NavBenchmarkWorker",
+                    ThreadCount = 0,
+                    MaxExpectedConcurrentJobs = 64,
+                    StrictAllocationMode = false
+                });
+            }
+
             using var world = World.Create();
             using var runtime = new Navigation2DRuntime(CreateConfig(mode, maxAgents: 20000), gridCellSizeCm: 100, loadedChunks: null)
             {

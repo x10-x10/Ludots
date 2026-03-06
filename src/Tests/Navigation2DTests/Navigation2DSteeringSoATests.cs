@@ -1,4 +1,4 @@
-﻿using Arch.Core;
+using Arch.Core;
 using Ludots.Core.Mathematics.FixedPoint;
 using Ludots.Core.Navigation2D.Components;
 using Ludots.Core.Navigation2D.Config;
@@ -52,6 +52,44 @@ namespace Ludots.Tests.Navigation2D
             Assert.That(runtime.AgentSoA.PreferredVelocities[0].Y, Is.EqualTo(0f).Within(0.001f));
             Assert.That(runtime.AgentSoA.HasPointGoals[0], Is.EqualTo(1));
             Assert.That(runtime.AgentSoA.GoalDistances[0], Is.EqualTo(1000f).Within(0.01f));
+        }
+
+        [Test]
+        public void SteeringUpdate_HandlesHighEntityIdAgentMapping()
+        {
+            using var world = World.Create();
+            using var runtime = CreateRuntime(Navigation2DAvoidanceMode.Hybrid, smartStopEnabled: false);
+            var system = new Navigation2DSteeringSystem2D(world, runtime);
+
+            for (int i = 0; i < 256; i++)
+            {
+                world.Create(new Position2D { Value = Fix64Vec2.FromInt(i, 0) });
+            }
+
+            var actor = world.Create(
+                new NavAgent2D(),
+                new NavGoal2D { Kind = NavGoalKind2D.Point, TargetCm = Fix64Vec2.FromInt(500, 0), RadiusCm = Fix64.Zero },
+                new NavKinematics2D
+                {
+                    MaxSpeedCmPerSec = Fix64.FromInt(100),
+                    MaxAccelCmPerSec2 = Fix64.FromInt(1000),
+                    RadiusCm = Fix64.FromInt(30),
+                    NeighborDistCm = Fix64.FromInt(120),
+                    TimeHorizonSec = Fix64.FromInt(2),
+                    MaxNeighbors = 4
+                },
+                new Position2D { Value = Fix64Vec2.Zero },
+                Velocity2D.Zero,
+                Mass2D.FromFloat(1f, 1f),
+                new ForceInput2D { Force = Fix64Vec2.Zero },
+                new NavDesiredVelocity2D { ValueCmPerSec = Fix64Vec2.Zero }
+            );
+
+            system.Update(1f / 60f);
+
+            Assert.That(runtime.AgentSoA.TryGetAgentIndex(actor.Id, out int agentIndex), Is.True);
+            Assert.That(agentIndex, Is.EqualTo(0));
+            Assert.That(world.Get<NavDesiredVelocity2D>(actor).ValueCmPerSec.X.ToFloat(), Is.GreaterThan(0f));
         }
 
         [Test]

@@ -55,127 +55,291 @@ namespace Ludots.Core.Physics2D.Systems
 
             BuildAgentSoA();
             var agentSoA = _runtime.AgentSoA;
-            var positions = agentSoA.Positions.AsSpan();
-            _runtime.CellMap.Build(positions);
-
-            ComputeSmartStopFlags();
-
-            float dt = deltaTime > 1e-6f ? deltaTime : 1e-6f;
-            float invDt = 1f / dt;
-
-            var config = _runtime.Config.Steering;
-            var velocities = agentSoA.Velocities.AsSpan();
-            var radii = agentSoA.Radii.AsSpan();
-            var maxSpeeds = agentSoA.MaxSpeeds.AsSpan();
-            var maxAccels = agentSoA.MaxAccels.AsSpan();
-            var neighborDistances = agentSoA.NeighborDistances.AsSpan();
-            var timeHorizons = agentSoA.TimeHorizons.AsSpan();
-            var maxNeighbors = agentSoA.MaxNeighbors.AsSpan();
-            var preferredVelocities = agentSoA.PreferredVelocities.AsSpan();
-            var outputForces = agentSoA.OutputForces.AsSpan();
-            var outputDesiredVelocities = agentSoA.OutputDesiredVelocities.AsSpan();
-            var smartStopFlags = agentSoA.SmartStopFlags.AsSpan();
-
-            Span<int> neighborIdxScratch = stackalloc int[MaxNeighborsHard];
-            Span<OrcaSolver2D.Neighbor> orcaNeighborScratch = stackalloc OrcaSolver2D.Neighbor[MaxNeighborsHard];
-            Span<SonarSolver2D.Obstacle> sonarObstacleScratch = stackalloc SonarSolver2D.Obstacle[MaxNeighborsHard];
-            Span<OrcaSolver2D.OrcaLine> lineScratch = stackalloc OrcaSolver2D.OrcaLine[MaxNeighborsHard];
-            Span<OrcaSolver2D.OrcaLine> projectionLineScratch = stackalloc OrcaSolver2D.OrcaLine[OrcaSolver2D.MaxProjectionLines];
-
-            for (int i = 0; i < agentSoA.Count; i++)
+            if (agentSoA.Count <= 0)
             {
-                Vector2 pos = positions[i];
-                Vector2 vel = velocities[i];
-                float radius = radii[i];
-                float maxSpeed = maxSpeeds[i];
-                float maxAccel = maxAccels[i];
-                float neighborDistance = neighborDistances[i];
-                float timeHorizon = timeHorizons[i];
-                int neighborLimit = GetEffectiveNeighborLimit(maxNeighbors[i], config.QueryBudget.MaxNeighborsPerAgent);
-                Vector2 preferred = preferredVelocities[i];
+                return;
+            }
 
-                if (smartStopFlags[i] != 0)
+            _runtime.CellMap.Build(agentSoA.Positions.AsSpan());
+            ComputeSmartStopFlags();
+            ApplySteering(deltaTime);
+        }
+
+        private void ApplySteering(float deltaTime)
+        {
+            float dt = deltaTime > 1e-6f ? deltaTime : 1e-6f;
+            var job = new SteeringChunkJob
+            {
+                Runtime = _runtime,
+                DeltaTime = dt,
+                InvDeltaTime = 1f / dt
+            };
+
+            if (World.SharedJobScheduler == null)
+            {
+                foreach (ref var chunk in World.Query(in _agentQuery))
                 {
-                    outputForces[i] = Vector2.Zero;
-                    outputDesiredVelocities[i] = Vector2.Zero;
-                    continue;
+                    job.Execute(ref chunk);
                 }
 
-                int neighborCount = 0;
-                if (neighborLimit > 0 && neighborDistance > 0f)
+                return;
+            }
+
+            World.InlineParallelChunkQuery(in _agentQuery, in job);
+        }
+
+        private struct SteeringChunkJob : IChunkJob
+        {
+            public Navigation2DRuntime Runtime;
+            public float DeltaTime;
+            public float InvDeltaTime;
+
+            public void Execute(ref Chunk chunk)
+            {
+                if (chunk.Count <= 0)
                 {
-                    neighborCount = _runtime.CellMap.CollectNearestNeighborsBudgeted(
-                        selfIndex: i,
-                        selfPos: pos,
-                        radius: neighborDistance,
-                        positions: positions,
-                        neighborsOut: neighborIdxScratch.Slice(0, neighborLimit),
-                        maxCandidateChecks: config.QueryBudget.MaxCandidateChecksPerAgent);
+                    return;
                 }
 
-                Vector2 newVel;
-                if (neighborCount <= 0)
+                ref var entityFirst = ref chunk.Entity(0);
+                chunk.GetSpan<ForceInput2D, NavDesiredVelocity2D>(out var forces, out var desiredVelocities);
+
+                var agentSoA = Runtime.AgentSoA;
+                var config = Runtime.Config.Steering;
+                var entityToAgentIndex = agentSoA.EntityToAgentIndex;
+                var positions = agentSoA.Positions.AsSpan();
+                var velocities = agentSoA.Velocities.AsSpan();
+                var radii = agentSoA.Radii.AsSpan();
+                var maxSpeeds = agentSoA.MaxSpeeds.AsSpan();
+                var maxAccels = agentSoA.MaxAccels.AsSpan();
+                var neighborDistances = agentSoA.NeighborDistances.AsSpan();
+                var timeHorizons = agentSoA.TimeHorizons.AsSpan();
+                var maxNeighbors = agentSoA.MaxNeighbors.AsSpan();
+                var preferredVelocities = agentSoA.PreferredVelocities.AsSpan();
+                var outputForces = agentSoA.OutputForces.AsSpan();
+                var outputDesiredVelocities = agentSoA.OutputDesiredVelocities.AsSpan();
+                var smartStopFlags = agentSoA.SmartStopFlags.AsSpan();
+
+                Span<int> neighborIdxScratch = stackalloc int[MaxNeighborsHard];
+                Span<OrcaSolver2D.Neighbor> orcaNeighborScratch = stackalloc OrcaSolver2D.Neighbor[MaxNeighborsHard];
+                Span<SonarSolver2D.Obstacle> sonarObstacleScratch = stackalloc SonarSolver2D.Obstacle[MaxNeighborsHard];
+                Span<OrcaSolver2D.OrcaLine> lineScratch = stackalloc OrcaSolver2D.OrcaLine[MaxNeighborsHard];
+                Span<OrcaSolver2D.OrcaLine> projectionLineScratch = stackalloc OrcaSolver2D.OrcaLine[OrcaSolver2D.MaxProjectionLines];
+
+                foreach (var entityIndex in chunk)
                 {
-                    newVel = ClampToMaxSpeed(preferred, maxSpeed);
-                }
-                else
-                {
-                    bool useOrca = ShouldUseOrca(config, velocities, vel, preferred, neighborIdxScratch.Slice(0, neighborCount));
-                    if (useOrca)
+                    var entity = Unsafe.Add(ref entityFirst, entityIndex);
+                    ref var force = ref forces[entityIndex];
+                    ref var desiredVelocity = ref desiredVelocities[entityIndex];
+
+                    if ((uint)entity.Id >= (uint)entityToAgentIndex.Length)
                     {
-                        for (int n = 0; n < neighborCount; n++)
-                        {
-                            int j = neighborIdxScratch[n];
-                            orcaNeighborScratch[n] = new OrcaSolver2D.Neighbor(positions[j], velocities[j], radii[j]);
-                        }
+                        force = new ForceInput2D { Force = Fix64Vec2.Zero };
+                        desiredVelocity = new NavDesiredVelocity2D { ValueCmPerSec = Fix64Vec2.Zero };
+                        continue;
+                    }
 
-                        newVel = OrcaSolver2D.ComputeDesiredVelocity(
-                            position: pos,
-                            velocity: vel,
-                            preferredVelocity: preferred,
-                            maxSpeed: maxSpeed,
-                            radius: radius,
-                            timeHorizon: timeHorizon,
-                            deltaTime: dt,
-                            neighbors: orcaNeighborScratch.Slice(0, neighborCount),
-                            linesScratch: lineScratch,
-                            projectionLinesScratch: projectionLineScratch);
+                    int i = entityToAgentIndex[entity.Id];
+                    if ((uint)i >= (uint)positions.Length)
+                    {
+                        force = new ForceInput2D { Force = Fix64Vec2.Zero };
+                        desiredVelocity = new NavDesiredVelocity2D { ValueCmPerSec = Fix64Vec2.Zero };
+                        continue;
+                    }
+
+                    Vector2 pos = positions[i];
+                    Vector2 vel = velocities[i];
+                    float radius = radii[i];
+                    float maxSpeed = maxSpeeds[i];
+                    float maxAccel = maxAccels[i];
+                    float neighborDistance = neighborDistances[i];
+                    float timeHorizon = timeHorizons[i];
+                    int neighborLimit = GetEffectiveNeighborLimit(maxNeighbors[i], config.QueryBudget.MaxNeighborsPerAgent);
+                    Vector2 preferred = preferredVelocities[i];
+
+                    if (smartStopFlags[i] != 0)
+                    {
+                        outputForces[i] = Vector2.Zero;
+                        outputDesiredVelocities[i] = Vector2.Zero;
+                        force = new ForceInput2D { Force = Fix64Vec2.Zero };
+                        desiredVelocity = new NavDesiredVelocity2D { ValueCmPerSec = Fix64Vec2.Zero };
+                        continue;
+                    }
+
+                    int neighborCount = 0;
+                    if (neighborLimit > 0 && neighborDistance > 0f)
+                    {
+                        neighborCount = Runtime.CellMap.CollectNearestNeighborsBudgeted(
+                            selfIndex: i,
+                            selfPos: pos,
+                            radius: neighborDistance,
+                            positions: positions,
+                            neighborsOut: neighborIdxScratch.Slice(0, neighborLimit),
+                            maxCandidateChecks: config.QueryBudget.MaxCandidateChecksPerAgent);
+                    }
+
+                    Vector2 newVel;
+                    if (neighborCount <= 0)
+                    {
+                        newVel = ClampToMaxSpeed(preferred, maxSpeed);
                     }
                     else
                     {
-                        for (int n = 0; n < neighborCount; n++)
+                        bool useOrca = ShouldUseOrca(config, velocities, vel, preferred, neighborIdxScratch.Slice(0, neighborCount));
+                        if (useOrca)
                         {
-                            int j = neighborIdxScratch[n];
-                            sonarObstacleScratch[n] = new SonarSolver2D.Obstacle(positions[j], velocities[j], radii[j]);
+                            for (int n = 0; n < neighborCount; n++)
+                            {
+                                int j = neighborIdxScratch[n];
+                                orcaNeighborScratch[n] = new OrcaSolver2D.Neighbor(positions[j], velocities[j], radii[j]);
+                            }
+
+                            newVel = OrcaSolver2D.ComputeDesiredVelocity(
+                                position: pos,
+                                velocity: vel,
+                                preferredVelocity: preferred,
+                                maxSpeed: maxSpeed,
+                                radius: radius,
+                                timeHorizon: timeHorizon,
+                                deltaTime: DeltaTime,
+                                neighbors: orcaNeighborScratch.Slice(0, neighborCount),
+                                linesScratch: lineScratch,
+                                projectionLinesScratch: projectionLineScratch);
+                        }
+                        else
+                        {
+                            for (int n = 0; n < neighborCount; n++)
+                            {
+                                int j = neighborIdxScratch[n];
+                                sonarObstacleScratch[n] = new SonarSolver2D.Obstacle(positions[j], velocities[j], radii[j]);
+                            }
+
+                            newVel = SonarSolver2D.ComputeDesiredVelocity(
+                                position: pos,
+                                velocity: vel,
+                                preferredVelocity: preferred,
+                                maxSpeed: maxSpeed,
+                                radius: radius,
+                                timeHorizon: timeHorizon,
+                                obstacles: sonarObstacleScratch.Slice(0, neighborCount),
+                                config: config.Sonar,
+                                fallbackToPreferredVelocity: config.Orca.FallbackToPreferredVelocity);
+                        }
+                    }
+
+                    Vector2 accel = (newVel - vel) * InvDeltaTime;
+                    float accelLenSq = accel.LengthSquared();
+                    float maxAccelSq = maxAccel * maxAccel;
+                    if (accelLenSq > maxAccelSq && accelLenSq > 1e-12f)
+                    {
+                        accel *= maxAccel / MathF.Sqrt(accelLenSq);
+                    }
+
+                    outputForces[i] = accel;
+                    outputDesiredVelocities[i] = newVel;
+                    force = new ForceInput2D
+                    {
+                        Force = Fix64Vec2.FromFloat(accel.X, accel.Y)
+                    };
+                    desiredVelocity = new NavDesiredVelocity2D
+                    {
+                        ValueCmPerSec = Fix64Vec2.FromFloat(newVel.X, newVel.Y)
+                    };
+                }
+            }
+        }
+
+        private struct SmartStopChunkJob : IChunkJob
+        {
+            public Navigation2DRuntime Runtime;
+
+            public void Execute(ref Chunk chunk)
+            {
+                if (chunk.Count <= 0)
+                {
+                    return;
+                }
+
+                var smartStop = Runtime.Config.Steering.SmartStop;
+                if (!smartStop.Enabled || smartStop.QueryRadiusCm <= 0 || smartStop.MaxNeighbors <= 0)
+                {
+                    return;
+                }
+
+                ref var entityFirst = ref chunk.Entity(0);
+                var agentSoA = Runtime.AgentSoA;
+                var entityToAgentIndex = agentSoA.EntityToAgentIndex;
+                var flags = agentSoA.SmartStopFlags.AsSpan();
+                var positions = agentSoA.Positions.AsSpan();
+                var velocities = agentSoA.Velocities.AsSpan();
+                var goalPositions = agentSoA.GoalPositions.AsSpan();
+                var goalRadii = agentSoA.GoalRadii.AsSpan();
+                var goalDistances = agentSoA.GoalDistances.AsSpan();
+                var hasGoals = agentSoA.HasPointGoals.AsSpan();
+
+                float queryRadius = smartStop.QueryRadiusCm;
+                float selfGoalDistanceLimit = smartStop.SelfGoalDistanceLimitCm;
+                float goalToleranceSq = smartStop.GoalToleranceCm * smartStop.GoalToleranceCm;
+                float neighborArrivalSlack = smartStop.ArrivedSlackCm;
+                float stoppedSpeedSq = smartStop.StoppedSpeedThresholdCmPerSec * smartStop.StoppedSpeedThresholdCmPerSec;
+                int neighborBudget = Math.Min(MaxNeighborsHard, smartStop.MaxNeighbors);
+
+                Span<int> scratch = stackalloc int[MaxNeighborsHard];
+                foreach (var entityIndex in chunk)
+                {
+                    var entity = Unsafe.Add(ref entityFirst, entityIndex);
+                    if ((uint)entity.Id >= (uint)entityToAgentIndex.Length)
+                    {
+                        continue;
+                    }
+
+                    int i = entityToAgentIndex[entity.Id];
+                    if ((uint)i >= (uint)positions.Length)
+                    {
+                        continue;
+                    }
+
+                    if (hasGoals[i] == 0 || goalDistances[i] > selfGoalDistanceLimit)
+                    {
+                        continue;
+                    }
+
+                    int neighborCount = Runtime.CellMap.CollectNearestNeighborsBudgeted(
+                        selfIndex: i,
+                        selfPos: positions[i],
+                        radius: queryRadius,
+                        positions: positions,
+                        neighborsOut: scratch.Slice(0, neighborBudget),
+                        maxCandidateChecks: smartStop.MaxNeighbors);
+
+                    for (int n = 0; n < neighborCount; n++)
+                    {
+                        int j = scratch[n];
+                        if (hasGoals[j] == 0)
+                        {
+                            continue;
                         }
 
-                        newVel = SonarSolver2D.ComputeDesiredVelocity(
-                            position: pos,
-                            velocity: vel,
-                            preferredVelocity: preferred,
-                            maxSpeed: maxSpeed,
-                            radius: radius,
-                            timeHorizon: timeHorizon,
-                            obstacles: sonarObstacleScratch.Slice(0, neighborCount),
-                            config: config.Sonar,
-                            fallbackToPreferredVelocity: _runtime.Config.Steering.Orca.FallbackToPreferredVelocity);
+                        if (velocities[j].LengthSquared() > stoppedSpeedSq)
+                        {
+                            continue;
+                        }
+
+                        if (Vector2.DistanceSquared(goalPositions[i], goalPositions[j]) > goalToleranceSq)
+                        {
+                            continue;
+                        }
+
+                        if (goalDistances[j] > goalRadii[j] + neighborArrivalSlack)
+                        {
+                            continue;
+                        }
+
+                        flags[i] = 1;
+                        break;
                     }
                 }
-
-                Vector2 accel = (newVel - vel) * invDt;
-                float accelLenSq = accel.LengthSquared();
-                float maxAccelSq = maxAccel * maxAccel;
-                if (accelLenSq > maxAccelSq && accelLenSq > 1e-12f)
-                {
-                    accel *= maxAccel / MathF.Sqrt(accelLenSq);
-                }
-
-                outputForces[i] = accel;
-                outputDesiredVelocities[i] = newVel;
             }
-
-            ApplySteeringOutputs();
-
         }
 
         private static bool ShouldUseOrca(
@@ -297,8 +461,10 @@ namespace Ludots.Core.Physics2D.Systems
                     flowBindings = chunk.GetSpan<NavFlowBinding2D>();
                 }
 
+                ref var entityFirst = ref chunk.Entity(0);
                 foreach (var index in chunk)
                 {
+                    var entity = Unsafe.Add(ref entityFirst, index);
                     var positionCm = positionsCm[index].Value;
                     var velocityCm = velocitiesCm[index].Linear;
                     var kin = kinematics[index];
@@ -342,6 +508,7 @@ namespace Ludots.Core.Physics2D.Systems
                     }
 
                     if (!_runtime.AgentSoA.TryAdd(
+                        entity.Id,
                         position,
                         velocity,
                         kin.RadiusCm.ToFloat(),
@@ -373,89 +540,22 @@ namespace Ludots.Core.Physics2D.Systems
                 return;
             }
 
-            var positions = _runtime.AgentSoA.Positions.AsSpan();
-            var velocities = _runtime.AgentSoA.Velocities.AsSpan();
-            var goalPositions = _runtime.AgentSoA.GoalPositions.AsSpan();
-            var goalRadii = _runtime.AgentSoA.GoalRadii.AsSpan();
-            var goalDistances = _runtime.AgentSoA.GoalDistances.AsSpan();
-            var hasGoals = _runtime.AgentSoA.HasPointGoals.AsSpan();
-
-            float queryRadius = smartStop.QueryRadiusCm;
-            float selfGoalDistanceLimit = smartStop.SelfGoalDistanceLimitCm;
-            float goalToleranceSq = smartStop.GoalToleranceCm * smartStop.GoalToleranceCm;
-            float neighborArrivalSlack = smartStop.ArrivedSlackCm;
-            float stoppedSpeedSq = smartStop.StoppedSpeedThresholdCmPerSec * smartStop.StoppedSpeedThresholdCmPerSec;
-            int neighborBudget = Math.Min(MaxNeighborsHard, smartStop.MaxNeighbors);
-
-            Span<int> scratch = stackalloc int[MaxNeighborsHard];
-            for (int i = 0; i < positions.Length; i++)
+            var job = new SmartStopChunkJob
             {
-                if (hasGoals[i] == 0 || goalDistances[i] > selfGoalDistanceLimit)
-                {
-                    continue;
-                }
+                Runtime = _runtime
+            };
 
-                int neighborCount = _runtime.CellMap.CollectNearestNeighborsBudgeted(
-                    selfIndex: i,
-                    selfPos: positions[i],
-                    radius: queryRadius,
-                    positions: positions,
-                    neighborsOut: scratch.Slice(0, neighborBudget),
-                    maxCandidateChecks: smartStop.MaxNeighbors);
-
-                for (int n = 0; n < neighborCount; n++)
-                {
-                    int j = scratch[n];
-                    if (hasGoals[j] == 0)
-                    {
-                        continue;
-                    }
-
-                    if (velocities[j].LengthSquared() > stoppedSpeedSq)
-                    {
-                        continue;
-                    }
-
-                    if (Vector2.DistanceSquared(goalPositions[i], goalPositions[j]) > goalToleranceSq)
-                    {
-                        continue;
-                    }
-
-                    if (goalDistances[j] > goalRadii[j] + neighborArrivalSlack)
-                    {
-                        continue;
-                    }
-
-                    flags[i] = 1;
-                    break;
-                }
-            }
-        }
-
-        private void ApplySteeringOutputs()
-        {
-            var outputForces = _runtime.AgentSoA.OutputForces.AsSpan();
-            var outputDesiredVelocities = _runtime.AgentSoA.OutputDesiredVelocities.AsSpan();
-            int outputIndex = 0;
-
-            foreach (ref var chunk in World.Query(in _agentQuery))
+            if (World.SharedJobScheduler == null)
             {
-                chunk.GetSpan<ForceInput2D, NavDesiredVelocity2D>(out var forces, out var desiredVelocities);
-                foreach (var index in chunk)
+                foreach (ref var chunk in World.Query(in _agentQuery))
                 {
-                    Vector2 accel = outputForces[outputIndex];
-                    Vector2 desiredVelocity = outputDesiredVelocities[outputIndex];
-                    forces[index] = new ForceInput2D
-                    {
-                        Force = Fix64Vec2.FromFloat(accel.X, accel.Y)
-                    };
-                    desiredVelocities[index] = new NavDesiredVelocity2D
-                    {
-                        ValueCmPerSec = Fix64Vec2.FromFloat(desiredVelocity.X, desiredVelocity.Y)
-                    };
-                    outputIndex++;
+                    job.Execute(ref chunk);
                 }
+
+                return;
             }
+
+            World.InlineParallelChunkQuery(in _agentQuery, in job);
         }
 
         private void TryApplyFlowGoal()
