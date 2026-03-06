@@ -53,7 +53,11 @@ namespace Ludots.Core.Physics2D.Systems
                 }
             }
 
-            var syncResult = SyncAgentSoA();
+            Navigation2DWorldSyncResult syncResult;
+            if (!TrySteadyStateSyncAgentSoA(out syncResult))
+            {
+                syncResult = SyncAgentSoA();
+            }
             var agentSoA = _runtime.AgentSoA;
             if (agentSoA.Count <= 0)
             {
@@ -94,6 +98,127 @@ namespace Ludots.Core.Physics2D.Systems
             }
 
             World.InlineParallelChunkQuery(in _agentQuery, in job);
+        }
+
+        private bool TrySteadyStateSyncAgentSoA(out Navigation2DWorldSyncResult syncResult)
+        {
+            int liveAgentCount = World.CountEntities(in _agentQuery);
+            var agentSoA = _runtime.AgentSoA;
+            if (liveAgentCount != agentSoA.Count)
+            {
+                syncResult = default;
+                return false;
+            }
+
+            agentSoA.BeginSteadyStateUpdate();
+            var job = new SteadyStateSyncChunkJob
+            {
+                Runtime = _runtime
+            };
+
+            if (World.SharedJobScheduler == null)
+            {
+                foreach (ref var chunk in World.Query(in _agentQuery))
+                {
+                    job.Execute(ref chunk);
+                }
+            }
+            else
+            {
+                World.InlineParallelChunkQuery(in _agentQuery, in job);
+            }
+
+            if (agentSoA.RequiresFullResync())
+            {
+                syncResult = default;
+                return false;
+            }
+
+            syncResult = agentSoA.EndSteadyStateUpdate();
+            return true;
+        }
+
+        private struct SteadyStateSyncChunkJob : IChunkJob
+        {
+            public Navigation2DRuntime Runtime;
+
+            public void Execute(ref Chunk chunk)
+            {
+                if (chunk.Count <= 0)
+                {
+                    return;
+                }
+
+                ref var entityFirst = ref chunk.Entity(0);
+                chunk.GetSpan<Position2D, Velocity2D, NavKinematics2D>(out var positionsCm, out var velocitiesCm, out var kinematics);
+
+                bool hasGoal = chunk.Has<NavGoal2D>();
+                Span<NavGoal2D> goals = default;
+                if (hasGoal)
+                {
+                    goals = chunk.GetSpan<NavGoal2D>();
+                }
+
+                var agentSoA = Runtime.AgentSoA;
+                var entityToAgentIndex = agentSoA.EntityToAgentIndex;
+                var positions = agentSoA.Positions.AsSpan();
+
+                foreach (var entityIndex in chunk)
+                {
+                    var entity = Unsafe.Add(ref entityFirst, entityIndex);
+                    if ((uint)entity.Id >= (uint)entityToAgentIndex.Length)
+                    {
+                        agentSoA.MarkSteadyStateFallbackRequired();
+                        return;
+                    }
+
+                    int i = entityToAgentIndex[entity.Id];
+                    if ((uint)i >= (uint)positions.Length)
+                    {
+                        agentSoA.MarkSteadyStateFallbackRequired();
+                        return;
+                    }
+
+                    var positionCm = positionsCm[entityIndex].Value;
+                    var velocityCm = velocitiesCm[entityIndex].Linear;
+                    var kin = kinematics[entityIndex];
+
+                    Vector2 position = positionCm.ToVector2();
+                    Vector2 velocity = velocityCm.ToVector2();
+                    bool hasPointGoal = false;
+                    Vector2 goalPosition = Vector2.Zero;
+                    float goalRadius = 0f;
+                    float goalDistance = 0f;
+
+                    if (hasGoal)
+                    {
+                        var goal = goals[entityIndex];
+                        if (goal.Kind == NavGoalKind2D.Point)
+                        {
+                            hasPointGoal = true;
+                            goalPosition = goal.TargetCm.ToVector2();
+                            goalRadius = goal.RadiusCm.ToFloat();
+
+                            Vector2 toGoal = goalPosition - position;
+                            float goalDistanceSq = toGoal.LengthSquared();
+                            if (goalDistanceSq > 1e-8f)
+                            {
+                                goalDistance = MathF.Sqrt(goalDistanceSq);
+                            }
+                        }
+                    }
+
+                    agentSoA.UpdateExistingAgent(
+                        i,
+                        position,
+                        velocity,
+                        kin.RadiusCm.ToFloat(),
+                        hasPointGoal,
+                        goalPosition,
+                        goalRadius,
+                        goalDistance);
+                }
+            }
         }
 
         private struct SteeringChunkJob : IChunkJob

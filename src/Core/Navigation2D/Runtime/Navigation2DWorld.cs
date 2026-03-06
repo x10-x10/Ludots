@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Arch.LowLevel;
 
 namespace Ludots.Core.Navigation2D.Runtime
@@ -36,6 +37,9 @@ namespace Ludots.Core.Navigation2D.Runtime
         private int _syncStamp;
         private bool _spatialDirty;
         private bool _smartStopDirty;
+        private int _steadySpatialDirty;
+        private int _steadySmartStopDirty;
+        private int _steadyFallbackRequired;
 
         public int Count => Positions.Count;
 
@@ -77,6 +81,70 @@ namespace Ludots.Core.Navigation2D.Runtime
             _syncStamp++;
             _spatialDirty = false;
             _smartStopDirty = false;
+        }
+
+        public void BeginSteadyStateUpdate()
+        {
+            _steadySpatialDirty = 0;
+            _steadySmartStopDirty = 0;
+            _steadyFallbackRequired = 0;
+        }
+
+        public void MarkSteadyStateFallbackRequired()
+        {
+            Interlocked.Exchange(ref _steadyFallbackRequired, 1);
+        }
+
+        public bool RequiresFullResync()
+        {
+            return Volatile.Read(ref _steadyFallbackRequired) != 0;
+        }
+
+        public Navigation2DWorldSyncResult EndSteadyStateUpdate()
+        {
+            return new Navigation2DWorldSyncResult(
+                spatialDirty: Volatile.Read(ref _steadySpatialDirty) != 0,
+                smartStopDirty: Volatile.Read(ref _steadySmartStopDirty) != 0);
+        }
+
+        public void UpdateExistingAgent(
+            int agentIndex,
+            in Vector2 position,
+            in Vector2 velocity,
+            float radius,
+            bool hasPointGoal,
+            in Vector2 goalPosition,
+            float goalRadius,
+            float goalDistance)
+        {
+            byte hasPointGoalByte = hasPointGoal ? (byte)1 : (byte)0;
+
+            if (Positions[agentIndex] != position)
+            {
+                Positions[agentIndex] = position;
+                Interlocked.Exchange(ref _steadySpatialDirty, 1);
+                Interlocked.Exchange(ref _steadySmartStopDirty, 1);
+            }
+            else
+            {
+                Positions[agentIndex] = position;
+            }
+
+            if (Velocities[agentIndex] != velocity ||
+                GoalPositions[agentIndex] != goalPosition ||
+                GoalRadii[agentIndex] != goalRadius ||
+                GoalDistances[agentIndex] != goalDistance ||
+                HasPointGoals[agentIndex] != hasPointGoalByte)
+            {
+                Interlocked.Exchange(ref _steadySmartStopDirty, 1);
+            }
+
+            Velocities[agentIndex] = velocity;
+            Radii[agentIndex] = radius;
+            GoalPositions[agentIndex] = goalPosition;
+            GoalRadii[agentIndex] = goalRadius;
+            GoalDistances[agentIndex] = goalDistance;
+            HasPointGoals[agentIndex] = hasPointGoalByte;
         }
 
         public bool SyncAgent(
