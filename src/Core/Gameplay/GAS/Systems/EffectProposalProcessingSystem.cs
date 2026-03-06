@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Arch.System;
@@ -302,15 +305,19 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     var req = _queue[_rootCursor++];
                     if (!World.IsAlive(req.Target))
                     {
+                        DebugEffectStage("TargetDeadBeforeProposal", req, 0, false, 0f);
                         workUnits++;
                         continue;
                     }
 
                     if (_templates == null || req.TemplateId <= 0 || !_templates.TryGet(req.TemplateId, out var rootTpl))
                     {
+                        DebugEffectStage("TemplateMissingBeforeProposal", req, 0, false, 0f);
                         workUnits++;
                         continue;
                     }
+
+                    DebugEffectStage("ProposalOpened", req, rootTpl.TagId, rootTpl.ParticipatesInResponse, 0f);
 
                     _activeReq = req;
                     _phase = WindowPhase.Collect;
@@ -793,6 +800,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         if (IsPureInstantTemplate(in tpl))
                         {
                             ref var attr = ref World.TryGetRef<AttributeBuffer>(e.Target, out bool hasAttr);
+                            float delta = 0f;
                             if (hasAttr)
                             {
                                 // Snapshot primary attribute for delta calculation
@@ -800,7 +808,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 float before = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
                                 EffectModifierOps.Apply(in e.Modifiers, ref attr);
                                 float after = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
-                                float delta = after - before;
+                                delta = after - before;
                                 if (_presentationEvents != null && delta != 0f)
                                 {
                                     _presentationEvents.Publish(new GasPresentationEvent
@@ -814,6 +822,20 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                     });
                                 }
                             }
+
+                            DebugEffectStage(
+                                hasAttr ? "AppliedInstant" : "AppliedInstantNoAttributeBuffer",
+                                new EffectRequest
+                                {
+                                    RootId = e.RootId,
+                                    Source = e.Source,
+                                    Target = e.Target,
+                                    TargetContext = e.TargetContext,
+                                    TemplateId = e.TemplateId
+                                },
+                                e.TagId,
+                                e.ParticipatesInResponse,
+                                delta);
 
                             // Dispatch OnApply Phase Listeners even for pure-instant effects.
                             // Modifiers are applied inline above (equivalent to Main handler),
@@ -1200,6 +1222,30 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private void ClearConfigContext()
         {
             _graphApiHost?.ClearConfigContext();
+        }
+
+        private static void DebugEffectStage(string stage, in EffectRequest req, int tagId, bool participatesInResponse, float delta)
+        {
+            File.AppendAllText("/opt/cursor/logs/debug.log",
+                JsonSerializer.Serialize(new
+                {
+                    hypothesisId = "H8",
+                    location = "EffectProposalProcessingSystem.UpdateSlice",
+                    message = "Effect request/proposal state",
+                    data = new
+                    {
+                        stage,
+                        rootId = req.RootId,
+                        sourceId = req.Source.Id,
+                        targetId = req.Target.Id,
+                        targetContextId = req.TargetContext.Id,
+                        templateId = req.TemplateId,
+                        tagId,
+                        participatesInResponse,
+                        delta
+                    },
+                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                }) + Environment.NewLine);
         }
 
         private static unsafe void ApplyModify(ref EffectModifiers modifiers, float modifyValue, ModifierOp op)

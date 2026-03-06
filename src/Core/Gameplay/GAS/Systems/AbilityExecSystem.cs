@@ -601,6 +601,18 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
             else
             {
+                if (ShouldDebugAbilitySlot(inst.AbilitySlot))
+                {
+                    DebugLog("H7", "AbilityExecSystem.FireEffectItem", "Effect request dispatch", new
+                    {
+                        actorId = actor.Id,
+                        targetId = target.Id,
+                        abilitySlot = inst.AbilitySlot,
+                        abilityId = inst.AbilityId,
+                        templateId,
+                        targetAlive = World.IsAlive(target)
+                    });
+                }
                 PublishEffectRequest(actor, target, inst.TargetContext, templateId,
                     hasCp ? callerPool.Get(cpIdx) : default, hasCp);
             }
