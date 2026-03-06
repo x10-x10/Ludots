@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
 using Arch.Core;
 using Arch.System;
 using Ludots.Core.Components;
@@ -27,7 +25,6 @@ namespace Ludots.Core.Presentation.Systems
         private readonly World _world;
         private readonly Dictionary<string, object> _globals;
         private readonly ISpatialQueryService _spatial;
-        private int _lastHoveredDebugEntityId = int.MinValue;
 
         /// <summary>拾取半径（厘米）。</summary>
         public int PickRadiusCm { get; set; } = 120;
@@ -65,38 +62,10 @@ namespace Ludots.Core.Presentation.Systems
                 {
                     _globals.Remove(CoreServiceKeys.HoveredEntity.Name);
                 }
-
-                int hoveredDebugId = _world.IsAlive(hovered) ? hovered.Id : 0;
-                if (hoveredDebugId != _lastHoveredDebugEntityId)
-                {
-                    #region agent log
-                    DebugLog("H1", "EntityClickSelectSystem.Update:hover", "Hovered entity changed", new
-                    {
-                        mouseX = (int)mouse.X,
-                        mouseY = (int)mouse.Y,
-                        worldX = hoveredWorldCm.X,
-                        worldY = hoveredWorldCm.Y,
-                        hoveredId = hoveredDebugId,
-                        pickRadiusCm = PickRadiusCm
-                    });
-                    #endregion
-                    _lastHoveredDebugEntityId = hoveredDebugId;
-                }
             }
             else
             {
                 _globals.Remove(CoreServiceKeys.HoveredEntity.Name);
-                if (_lastHoveredDebugEntityId != 0)
-                {
-                    #region agent log
-                    DebugLog("H1", "EntityClickSelectSystem.Update:hover", "Hovered entity cleared", new
-                    {
-                        mouseX = (int)mouse.X,
-                        mouseY = (int)mouse.Y
-                    });
-                    #endregion
-                    _lastHoveredDebugEntityId = 0;
-                }
             }
 
             // 如果当前无选中实体或选中实体已死亡，自动回退到 LocalPlayerEntity
@@ -116,17 +85,6 @@ namespace Ludots.Core.Presentation.Systems
 
             var selected = FindNearestEntity(worldCm, PickRadiusCm);
             _globals[CoreServiceKeys.SelectedEntity.Name] = selected;
-
-            #region agent log
-            DebugLog("H2", "EntityClickSelectSystem.Update:select", "Select click resolved entity", new
-            {
-                mouseX = (int)mouse.X,
-                mouseY = (int)mouse.Y,
-                worldX = worldCm.X,
-                worldY = worldCm.Y,
-                selectedId = selected.Id
-            });
-            #endregion
 
             OnEntitySelected?.Invoke(worldCm, selected);
         }
@@ -165,12 +123,5 @@ namespace Ludots.Core.Presentation.Systems
         public void BeforeUpdate(in float dt) { }
         public void AfterUpdate(in float dt) { }
         public void Dispose() { }
-
-        private static void DebugLog(string hypothesisId, string location, string message, object data)
-        {
-            File.AppendAllText("/opt/cursor/logs/debug.log",
-                JsonSerializer.Serialize(new { hypothesisId, location, message, data, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }) +
-                Environment.NewLine);
-        }
     }
 }

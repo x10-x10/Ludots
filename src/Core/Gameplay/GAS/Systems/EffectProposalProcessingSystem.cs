@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Arch.System;
@@ -307,19 +305,15 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     var req = _queue[_rootCursor++];
                     if (!World.IsAlive(req.Target))
                     {
-                        DebugEffectStage("TargetDeadBeforeProposal", req, 0, false, 0f, null, null, null);
                         workUnits++;
                         continue;
                     }
 
                     if (_templates == null || req.TemplateId <= 0 || !_templates.TryGet(req.TemplateId, out var rootTpl))
                     {
-                        DebugEffectStage("TemplateMissingBeforeProposal", req, 0, false, 0f, null, null, null);
                         workUnits++;
                         continue;
                     }
-
-                    DebugEffectStage("ProposalOpened", req, rootTpl.TagId, rootTpl.ParticipatesInResponse, 0f, null, null, null);
 
                     _activeReq = req;
                     _phase = WindowPhase.Collect;
@@ -803,26 +797,14 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         {
                             ref var attr = ref World.TryGetRef<AttributeBuffer>(e.Target, out bool hasAttr);
                             float delta = 0f;
-                            float? targetHealthBefore = null;
-                            float? targetHealthAfter = null;
-                            float? targetHealthBase = null;
                             if (hasAttr)
                             {
                                 // Snapshot primary attribute for delta calculation
                                 int primaryAttrId = e.Modifiers.Count > 0 ? e.Modifiers.Get(0).AttributeId : -1;
                                 float before = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
-                                if (TryGetHealthSnapshot(e.Target, out float healthCurrentBefore, out float healthBaseValue))
-                                {
-                                    targetHealthBefore = healthCurrentBefore;
-                                    targetHealthBase = healthBaseValue;
-                                }
                                 EffectModifierOps.Apply(in e.Modifiers, ref attr);
                                 float after = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
                                 delta = after - before;
-                                if (TryGetHealthSnapshot(e.Target, out float healthCurrentAfter, out _))
-                                {
-                                    targetHealthAfter = healthCurrentAfter;
-                                }
                                 if (_presentationEvents != null && delta != 0f)
                                 {
                                     _presentationEvents.Publish(new GasPresentationEvent
@@ -836,23 +818,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                     });
                                 }
                             }
-
-                            DebugEffectStage(
-                                hasAttr ? "AppliedInstant" : "AppliedInstantNoAttributeBuffer",
-                                new EffectRequest
-                                {
-                                    RootId = e.RootId,
-                                    Source = e.Source,
-                                    Target = e.Target,
-                                    TargetContext = e.TargetContext,
-                                    TemplateId = e.TemplateId
-                                },
-                                e.TagId,
-                                e.ParticipatesInResponse,
-                                delta,
-                                targetHealthBefore,
-                                targetHealthAfter,
-                                targetHealthBase);
 
                             // Dispatch OnApply Phase Listeners even for pure-instant effects.
                             // Modifiers are applied inline above (equivalent to Main handler),
@@ -1239,63 +1204,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private void ClearConfigContext()
         {
             _graphApiHost?.ClearConfigContext();
-        }
-
-        private void DebugEffectStage(
-            string stage,
-            in EffectRequest req,
-            int tagId,
-            bool participatesInResponse,
-            float delta,
-            float? targetHealthBefore,
-            float? targetHealthAfter,
-            float? targetHealthBase)
-        {
-            File.AppendAllText("/opt/cursor/logs/debug.log",
-                JsonSerializer.Serialize(new
-                {
-                    hypothesisId = "H8",
-                    location = "EffectProposalProcessingSystem.UpdateSlice",
-                    message = "Effect request/proposal state",
-                    data = new
-                    {
-                        stage,
-                        rootId = req.RootId,
-                        sourceId = req.Source.Id,
-                        sourceName = GetEntityName(req.Source),
-                        targetId = req.Target.Id,
-                        targetName = GetEntityName(req.Target),
-                        targetContextId = req.TargetContext.Id,
-                        templateId = req.TemplateId,
-                        tagId,
-                        participatesInResponse,
-                        delta,
-                        targetHealthBefore,
-                        targetHealthAfter,
-                        targetHealthBase
-                    },
-                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                }) + Environment.NewLine);
-        }
-
-        private string GetEntityName(Entity entity)
-        {
-            if (!World.IsAlive(entity)) return string.Empty;
-            return World.TryGet(entity, out Name name) ? name.Value ?? string.Empty : string.Empty;
-        }
-
-        private bool TryGetHealthSnapshot(Entity entity, out float current, out float baseValue)
-        {
-            current = 0f;
-            baseValue = 0f;
-            if (!World.IsAlive(entity) || !World.Has<AttributeBuffer>(entity)) return false;
-            int healthId = AttributeRegistry.GetId("Health");
-            if (healthId <= 0) return false;
-
-            ref var attrs = ref World.Get<AttributeBuffer>(entity);
-            current = attrs.GetCurrent(healthId);
-            baseValue = attrs.GetBase(healthId);
-            return true;
         }
 
         private static unsafe void ApplyModify(ref EffectModifiers modifiers, float modifyValue, ModifierOp op)

@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Arch.System;
@@ -136,19 +134,16 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     ref var bbInts = ref World.Get<BlackboardIntBuffer>(actor);
                     if (!bbInts.TryGet(OrderBlackboardKeys.Cast_SlotIndex, out int slotIndex))
                     {
-                        DebugCastFailure(actor, -1, default, "MissingBlackboardSlot");
                         continue;
                     }
                     if (slotIndex < 0)
                     {
-                        DebugCastFailure(actor, slotIndex, default, "NegativeSlot");
                         continue;
                     }
                     
                     ref var abilities = ref World.Get<AbilityStateBuffer>(actor);
                     if ((uint)slotIndex >= (uint)abilities.Count)
                     {
-                        DebugCastFailure(actor, slotIndex, default, "SlotOutOfRange");
                         continue;
                     }
 
@@ -187,7 +182,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     {
                         if (!blockTags.RequiredAll.IsEmpty && !actorTags.ContainsAll(in blockTags.RequiredAll))
                         {
-                            DebugCastFailure(actor, slotIndex, targetEntity, "BlockedMissingRequiredTags");
                             // Cancel the order via OrderSubmitter so next order can promote
                             if (_orderTypeRegistry != null)
                             {
@@ -205,7 +199,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         }
                         if (!blockTags.BlockedAny.IsEmpty && actorTags.Intersects(in blockTags.BlockedAny))
                         {
-                            DebugCastFailure(actor, slotIndex, targetEntity, "BlockedByCooldownOrTag");
                             if (_orderTypeRegistry != null)
                             {
                                 OrderSubmitter.CancelCurrent(World, actor, _orderTypeRegistry);
@@ -290,8 +283,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         AbilitySlot = slotIndex,
                         AbilityId = slot.AbilityId
                     });
-                    DebugCastStart(actor, slotIndex, slot.AbilityId, targetEntity, defaultClockId);
-
                     workUnits++;
                 }
             }
@@ -341,7 +332,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
                 if (slot.AbilityId <= 0 || _abilityDefinitions == null || !_abilityDefinitions.TryGet(slot.AbilityId, out var def))
                 {
-                    DebugCastFailure(actor, instance.AbilitySlot, instance.Target, "MissingAbilityDefinition");
                     // No valid ability definition found — fail-fast, remove exec instance
                     World.Remove<AbilityExecInstance>(actor);
                     workUnits++;
@@ -433,41 +423,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _sliceActive = false;
             _cursor = 0;
             _execEntityCount = 0;
-        }
-
-        private static bool ShouldDebugAbilitySlot(int slotIndex)
-            => slotIndex is 0 or 2 or 3;
-
-        private static void DebugCastStart(Entity actor, int slotIndex, int abilityId, Entity target, GasClockId clockId)
-        {
-            if (!ShouldDebugAbilitySlot(slotIndex)) return;
-            DebugLog("H6", "AbilityExecSystem.UpdateSlice:start", "Ability execution started", new
-            {
-                actorId = actor.Id,
-                targetId = target.Id,
-                abilitySlot = slotIndex,
-                abilityId,
-                clockId = clockId.ToString()
-            });
-        }
-
-        private static void DebugCastFailure(Entity actor, int slotIndex, Entity target, string reason)
-        {
-            if (slotIndex >= 0 && !ShouldDebugAbilitySlot(slotIndex)) return;
-            DebugLog("H6", "AbilityExecSystem.UpdateSlice:fail", "Ability execution start failed", new
-            {
-                actorId = actor.Id,
-                targetId = target.Id,
-                abilitySlot = slotIndex,
-                reason
-            });
-        }
-
-        private static void DebugLog(string hypothesisId, string location, string message, object data)
-        {
-            File.AppendAllText("/opt/cursor/logs/debug.log",
-                JsonSerializer.Serialize(new { hypothesisId, location, message, data, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }) +
-                Environment.NewLine);
         }
 
         // ──────────────────── Item processing ────────────────────
@@ -601,18 +556,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
             else
             {
-                if (ShouldDebugAbilitySlot(inst.AbilitySlot))
-                {
-                    DebugLog("H7", "AbilityExecSystem.FireEffectItem", "Effect request dispatch", new
-                    {
-                        actorId = actor.Id,
-                        targetId = target.Id,
-                        abilitySlot = inst.AbilitySlot,
-                        abilityId = inst.AbilityId,
-                        templateId,
-                        targetAlive = World.IsAlive(target)
-                    });
-                }
                 PublishEffectRequest(actor, target, inst.TargetContext, templateId,
                     hasCp ? callerPool.Get(cpIdx) : default, hasCp);
             }
