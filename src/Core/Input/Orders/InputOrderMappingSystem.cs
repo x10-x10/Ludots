@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
+using System.Text.Json;
 using Arch.Core;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Input.Runtime;
@@ -241,6 +243,33 @@ namespace Ludots.Core.Input.Orders
                 }
                 
                 if (!CheckTrigger(actionId, effectiveMapping.Trigger)) continue;
+
+                if (IsDebugAbilityAction(actionId))
+                {
+                    int selectedId = 0;
+                    if (_selectedEntityProvider != null && _selectedEntityProvider(out var selected))
+                    {
+                        selectedId = selected.Id;
+                    }
+
+                    int hoveredId = 0;
+                    if (_hoveredEntityProvider != null && _hoveredEntityProvider(out var hovered))
+                    {
+                        hoveredId = hovered.Id;
+                    }
+
+                    #region agent log
+                    DebugLog("H2", "InputOrderMappingSystem.Update:trigger", "Skill trigger detected", new
+                    {
+                        actionId,
+                        interactionMode = (effectiveMapping.CastModeOverride ?? mode).ToString(),
+                        localPlayerId = _localPlayer.Id,
+                        selectedId,
+                        hoveredId,
+                        abilitySlot = effectiveMapping.ArgsTemplate.I0 ?? -1
+                    });
+                    #endregion
+                }
 
                 // Skill mappings are affected by InteractionMode; non-skill mappings always go through immediately.
                 // Per-ability CastModeOverride takes precedence over the global InteractionMode.
@@ -583,6 +612,10 @@ namespace Ludots.Core.Input.Orders
         private bool TryBuildOrderSmartCast(InputOrderMapping mapping, out Order order)
         {
             order = default;
+            string targetSource = "none";
+            int hoveredId = 0;
+            int autoTargetId = 0;
+            int selectedId = 0;
 
             int orderTagId = _tagKeyResolver!(mapping.OrderTagKey);
             if (orderTagId <= 0) return false;
@@ -600,18 +633,24 @@ namespace Ludots.Core.Input.Orders
                 case OrderSelectionType.Entity:
                     if (_hoveredEntityProvider != null && _hoveredEntityProvider(out var hovered))
                     {
+                        hoveredId = hovered.Id;
                         order.Target = hovered;
+                        targetSource = "hovered";
                     }
                     else if (mapping.AutoTargetPolicy != AutoTargetPolicy.None &&
                              mapping.AutoTargetRangeCm > 0 &&
                              _autoTargetProvider != null &&
                              _autoTargetProvider(actor, mapping.AutoTargetPolicy, mapping.AutoTargetRangeCm, out var autoTarget))
                     {
+                        autoTargetId = autoTarget.Id;
                         order.Target = autoTarget;
+                        targetSource = "autoTarget";
                     }
                     else if (_selectedEntityProvider != null && _selectedEntityProvider(out var selected))
                     {
+                        selectedId = selected.Id;
                         order.Target = selected;
+                        targetSource = "selected";
                     }
                     break;
 
@@ -652,6 +691,26 @@ namespace Ludots.Core.Input.Orders
             order.Actor = actor;
             order.Args = args;
             order.SubmitMode = DetermineSubmitMode(mapping.ModifierBehavior);
+
+            if (IsDebugAbilityAction(mapping.ActionId))
+            {
+                #region agent log
+                DebugLog("H3", "InputOrderMappingSystem.TryBuildOrderSmartCast", "SmartCast order built", new
+                {
+                    actionId = mapping.ActionId,
+                    selectionType = mapping.SelectionType.ToString(),
+                    targetSource,
+                    actorId = actor.Id,
+                    hoveredId,
+                    autoTargetId,
+                    selectedId,
+                    targetId = order.Target.Id,
+                    orderTagId,
+                    abilitySlot = args.I0
+                });
+                #endregion
+            }
+
             return true;
         }
 
@@ -847,6 +906,16 @@ namespace Ludots.Core.Input.Orders
         public void CancelAiming()
         {
             ExitAimingState();
+        }
+
+        private static bool IsDebugAbilityAction(string actionId)
+            => actionId is "SkillQ" or "SkillE" or "SkillR";
+
+        private static void DebugLog(string hypothesisId, string location, string message, object data)
+        {
+            File.AppendAllText("/opt/cursor/logs/debug.log",
+                JsonSerializer.Serialize(new { hypothesisId, location, message, data, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() }) +
+                Environment.NewLine);
         }
     }
 }
