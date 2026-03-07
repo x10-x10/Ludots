@@ -1,4 +1,4 @@
-# Ludots
+﻿# Ludots
 
 **SuperFastECSGameplayFramework** - A high-performance, data-oriented gameplay framework built on Arch ECS.
 
@@ -56,12 +56,14 @@ dotnet run --project .\src\Apps\Raylib\Ludots.App.Raylib\Ludots.App.Raylib.cspro
 *   `mods/`: 30+ built-in and demo mods (outside `src/` for UGC parity).
 *   `src/Tools/`: Developer tools (Editor, ModLauncher, NavBake).
 *   `src/Libraries/`: Source-integrated third-party (Arch, DotRecast, Raylib-cs).
-*   `docs/`: Documentation (conventions + architecture guides).
+*   `docs/`: Documentation (formal SSOT: conventions, architecture, reference, ADR, audits, RFCs).
 
 ## 📚 Documentation
 
-*   **[开发规范 (Conventions)](docs/conventions/README.md)** — 编码标准、Feature 开发工作流、AI 辅助开发规范、环境配置
-*   [架构文档 (Developer Guide)](docs/developer-guide/README.md) — 20 篇子系统架构详解（中文）
+*   **[文档总览](docs/README.md)** — 文档分层、正式入口与阅读路径
+*   **[开发规范 (Conventions)](docs/conventions/README.md)** — 编码标准、Feature 开发工作流、AI 辅助开发规范、环境配置、文档治理
+*   [架构文档 (Architecture)](docs/architecture/README.md) — 当前子系统设计与数据流
+*   [参考资料 (Reference)](docs/reference/README.md) — CLI、标准规范与查表型文档
 
 ## 🤝 Contributing
 
@@ -88,3 +90,4 @@ We gratefully acknowledge the following open-source projects that make Ludots po
 | **FixPointCS** | MIT | **Math**. Source integrated in `external/FixPointCS-master`. Deterministic fixed-point mathematics for simulation consistency. | [asik/FixPointCS](https://github.com/asik/FixPointCS) |
 
 *Disclaimer: All trademarks and registered trademarks are the property of their respective owners.*
+

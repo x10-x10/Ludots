@@ -1,4 +1,4 @@
-# GAS 战斗体系基建与 MOBA 实践指南
+﻿# GAS 战斗体系基建与 MOBA 实践指南
 
 本篇讲清楚两件事：
 
@@ -325,6 +325,7 @@ Graph 程序通过 `LoadSelfAttribute` / `WriteSelfAttribute` 读写当前实体
 
 参考：
 
-*   ECS 开发实践：`docs/developer-guide/01_ecs_soa_principles.md`
-*   GAS 分层架构：`docs/developer-guide/11_gas_layered_architecture.md`
-*   Trigger 开发指南：`docs/developer-guide/08_trigger_guide.md`
+*   ECS 开发实践：`docs/architecture/ecs_soa.md`
+*   GAS 分层架构：`docs/architecture/gas_layered_architecture.md`
+*   Trigger 开发指南：`docs/architecture/trigger_guide.md`
+

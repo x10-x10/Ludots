@@ -1,0 +1,18 @@
+# Ludots documentation governance owners
+
+/docs/README.md @MightyBubble
+/docs/conventions/ @MightyBubble
+/docs/architecture/ @MightyBubble
+/docs/reference/ @MightyBubble
+/docs/adr/ @MightyBubble
+/docs/audits/ @MightyBubble
+/docs/rfcs/ @MightyBubble
+
+/.github/PULL_REQUEST_TEMPLATE.md @MightyBubble
+/.github/workflows/docs-governance.yml @MightyBubble
+/scripts/validate-docs.ps1 @MightyBubble
+
+/README.md @MightyBubble
+/README_CN.md @MightyBubble
+/AGENTS.md @MightyBubble
+/CLAUDE.md @MightyBubble

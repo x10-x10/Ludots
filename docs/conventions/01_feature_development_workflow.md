@@ -1,4 +1,4 @@
-# Feature 开发工作流规范
+﻿# Feature 开发工作流规范
 
 本篇定义 Ludots 仓库中新功能开发的完整流程，从需求发现到合并验收。核心目标：杜绝重复造轮子，消除幻觉代码（引用不存在的 API），确保每一行新代码都挂靠在已有架构管线上。
 
@@ -33,7 +33,7 @@ AI Agent 专项规则见 [02_ai_assisted_development.md](02_ai_assisted_developm
 | 已有配置管线 | 搜索 `ConfigCatalogEntry`、`MergeGameConfig` | `src/Core/Config/` |
 | 已有 Sink | 搜索 `AttributeSinkRegistry` 注册点 | `src/Core/Gameplay/GAS/Bindings/` |
 | 已有 Trigger/Event | 搜索 `EventKey`、`OnEvent` | `src/Core/Scripting/` |
-| 已有文档 | 浏览 `docs/developer-guide/README.md` 目录 | `docs/developer-guide/` |
+| 已有文档 | 浏览 `docs/architecture/README.md` 目录 | `docs/architecture/` |
 
 ### 2.2 发现结论记录
 
@@ -142,7 +142,8 @@ Review 时优先检查以下项目：
 *   编码标准：见 [00_coding_standards.md](00_coding_standards.md)
 *   AI 辅助开发规范：见 [02_ai_assisted_development.md](02_ai_assisted_development.md)
 *   开发环境与构建：见 [03_environment_setup.md](03_environment_setup.md)
-*   文档编写规范：见 `docs/developer-guide/00_documentation_standards.md`
-*   ECS 开发实践：见 `docs/developer-guide/01_ecs_soa_principles.md`
-*   Mod 架构与配置系统：见 `docs/developer-guide/02_mod_architecture.md`
-*   GAS 分层架构：见 `docs/developer-guide/11_gas_layered_architecture.md`
+*   文档编写规范：见 `docs/conventions/04_documentation_governance.md`
+*   ECS 开发实践：见 `docs/architecture/ecs_soa.md`
+*   Mod 架构与配置系统：见 `docs/architecture/mod_architecture.md`
+*   GAS 分层架构：见 `docs/architecture/gas_layered_architecture.md`
+

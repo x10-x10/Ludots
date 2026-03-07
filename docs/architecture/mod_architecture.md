@@ -1,4 +1,4 @@
-# Mod 架构与配置系统
+﻿# Mod 架构与配置系统
 
 Ludots 采用了"一切皆 Mod"的设计理念，不仅允许用户扩展内容，就连引擎本身的核心内容也以 `Core` Mod 的形式存在。
 
@@ -100,8 +100,8 @@ if (vfs.TryResolveFullPath("MyMod:assets/Configs/game.json", out var fullPath))
 ### 合并策略
 1.  **Core 默认配置**：先加载 `Core:Configs/game.json`。
 2.  **Mod 配置**：按 `LoadedModIds` 顺序依次尝试合并：
-    *   `${modId}:assets/game.json`
-    *   `${modId}:assets/Configs/game.json`
+    *   `${modId}:mods/<modId>/assets/game.json`
+    *   `${modId}:mods/<modId>/assets/Configs/game.json`
 3.  **合并规则**：对象做递归合并；数组与标量做覆盖（不追加）。
 
 ### game.json 结构示例
@@ -114,7 +114,7 @@ if (vfs.TryResolveFullPath("MyMod:assets/Configs/game.json", out var fullPath))
 }
 ```
 
-如果 Mod 想要修改 `FixedHz` 为 30，只需在其 `assets/game.json` 中写：
+如果 Mod 想要修改 `FixedHz` 为 30，只需在其 `mods/<modId>/assets/game.json` 中写：
 ```json
 {
   "FixedHz": 30
@@ -122,6 +122,7 @@ if (vfs.TryResolveFullPath("MyMod:assets/Configs/game.json", out var fullPath))
 ```
 引擎最终运行时使用的配置将是合并后的结果。
 
-如需了解更完整的"配置来源、优先级、合并规则与限制"，参见 [07_config_pipeline.md](07_config_pipeline.md)。
+如需了解更完整的"配置来源、优先级、合并规则与限制"，参见 [ConfigPipeline 合并管线](config_pipeline.md)。
 
-地图配置与地图切换的生命周期（以及空间服务的热切换）参见 [10_map_mod_spatial.md](10_map_mod_spatial.md)。
+地图配置与地图切换的生命周期（以及空间服务的热切换）参见 [Map、Mod 与空间服务可插拔](map_mod_spatial.md)。
+

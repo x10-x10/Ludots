@@ -1,4 +1,4 @@
-# Map、Mod 与空间服务可插拔
+﻿# Map、Mod 与空间服务可插拔
 
 本篇说明三件事：
 
@@ -151,5 +151,6 @@ Ludots 使用 `HexGridAOI` 作为 "已加载区域" 的单一事实来源（SSOT
 
 相关文档：
 
-*   启动顺序与入口点：见 [09_startup_entrypoints.md](09_startup_entrypoints.md)
-*   Trigger 开发指南：见 [08_trigger_guide.md](08_trigger_guide.md)
+*   启动顺序与入口点：见 [启动顺序与入口点](startup_entrypoints.md)
+*   Trigger 开发指南：见 [Trigger 开发指南](trigger_guide.md)
+

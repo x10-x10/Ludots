@@ -1,4 +1,4 @@
-# 3C 系统：相机、角色与控制
+﻿# 3C 系统：相机、角色与控制
 
 ## 1. 概述
 
@@ -552,7 +552,7 @@ WorldToVisualSyncSystem
 |------|------|
 | `src/Core/Input/Runtime/IInputBackend.cs` | 平台输入抽象 |
 | `src/Core/Input/Runtime/PlayerInputHandler.cs` | Action 状态机 |
-| `src/Core/Input/Config/InputConfigRoot.cs` | 输入配置模型 |
+| `src/Core/Input/Config/InputConfigModels.cs` | 输入配置模型 |
 | `src/Core/Input/Orders/InputOrderMappingSystem.cs` | 指令映射系统 |
 
 ### Core 投影与 HUD
@@ -578,9 +578,10 @@ WorldToVisualSyncSystem
 
 ### 交叉引用
 
-- [适配器原则与平台抽象](03_adapter_pattern.md) — Core/Adapter 边界
-- [Pacemaker 时间与步进](05_pacemaker.md) — 固定步/渲染帧时序
-- [表现管线与 Performer 体系](06_presentation_performer.md) — Performer 发射与 CullState
-- [Trigger 开发指南](08_trigger_guide.md) — Mod 中注册相机/输入
-- [Map、Mod 与空间服务可插拔](10_map_mod_spatial.md) — ISpatialQueryService
-- [GAS 分层架构与 Sink](11_gas_layered_architecture.md) — ForceInput2D Sink
+- [适配器原则与平台抽象](adapter_pattern.md) — Core/Adapter 边界
+- [Pacemaker 时间与步进](pacemaker.md) — 固定步/渲染帧时序
+- [表现管线与 Performer 体系](presentation_performer.md) — Performer 发射与 CullState
+- [Trigger 开发指南](trigger_guide.md) — Mod 中注册相机/输入
+- [Map、Mod 与空间服务可插拔](map_mod_spatial.md) — ISpatialQueryService
+- [GAS 分层架构与 Sink](gas_layered_architecture.md) — ForceInput2D Sink
+

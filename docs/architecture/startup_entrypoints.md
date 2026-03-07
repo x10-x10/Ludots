@@ -1,4 +1,4 @@
-# 启动顺序与入口点
+﻿# 启动顺序与入口点
 
 本篇说明 Ludots 从进程启动到进入第一张地图的完整顺序：入口点在哪里、`game.json` 在启动阶段承担什么职责、引擎初始化时会做哪些关键步骤。
 
@@ -114,7 +114,8 @@ RaylibHostLoop 的启动顺序是：
 
 相关文档：
 
-*   Pacemaker 时间与步进：见 [05_pacemaker.md](05_pacemaker.md)
-*   ConfigPipeline 合并管线：见 [07_config_pipeline.md](07_config_pipeline.md)
-*   Trigger 开发指南：见 [08_trigger_guide.md](08_trigger_guide.md)
-*   Map 与空间服务：见 [10_map_mod_spatial.md](10_map_mod_spatial.md)
+*   Pacemaker 时间与步进：见 [Pacemaker 时间与步进](pacemaker.md)
+*   ConfigPipeline 合并管线：见 [ConfigPipeline 合并管线](config_pipeline.md)
+*   Trigger 开发指南：见 [Trigger 开发指南](trigger_guide.md)
+*   Map 与空间服务：见 [Map、Mod 与空间服务可插拔](map_mod_spatial.md)
+

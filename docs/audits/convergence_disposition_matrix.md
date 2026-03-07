@@ -1,4 +1,4 @@
-# 版本收束处置矩阵（分支 / PR / Issue）
+﻿# 版本收束处置矩阵（分支 / PR / Issue）
 
 本文给出本轮收束后的处置建议清单，用于主干合并与远端清理。核心原则：不整包引入脏分支，不保留与主线冲突的双真相路径，不通过忽略测试掩盖问题。
 
@@ -109,5 +109,6 @@
 
 ## 5 相关文档
 
-- Mod 运行时唯一真相与收束准则：见 [17_mod_runtime_single_source_of_truth.md](17_mod_runtime_single_source_of_truth.md)
-- ConfigPipeline 合并管线：见 [07_config_pipeline.md](07_config_pipeline.md)
+- Mod 运行时唯一真相与收束准则：见 [Mod 运行时唯一真相与收束准则](../architecture/mod_runtime_single_source_of_truth.md)
+- ConfigPipeline 合并管线：见 [ConfigPipeline 合并管线](../architecture/config_pipeline.md)
+

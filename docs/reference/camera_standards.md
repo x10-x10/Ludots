@@ -6,7 +6,7 @@
 适用范围: 3C Camera 标准
 ---
 
-# 16. Camera 标准规范
+# Camera 标准规范
 
 ## 概述
 

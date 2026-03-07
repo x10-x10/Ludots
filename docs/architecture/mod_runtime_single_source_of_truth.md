@@ -1,4 +1,4 @@
-# Mod 运行时唯一真相与收束准则
+﻿# Mod 运行时唯一真相与收束准则
 
 本文定义 Mod 相关链路在运行时与工具链中的统一规则，目标是消除隐式回退、路径双真相与配置歧义。读完后可以直接据此检查主线是否满足“配置表达产品意图、代码面向生产”的要求。
 
@@ -18,15 +18,15 @@
 - `mod.json.main` 必须与该目录对齐。
 - 不允许同一 Mod 同时依赖 `bin/Release/net8.0` 与 `bin/net8.0` 两套规则。
 
-参考实现：`src/Mods/Directory.Build.props`
+参考实现：`mods/Directory.Build.props`
 
 ## 2 启动器/CLI/工具链一致性
 
 ### 2.1 目录语义一致
 
-- GUI 启动器、CLI、工具命令统一围绕 `src/Mods`。
+- GUI 启动器、CLI、工具命令统一围绕 `mods/`。
 - 允许附加外部目录，但语义应与主目录一致（同样扫描 `mod.json`、同样依赖解析）。
-- 禁止 `src/Mods` 与 `assets/Mods` 并行作为默认真相源。
+- 禁止 `mods/` 与 `assets/Mods` 并行作为默认真相源。
 
 参考实现：
 
@@ -98,7 +98,8 @@
 
 ## 6 相关文档
 
-- Mod 架构与配置系统：见 [02_mod_architecture.md](02_mod_architecture.md)
-- CLI 启动与调试指南：见 [04_cli_guide.md](04_cli_guide.md)
-- ConfigPipeline 合并管线：见 [07_config_pipeline.md](07_config_pipeline.md)
-- 数据配置合并策略：见 [12_config_data_merge_best_practices.md](12_config_data_merge_best_practices.md)
+- Mod 架构与配置系统：见 [Mod 架构与配置系统](mod_architecture.md)
+- CLI 启动与调试指南：见 [CLI 运行与调试手册](../reference/cli_runbook.md)
+- ConfigPipeline 合并管线：见 [ConfigPipeline 合并管线](config_pipeline.md)
+- 数据配置合并策略：见 [配置数据合并最佳实践](../reference/config_data_merge_best_practices.md)
+

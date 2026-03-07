@@ -1,4 +1,4 @@
-# ConfigPipeline 合并管线
+﻿# ConfigPipeline 合并管线
 
 本篇聚焦“配置从哪里来、如何合并、如何让 Mod 覆盖 Core”。在 Ludots 中，启动时的 `game.json` 只用于提供 ModPaths（引导信息）；所有实际运行配置由 ConfigPipeline 从 Core 与各 Mod 的配置片段合并得到。
 
@@ -69,5 +69,6 @@ ConfigPipeline 在不同场景下有两条合并路径：
 如果你在新增一个“数据配置类”（尤其是给 Mod 暴露扩展点），不要再写独立合并器。  
 请按统一策略设计并接入目录驱动合并，详见：
 
-*   [数据配置类与通用合并策略最佳实践](12_config_data_merge_best_practices.md)
+*   [数据配置类与通用合并策略最佳实践](../reference/config_data_merge_best_practices.md)
+
 

@@ -91,7 +91,7 @@
 ## 4.1 入口
 
 - 配置：`src/Apps/Raylib/Ludots.App.Raylib/game.audit.json`
-- Mod：`src/Mods/AuditPlaygroundMod`
+- Mod：`mods/AuditPlaygroundMod`
 - 地图：
   - `audit_outer`
   - `audit_inner`
@@ -129,7 +129,7 @@ dotnet test src/Tests/GasTests/GasTests.csproj -c Release --filter "FullyQualifi
 dotnet test src/Tests/GasTests/GasTests.csproj -c Release --filter "FullyQualifiedName~MapLoadCleanupTests"
 dotnet test src/Tests/GasTests/GasTests.csproj -c Release --filter "FullyQualifiedName~MapManagerInheritanceTests"
 dotnet build src/Tools/Ludots.Editor.Bridge/Ludots.Editor.Bridge.csproj -c Release -p:WarningLevel=0
-dotnet build src/Mods/AuditPlaygroundMod/AuditPlaygroundMod.csproj -c Release -p:WarningLevel=0
+dotnet build mods/AuditPlaygroundMod/AuditPlaygroundMod.csproj -c Release -p:WarningLevel=0
 dotnet build src/Apps/Raylib/Ludots.App.Raylib/Ludots.App.Raylib.csproj -c Release -p:WarningLevel=0
 ```
 
