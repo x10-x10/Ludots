@@ -1,0 +1,123 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ludots.local/skills/contracts/review-result.schema.json",
+  "title": "Ludots Review Result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "review_id",
+    "subject",
+    "evidence_manifest_path",
+    "reviewer",
+    "verdict",
+    "summary",
+    "findings",
+    "created_at_utc"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "review_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{5,127}$"
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "kind",
+        "key"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "scenario_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence_manifest_path": {
+      "type": "string",
+      "pattern": "^artifacts/"
+    },
+    "reviewer": {
+      "type": "object",
+      "required": [
+        "skill",
+        "agent"
+      ],
+      "properties": {
+        "skill": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "needs_followup",
+        "blocked"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "severity",
+          "title",
+          "evidence_paths"
+        ],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocker",
+              "high",
+              "medium",
+              "low",
+              "note"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "evidence_paths": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^artifacts/"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

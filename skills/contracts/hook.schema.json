@@ -1,0 +1,157 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ludots.local/skills/contracts/hook.schema.json",
+  "title": "Ludots Hook Packet",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "packet_id",
+    "hook",
+    "status",
+    "producer",
+    "subject",
+    "created_at_utc",
+    "artifacts",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "packet_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{5,127}$"
+    },
+    "hook": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)+$"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "completed",
+        "blocked",
+        "ready",
+        "failed"
+      ]
+    },
+    "producer": {
+      "type": "object",
+      "required": [
+        "skill",
+        "agent"
+      ],
+      "properties": {
+        "skill": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "subject": {
+      "type": "object",
+      "required": [
+        "kind",
+        "key"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "feature",
+            "bug",
+            "task",
+            "handoff",
+            "pr",
+            "issue",
+            "ci",
+            "audit",
+            "demo"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "issue_id": {
+          "type": "string"
+        },
+        "pr_id": {
+          "type": "string"
+        },
+        "scenario_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consumes_packets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "payload": {
+      "type": "object"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": [
+        "role",
+        "path"
+      ],
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^(artifacts|docs|skills|scripts|src|mods|assets|\\.github)/"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

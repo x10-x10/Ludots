@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Ludots Visual Review"
+  short_description: "Review visual evidence and emit a verdict"
+  default_prompt: "Use $ludots-visual-review to inspect screenshots or keyframes, record severity-ranked findings, and emit a visual review result."

@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Ludots Cloud Handoff"
+  short_description: "Package cloud handoffs with linked evidence"
+  default_prompt: "Use $ludots-cloud-handoff to assemble a resumable handoff packet with blockers, next actions, and linked hook artifacts."

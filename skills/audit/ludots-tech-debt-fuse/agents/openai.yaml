@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ludots Tech Debt Fuse"
+  short_description: "Escalate debt and apply fuse decisions"
+  default_prompt: "Use $ludots-tech-debt-fuse to classify impact, choose fuse strategy, and output a linked technical debt report."
+

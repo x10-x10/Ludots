@@ -1,4 +1,4 @@
-# Ludots documentation governance owners
+﻿# Ludots documentation governance owners
 
 /docs/README.md @MightyBubble
 /docs/conventions/ @MightyBubble
@@ -8,9 +8,14 @@
 /docs/audits/ @MightyBubble
 /docs/rfcs/ @MightyBubble
 
+/skills/ @MightyBubble
+
 /.github/PULL_REQUEST_TEMPLATE.md @MightyBubble
 /.github/workflows/docs-governance.yml @MightyBubble
+/.github/workflows/skills-governance.yml @MightyBubble
 /scripts/validate-docs.ps1 @MightyBubble
+/scripts/validate-skills.ps1 @MightyBubble
+/scripts/sync-skills.ps1 @MightyBubble
 
 /README.md @MightyBubble
 /README_CN.md @MightyBubble

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -56,7 +56,7 @@ function Resolve-RepoTarget {
         return $normalizedTarget
     }
 
-    if ($normalizedTarget -match '^(docs|src|assets|mods|scripts|artifacts|external|\.github)/') {
+    if ($normalizedTarget -match '^(docs|src|assets|mods|scripts|skills|artifacts|external|\\.github)/') {
         return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $normalizedTarget))
     }
 
@@ -144,7 +144,7 @@ foreach ($file in $filesToValidate) {
 
     foreach ($match in Get-BacktickPaths -Content $content) {
         $token = $match.Groups[1].Value.Trim()
-        if ($token -notmatch '^(docs|src|assets|mods|scripts|artifacts|external|\.github)/') {
+        if ($token -notmatch '^(docs|src|assets|mods|scripts|skills|artifacts|external|\\.github)/') {
             continue
         }
 
@@ -200,3 +200,4 @@ if ($findings.Count -gt 0) {
 }
 
 Write-Host 'Documentation validation passed.' -ForegroundColor Green
+
