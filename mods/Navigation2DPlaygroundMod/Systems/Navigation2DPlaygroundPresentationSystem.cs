@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using Arch.Core;
 using Arch.System;
 using Ludots.Core.Engine;
@@ -131,10 +131,10 @@ namespace Navigation2DPlaygroundMod.Systems
             int startFlow = mode == 1 ? 0 : (mode == 2 ? 1 : 0);
             int endFlowExclusive = mode == 1 ? 1 : (mode == 2 ? 2 : nav.FlowCount);
 
-            // Fix4: 表现层只做只读采样，不调用 SetGoalPoint/Step
-            // 模拟层 (Navigation2DSteeringSystem2D) 已负责驱动 flowfield 计算
+            // Fix4: 琛ㄧ幇灞傚彧鍋氬彧璇婚噰鏍凤紝涓嶈皟鐢?SetGoalPoint/Step
+            // 妯℃嫙灞?(Navigation2DSteeringSystem2D) 宸茶礋璐ｉ┍鍔?flowfield 璁＄畻
 
-            // Fix6: 缩小箭头间距(12→4m)和箭头长度(4→1.5m)，更好匹配agent尺寸
+            // Fix6: 缂╁皬绠ご闂磋窛(12鈫?m)鍜岀澶撮暱搴?4鈫?.5m)锛屾洿濂藉尮閰峚gent灏哄
             float halfM = 90f;
             float stepM = 4f;
             float arrowLenM = 1.5f;
@@ -250,3 +250,4 @@ namespace Navigation2DPlaygroundMod.Systems
         }
     }
 }
+

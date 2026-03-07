@@ -1,11 +1,8 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
-using Arch.Core;
-using Ludots.Core.Components;
 using Ludots.Core.Config;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay;
-using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Map;
 using Ludots.Core.Modding;
@@ -25,7 +22,6 @@ namespace Navigation2DPlaygroundMod.Triggers
         private bool _installed;
         private bool _inputContextActive;
         private const string InputContextId = Navigation2DPlaygroundInputContexts.Playground;
-        private const string AgentsPerTeamConfigKey = "navigation2d_playground_agents_per_team";
 
         public EnableNavigation2DPlaygroundOnEntryTrigger(IModContext ctx)
         {
@@ -65,46 +61,32 @@ namespace Navigation2DPlaygroundMod.Triggers
                     var meshRegistry = context.Get(CoreServiceKeys.PresentationMeshAssetRegistry) as MeshAssetRegistry;
                     engine.RegisterPresentationSystem(new Navigation2DPlaygroundPresentationSystem(engine, debugDrawBuffer, meshRegistry));
 
-                    Navigation2DPlaygroundState.AgentsPerTeam = ResolveConfiguredAgentsPerTeam(engine);
-                    Navigation2DPlaygroundControlSystem.SpawnScenario(engine.World, Navigation2DPlaygroundState.AgentsPerTeam);
-                    engine.SetService(Navigation2DPlaygroundKeys.AgentsPerTeam, Navigation2DPlaygroundState.AgentsPerTeam);
-                    engine.SetService(Navigation2DPlaygroundKeys.LiveAgentsTotal, Navigation2DPlaygroundState.AgentsPerTeam * 2);
+                    GameConfig? gameConfig = engine.GetService(CoreServiceKeys.GameConfig);
+                    var playgroundConfig = Navigation2DPlaygroundScenarioSpawner.GetPlaygroundConfig(gameConfig);
+                    Navigation2DPlaygroundState.AgentsPerTeam = playgroundConfig.DefaultAgentsPerTeam;
+                    Navigation2DPlaygroundState.CurrentScenarioIndex = playgroundConfig.DefaultScenarioIndex;
+
+                    var scenario = Navigation2DPlaygroundScenarioSpawner.GetScenario(playgroundConfig, Navigation2DPlaygroundState.CurrentScenarioIndex);
+                    var summary = Navigation2DPlaygroundScenarioSpawner.SpawnScenario(engine.World, scenario, Navigation2DPlaygroundState.AgentsPerTeam);
+                    Navigation2DPlaygroundControlSystem.PublishScenarioServices(
+                        engine,
+                        playgroundConfig,
+                        summary,
+                        Navigation2DPlaygroundState.AgentsPerTeam,
+                        Navigation2DPlaygroundState.CurrentScenarioIndex);
 
                     _installed = true;
-                    _ctx.Log("[Navigation2DPlaygroundMod] Installed systems and spawned two-team pass-through scenario.");
+                    _ctx.Log($"[Navigation2DPlaygroundMod] Installed systems and spawned scenario '{summary.ScenarioName}'.");
                 }
 
                 Navigation2DPlaygroundState.Enabled = true;
 
-                var session = context.Get(CoreServiceKeys.GameSession);
                 var input = context.Get(CoreServiceKeys.InputHandler);
-                if (session != null && input != null)
+                if (input != null && !_inputContextActive)
                 {
-                    if (!_inputContextActive)
-                    {
-                        EnsurePlaygroundInputSchema(input);
-                        input.PushContext(InputContextId);
-                        _inputContextActive = true;
-                    }
-
-                    session.Camera.State.TargetCm = System.Numerics.Vector2.Zero;
-                    session.Camera.State.Pitch = 65f;
-                    session.Camera.State.DistanceCm = 18000f;
-
-                    if (session.Camera.Controller == null)
-                    {
-                        engine.SetService(CoreServiceKeys.CameraControllerRequest, new CameraControllerRequest
-                        {
-                            Id = CameraControllerIds.Orbit3C,
-                            Config = new Orbit3CCameraConfig
-                            {
-                                EnablePan = true,
-                                PanCmPerSecond = 12000f,
-                                ZoomCmPerWheel = 10000f,
-                                RotateDegPerSecond = 90f
-                            }
-                        });
-                    }
+                    EnsurePlaygroundInputSchema(input);
+                    input.PushContext(InputContextId);
+                    _inputContextActive = true;
                 }
             }
             else
@@ -121,18 +103,6 @@ namespace Navigation2DPlaygroundMod.Triggers
             return Task.CompletedTask;
         }
 
-        private static int ResolveConfiguredAgentsPerTeam(GameEngine engine)
-        {
-            GameConfig? config = engine.GetService(CoreServiceKeys.GameConfig);
-            if (config?.Constants?.IntValues != null &&
-                config.Constants.IntValues.TryGetValue(AgentsPerTeamConfigKey, out int configuredAgentsPerTeam))
-            {
-                return Math.Clamp(configuredAgentsPerTeam, 0, 25000);
-            }
-
-            return Navigation2DPlaygroundState.AgentsPerTeam;
-        }
-
         private static void EnsurePlaygroundInputSchema(PlayerInputHandler input)
         {
             if (!input.HasContext(Navigation2DPlaygroundInputContexts.Playground))
@@ -147,6 +117,8 @@ namespace Navigation2DPlaygroundMod.Triggers
             if (!input.HasAction(Navigation2DPlaygroundInputActions.DecreaseFlowIterations)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.DecreaseFlowIterations}");
             if (!input.HasAction(Navigation2DPlaygroundInputActions.IncreaseAgentsPerTeam)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.IncreaseAgentsPerTeam}");
             if (!input.HasAction(Navigation2DPlaygroundInputActions.DecreaseAgentsPerTeam)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.DecreaseAgentsPerTeam}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.PreviousScenario)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.PreviousScenario}");
+            if (!input.HasAction(Navigation2DPlaygroundInputActions.NextScenario)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.NextScenario}");
             if (!input.HasAction(Navigation2DPlaygroundInputActions.ResetScenario)) throw new InvalidOperationException($"Missing input action: {Navigation2DPlaygroundInputActions.ResetScenario}");
         }
     }

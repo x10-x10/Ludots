@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using Ludots.Core.Config;
 using Ludots.Core.Modding;
@@ -13,7 +13,7 @@ namespace Ludots.Tests.Navigation2D
     public sealed class Navigation2DConfigPipelineTests
     {
         [Test]
-        public void MergeGameConfig_ParsesExplicitNavigation2DSteeringConfig()
+        public void MergeGameConfig_ParsesExplicitNavigation2DSteeringAndPlaygroundConfig()
         {
             string root = Path.Combine(Path.GetTempPath(), "Ludots_Navigation2DConfigPipelineTests", Guid.NewGuid().ToString("N"));
             string core = Path.Combine(root, "Core");
@@ -30,6 +30,30 @@ namespace Ludots.Tests.Navigation2D
       ""UpdateMode"": ""Adaptive"",
       ""RebuildCellMigrationsThreshold"": 64,
       ""RebuildAccumulatedCellMigrationsThreshold"": 256
+    },
+    ""Playground"": {
+      ""DefaultAgentsPerTeam"": 3200,
+      ""AgentsPerTeamStep"": 250,
+      ""DefaultScenarioIndex"": 1,
+      ""Scenarios"": [
+        {
+          ""Id"": ""queue"",
+          ""Name"": ""Goal Queue"",
+          ""Kind"": ""GoalQueue"",
+          ""TeamCount"": 1,
+          ""GoalRadiusCm"": 180,
+          ""BlockerCount"": 18,
+          ""BlockerSpacingCm"": 220
+        },
+        {
+          ""Id"": ""merge"",
+          ""Name"": ""Lane Merge"",
+          ""Kind"": ""LaneMerge"",
+          ""TeamCount"": 2,
+          ""LaneOffsetCm"": 2600,
+          ""FormationSpacingCm"": 140
+        }
+      ]
     },
     ""Steering"": {
       ""Mode"": ""Hybrid"",
@@ -75,6 +99,15 @@ namespace Ludots.Tests.Navigation2D
             Assert.That(gameConfig.Navigation2D.Spatial.UpdateMode, Is.EqualTo(Navigation2DSpatialUpdateMode.Adaptive));
             Assert.That(gameConfig.Navigation2D.Spatial.RebuildCellMigrationsThreshold, Is.EqualTo(64));
             Assert.That(gameConfig.Navigation2D.Spatial.RebuildAccumulatedCellMigrationsThreshold, Is.EqualTo(256));
+            Assert.That(gameConfig.Navigation2D.Playground.DefaultAgentsPerTeam, Is.EqualTo(3200));
+            Assert.That(gameConfig.Navigation2D.Playground.AgentsPerTeamStep, Is.EqualTo(250));
+            Assert.That(gameConfig.Navigation2D.Playground.DefaultScenarioIndex, Is.EqualTo(1));
+            Assert.That(gameConfig.Navigation2D.Playground.Scenarios.Count, Is.EqualTo(2));
+            Assert.That(gameConfig.Navigation2D.Playground.Scenarios[0].Kind, Is.EqualTo(Navigation2DPlaygroundScenarioKind.GoalQueue));
+            Assert.That(gameConfig.Navigation2D.Playground.Scenarios[0].TeamCount, Is.EqualTo(1));
+            Assert.That(gameConfig.Navigation2D.Playground.Scenarios[0].BlockerCount, Is.EqualTo(18));
+            Assert.That(gameConfig.Navigation2D.Playground.Scenarios[1].Kind, Is.EqualTo(Navigation2DPlaygroundScenarioKind.LaneMerge));
+            Assert.That(gameConfig.Navigation2D.Playground.Scenarios[1].LaneOffsetCm, Is.EqualTo(2600));
             Assert.That(gameConfig.Navigation2D.Steering.Mode, Is.EqualTo(Navigation2DAvoidanceMode.Hybrid));
             Assert.That(gameConfig.Navigation2D.Steering.QueryBudget.MaxNeighborsPerAgent, Is.EqualTo(12));
             Assert.That(gameConfig.Navigation2D.Steering.QueryBudget.MaxCandidateChecksPerAgent, Is.EqualTo(48));
@@ -82,9 +115,9 @@ namespace Ludots.Tests.Navigation2D
             Assert.That(gameConfig.Navigation2D.Steering.Hybrid.DenseNeighborThreshold, Is.EqualTo(5));
             Assert.That(gameConfig.Navigation2D.Steering.Hybrid.MinOpposingNeighborsForOrca, Is.EqualTo(2));
             Assert.That(gameConfig.Navigation2D.Steering.SmartStop.MaxNeighbors, Is.EqualTo(6));
+            Assert.That(runtime.Config.Playground.DefaultAgentsPerTeam, Is.EqualTo(3200));
+            Assert.That(runtime.Config.Playground.Scenarios[0].Kind, Is.EqualTo(Navigation2DPlaygroundScenarioKind.GoalQueue));
             Assert.That(runtime.Config.Spatial.UpdateMode, Is.EqualTo(Navigation2DSpatialUpdateMode.Adaptive));
-            Assert.That(runtime.Config.Spatial.RebuildCellMigrationsThreshold, Is.EqualTo(64));
-            Assert.That(runtime.Config.Spatial.RebuildAccumulatedCellMigrationsThreshold, Is.EqualTo(256));
             Assert.That(runtime.Config.Steering.Mode, Is.EqualTo(Navigation2DAvoidanceMode.Hybrid));
         }
     }

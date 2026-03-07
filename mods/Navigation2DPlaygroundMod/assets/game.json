@@ -1,10 +1,5 @@
-{
+﻿{
   "startupMapId": "nav2d_playground",
-  "Constants": {
-    "IntValues": {
-      "navigation2d_playground_agents_per_team": 5000
-    }
-  },
   "Navigation2D": {
     "Enabled": true,
     "MaxAgents": 50000,
@@ -13,6 +8,81 @@
       "UpdateMode": "Adaptive",
       "RebuildCellMigrationsThreshold": 128,
       "RebuildAccumulatedCellMigrationsThreshold": 1024
+    },
+    "Playground": {
+      "DefaultAgentsPerTeam": 5000,
+      "AgentsPerTeamStep": 500,
+      "DefaultScenarioIndex": 0,
+      "Scenarios": [
+        {
+          "Id": "pass_through",
+          "Name": "Pass Through",
+          "Kind": "PassThrough",
+          "TeamCount": 2,
+          "FormationSpacingCm": 120,
+          "StartOffsetCm": 9000,
+          "GoalOffsetCm": 9000,
+          "GoalRadiusCm": 120
+        },
+        {
+          "Id": "orthogonal_cross",
+          "Name": "Orthogonal Cross",
+          "Kind": "OrthogonalCross",
+          "TeamCount": 2,
+          "FormationSpacingCm": 120,
+          "StartOffsetCm": 8200,
+          "GoalOffsetCm": 8200,
+          "GoalRadiusCm": 120
+        },
+        {
+          "Id": "bottleneck",
+          "Name": "Bottleneck",
+          "Kind": "Bottleneck",
+          "TeamCount": 2,
+          "FormationSpacingCm": 120,
+          "StartOffsetCm": 9200,
+          "GoalOffsetCm": 9200,
+          "CorridorHalfWidthCm": 320,
+          "GoalRadiusCm": 120,
+          "BlockerRadiusCm": 150,
+          "BlockerCount": 20,
+          "BlockerSpacingCm": 280
+        },
+        {
+          "Id": "lane_merge",
+          "Name": "Lane Merge",
+          "Kind": "LaneMerge",
+          "TeamCount": 2,
+          "FormationSpacingCm": 120,
+          "StartOffsetCm": 8800,
+          "GoalOffsetCm": 9200,
+          "LaneOffsetCm": 2400,
+          "GoalRadiusCm": 150
+        },
+        {
+          "Id": "circle_swap",
+          "Name": "Circle Swap",
+          "Kind": "CircleSwap",
+          "TeamCount": 2,
+          "FormationSpacingCm": 120,
+          "RingRadiusCm": 5400,
+          "GoalRadiusCm": 160
+        },
+        {
+          "Id": "goal_queue",
+          "Name": "Goal Queue",
+          "Kind": "GoalQueue",
+          "TeamCount": 1,
+          "FormationSpacingCm": 120,
+          "StartOffsetCm": 9200,
+          "GoalOffsetCm": 7200,
+          "GoalRadiusCm": 220,
+          "CorridorHalfWidthCm": 220,
+          "BlockerRadiusCm": 130,
+          "BlockerCount": 18,
+          "BlockerSpacingCm": 260
+        }
+      ]
     },
     "Steering": {
       "Mode": "Hybrid",
