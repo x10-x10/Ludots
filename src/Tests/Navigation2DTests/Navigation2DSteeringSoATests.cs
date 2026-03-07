@@ -167,6 +167,11 @@ namespace Ludots.Tests.Navigation2D
                 position: Fix64Vec2.FromInt(10, 20).ToVector2(),
                 velocity: Fix64Vec2.FromInt(1, 0).ToVector2(),
                 radius: 30f,
+                maxSpeed: 100f,
+                maxAccel: 1000f,
+                neighborDistance: 120f,
+                timeHorizon: 2f,
+                maxNeighbors: 4,
                 hasPointGoal: true,
                 goalPosition: Fix64Vec2.FromInt(100, 20).ToVector2(),
                 goalRadius: 10f,
@@ -184,6 +189,11 @@ namespace Ludots.Tests.Navigation2D
                 position: Fix64Vec2.FromInt(10, 20).ToVector2(),
                 velocity: Fix64Vec2.FromInt(1, 0).ToVector2(),
                 radius: 30f,
+                maxSpeed: 100f,
+                maxAccel: 1000f,
+                neighborDistance: 120f,
+                timeHorizon: 2f,
+                maxNeighbors: 4,
                 hasPointGoal: true,
                 goalPosition: Fix64Vec2.FromInt(100, 20).ToVector2(),
                 goalRadius: 10f,
@@ -203,12 +213,12 @@ namespace Ludots.Tests.Navigation2D
             using var agentSoA = new Navigation2DWorld(new Navigation2DWorldSettings(8, Fix64.FromInt(100)));
 
             agentSoA.BeginSync();
-            Assert.That(agentSoA.SyncAgent(1, Fix64Vec2.FromInt(0, 0).ToVector2(), Fix64Vec2.Zero.ToVector2(), 30f, false, Vector2.Zero, 0f, 0f), Is.True);
-            Assert.That(agentSoA.SyncAgent(2, Fix64Vec2.FromInt(10, 0).ToVector2(), Fix64Vec2.Zero.ToVector2(), 30f, false, Vector2.Zero, 0f, 0f), Is.True);
+            Assert.That(agentSoA.SyncAgent(1, Fix64Vec2.FromInt(0, 0).ToVector2(), Fix64Vec2.Zero.ToVector2(), 30f, 100f, 1000f, 120f, 2f, 4, false, Vector2.Zero, 0f, 0f), Is.True);
+            Assert.That(agentSoA.SyncAgent(2, Fix64Vec2.FromInt(10, 0).ToVector2(), Fix64Vec2.Zero.ToVector2(), 30f, 100f, 1000f, 120f, 2f, 4, false, Vector2.Zero, 0f, 0f), Is.True);
             agentSoA.EndSync();
 
             agentSoA.BeginSync();
-            Assert.That(agentSoA.SyncAgent(2, Fix64Vec2.FromInt(10, 0).ToVector2(), Fix64Vec2.Zero.ToVector2(), 30f, false, Vector2.Zero, 0f, 0f), Is.True);
+            Assert.That(agentSoA.SyncAgent(2, Fix64Vec2.FromInt(10, 0).ToVector2(), Fix64Vec2.Zero.ToVector2(), 30f, 100f, 1000f, 120f, 2f, 4, false, Vector2.Zero, 0f, 0f), Is.True);
             var sync = agentSoA.EndSync();
 
             Assert.That(sync.SpatialDirty, Is.True);

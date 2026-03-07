@@ -86,6 +86,16 @@ namespace Ludots.Tests.Navigation2D
         ""Enabled"": true,
         ""MaxNeighbors"": 6,
         ""GoalToleranceCm"": 90
+      },
+      ""TemporalCoherence"": {
+        ""Enabled"": true,
+        ""RequireSteadyStateWorld"": false,
+        ""MaxReuseTicks"": 9,
+        ""PositionToleranceCm"": 3,
+        ""VelocityToleranceCmPerSec"": 6,
+        ""PreferredVelocityToleranceCmPerSec"": 7,
+        ""NeighborPositionQuantizationCm"": 10,
+        ""NeighborVelocityQuantizationCmPerSec"": 12
       }
     }
   }
@@ -122,6 +132,14 @@ namespace Ludots.Tests.Navigation2D
             Assert.That(gameConfig.Navigation2D.Steering.Hybrid.DenseNeighborThreshold, Is.EqualTo(5));
             Assert.That(gameConfig.Navigation2D.Steering.Hybrid.MinOpposingNeighborsForOrca, Is.EqualTo(2));
             Assert.That(gameConfig.Navigation2D.Steering.SmartStop.MaxNeighbors, Is.EqualTo(6));
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.Enabled, Is.True);
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.RequireSteadyStateWorld, Is.False);
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.MaxReuseTicks, Is.EqualTo(9));
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.PositionToleranceCm, Is.EqualTo(3));
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.VelocityToleranceCmPerSec, Is.EqualTo(6));
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.PreferredVelocityToleranceCmPerSec, Is.EqualTo(7));
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.NeighborPositionQuantizationCm, Is.EqualTo(10));
+            Assert.That(gameConfig.Navigation2D.Steering.TemporalCoherence.NeighborVelocityQuantizationCmPerSec, Is.EqualTo(12));
             Assert.That(gameConfig.Navigation2D.FlowStreaming.Enabled, Is.True);
             Assert.That(gameConfig.Navigation2D.FlowStreaming.ActivationRadiusTiles, Is.EqualTo(4));
             Assert.That(gameConfig.Navigation2D.FlowStreaming.MaxActiveTilesPerFlow, Is.EqualTo(320));
@@ -132,6 +150,9 @@ namespace Ludots.Tests.Navigation2D
             Assert.That(runtime.Config.Spatial.UpdateMode, Is.EqualTo(Navigation2DSpatialUpdateMode.Adaptive));
             Assert.That(runtime.Config.FlowStreaming.MaxActiveTilesPerFlow, Is.EqualTo(320));
             Assert.That(runtime.Config.Steering.Mode, Is.EqualTo(Navigation2DAvoidanceMode.Hybrid));
+            Assert.That(runtime.Config.Steering.TemporalCoherence.Enabled, Is.True);
+            Assert.That(runtime.Config.Steering.TemporalCoherence.MaxReuseTicks, Is.EqualTo(9));
+            Assert.That(runtime.Config.Steering.TemporalCoherence.NeighborVelocityQuantizationCmPerSec, Is.EqualTo(12));
         }
     }
 }

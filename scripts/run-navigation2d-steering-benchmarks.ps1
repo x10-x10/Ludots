@@ -35,13 +35,20 @@ foreach ($test in $tests)
         exit $LASTEXITCODE
     }
 
-    $medianMatch = [regex]::Match(($output -join [Environment]::NewLine), 'Median Avg Steering Tick:\s*([0-9.]+)ms')
-    $cellMapMatch = [regex]::Match(($output -join [Environment]::NewLine), 'CellMap Avg UpdatePositions Tick:\s*([0-9.]+)ms')
+    $joined = $output -join [Environment]::NewLine
+    $medianMatch = [regex]::Match($joined, 'Median Avg Steering Tick:\s*([0-9.]+)ms')
+    $cellMapMatch = [regex]::Match($joined, 'CellMap Avg UpdatePositions Tick:\s*([0-9.]+)ms')
+    $cacheLookupsMatch = [regex]::Match($joined, 'Steering Cache Lookups/Tick:\s*([0-9.]+)')
+    $cacheHitsMatch = [regex]::Match($joined, 'Steering Cache Hits/Tick:\s*([0-9.]+)')
+    $cacheRateMatch = [regex]::Match($joined, 'Steering Cache Hit Rate:\s*([0-9.]+)\s*%')
 
     $results.Add([pscustomobject]@{
         Test = $test
         MedianMs = if ($medianMatch.Success) { [double]$medianMatch.Groups[1].Value } else { $null }
         CellMapMs = if ($cellMapMatch.Success) { [double]$cellMapMatch.Groups[1].Value } else { $null }
+        CacheLookupsPerTick = if ($cacheLookupsMatch.Success) { [double]$cacheLookupsMatch.Groups[1].Value } else { $null }
+        CacheHitsPerTick = if ($cacheHitsMatch.Success) { [double]$cacheHitsMatch.Groups[1].Value } else { $null }
+        CacheHitRatePercent = if ($cacheRateMatch.Success) { [double]$cacheRateMatch.Groups[1].Value } else { $null }
     })
 }
 

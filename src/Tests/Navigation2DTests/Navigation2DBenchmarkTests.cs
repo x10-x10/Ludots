@@ -67,6 +67,8 @@ namespace Ludots.Tests.Navigation2D
             var sampleCellMapMs = new double[settings.SampleCount];
             var sampleDirtyAgentsPerTick = new double[settings.SampleCount];
             var sampleCellMigrationsPerTick = new double[settings.SampleCount];
+            var sampleCacheLookupsPerTick = new double[settings.SampleCount];
+            var sampleCacheHitsPerTick = new double[settings.SampleCount];
 
             for (int sample = 0; sample < settings.SampleCount; sample++)
             {
@@ -81,6 +83,8 @@ namespace Ludots.Tests.Navigation2D
 
                 long beforeAlloc = GC.GetAllocatedBytesForCurrentThread();
                 long totalSteeringTicks = 0;
+                long totalCacheLookups = 0;
+                long totalCacheHits = 0;
 
                 for (int iteration = 0; iteration < settings.MeasuredIterations; iteration++)
                 {
@@ -88,11 +92,15 @@ namespace Ludots.Tests.Navigation2D
                     long t0 = Stopwatch.GetTimestamp();
                     harness.System.Update(DeltaTime);
                     totalSteeringTicks += Stopwatch.GetTimestamp() - t0;
+                    totalCacheLookups += harness.Runtime.AgentSoA.SteeringCacheLookupsFrame;
+                    totalCacheHits += harness.Runtime.AgentSoA.SteeringCacheHitsFrame;
                 }
 
                 long afterAlloc = GC.GetAllocatedBytesForCurrentThread();
                 sampleAvgMs[sample] = totalSteeringTicks * 1000.0 / Stopwatch.Frequency / settings.MeasuredIterations;
                 sampleAllocBytes[sample] = afterAlloc - beforeAlloc;
+                sampleCacheLookupsPerTick[sample] = (double)totalCacheLookups / settings.MeasuredIterations;
+                sampleCacheHitsPerTick[sample] = (double)totalCacheHits / settings.MeasuredIterations;
 
                 if (harness.Runtime.CellMap.InstrumentedUpdateCalls > 0)
                 {
@@ -102,7 +110,7 @@ namespace Ludots.Tests.Navigation2D
                 }
             }
 
-            PrintResult(mode, label, scenario, settings, sampleAvgMs, sampleAllocBytes, sampleCellMapMs, sampleDirtyAgentsPerTick, sampleCellMigrationsPerTick);
+            PrintResult(mode, label, scenario, settings, sampleAvgMs, sampleAllocBytes, sampleCellMapMs, sampleDirtyAgentsPerTick, sampleCellMigrationsPerTick, sampleCacheLookupsPerTick, sampleCacheHitsPerTick);
         }
 
         private static void PrimeBenchmarkCodePaths(Navigation2DAvoidanceMode mode, NavBenchmarkScenario scenario, ScenarioRunConfig settings)
@@ -276,7 +284,9 @@ namespace Ludots.Tests.Navigation2D
             long[] sampleAllocBytes,
             double[] sampleCellMapMs,
             double[] sampleDirtyAgentsPerTick,
-            double[] sampleCellMigrationsPerTick)
+            double[] sampleCellMigrationsPerTick,
+            double[] sampleCacheLookupsPerTick,
+            double[] sampleCacheHitsPerTick)
         {
             var sortedMs = (double[])sampleAvgMs.Clone();
             Array.Sort(sortedMs);
@@ -293,6 +303,12 @@ namespace Ludots.Tests.Navigation2D
             Console.WriteLine($"  Min/Max Avg Steering Tick: {sortedMs[0]:F4}ms / {sortedMs[^1]:F4}ms");
             Console.WriteLine($"  Sample Avg Steering Tick: {FormatSamples(sampleAvgMs)}");
             Console.WriteLine($"  Median AllocatedBytes(CurrentThread): {MedianOfSorted(sortedAllocs)}");
+            double medianCacheLookups = MedianOfSorted((double[])sampleCacheLookupsPerTick.Clone());
+            double medianCacheHits = MedianOfSorted((double[])sampleCacheHitsPerTick.Clone());
+            double cacheHitRate = medianCacheLookups > 0.0 ? medianCacheHits / medianCacheLookups : 0.0;
+            Console.WriteLine($"  Steering Cache Lookups/Tick: {medianCacheLookups:F1}");
+            Console.WriteLine($"  Steering Cache Hits/Tick: {medianCacheHits:F1}");
+            Console.WriteLine($"  Steering Cache Hit Rate: {cacheHitRate:P1}");
 
             if (settings.PrintCellMapStats)
             {
@@ -401,6 +417,17 @@ namespace Ludots.Tests.Navigation2D
                         GoalToleranceCm = 80,
                         ArrivedSlackCm = 20,
                         StoppedSpeedThresholdCmPerSec = 5,
+                    },
+                    TemporalCoherence = new Navigation2DSteeringTemporalCoherenceConfig
+                    {
+                        Enabled = true,
+                        RequireSteadyStateWorld = false,
+                        MaxReuseTicks = 12,
+                        PositionToleranceCm = 2,
+                        VelocityToleranceCmPerSec = 4,
+                        PreferredVelocityToleranceCmPerSec = 4,
+                        NeighborPositionQuantizationCm = 8,
+                        NeighborVelocityQuantizationCmPerSec = 8,
                     }
                 }
             };

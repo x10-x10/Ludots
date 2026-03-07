@@ -57,6 +57,7 @@ namespace Ludots.Tests.Navigation2D
             Assert.That(inputJson, Does.Contain("Nav2D_NextScenario"));
             Assert.That(mapJson, Does.Contain("\"Pitch\": 65"));
             Assert.That(gameJson, Does.Contain("\"Playground\""));
+            Assert.That(gameJson, Does.Contain("\"TemporalCoherence\""));
 
             var config = new Navigation2DConfig
             {

@@ -69,6 +69,18 @@ namespace Ludots.Core.Navigation2D.Config
         public int StoppedSpeedThresholdCmPerSec { get; set; } = 5;
     }
 
+    public sealed class Navigation2DSteeringTemporalCoherenceConfig
+    {
+        public bool Enabled { get; set; } = false;
+        public bool RequireSteadyStateWorld { get; set; } = true;
+        public int MaxReuseTicks { get; set; } = 12;
+        public int PositionToleranceCm { get; set; } = 2;
+        public int VelocityToleranceCmPerSec { get; set; } = 4;
+        public int PreferredVelocityToleranceCmPerSec { get; set; } = 4;
+        public int NeighborPositionQuantizationCm { get; set; } = 8;
+        public int NeighborVelocityQuantizationCmPerSec { get; set; } = 8;
+    }
+
     public sealed class Navigation2DSpatialPartitionConfig
     {
         public Navigation2DSpatialUpdateMode UpdateMode { get; set; } = Navigation2DSpatialUpdateMode.Adaptive;
@@ -119,6 +131,7 @@ namespace Ludots.Core.Navigation2D.Config
         public Navigation2DSonarConfig Sonar { get; set; } = new();
         public Navigation2DHybridAvoidanceConfig Hybrid { get; set; } = new();
         public Navigation2DSmartStopConfig SmartStop { get; set; } = new();
+        public Navigation2DSteeringTemporalCoherenceConfig TemporalCoherence { get; set; } = new();
     }
 
     public sealed class Navigation2DConfig
@@ -182,6 +195,17 @@ namespace Ludots.Core.Navigation2D.Config
                         GoalToleranceCm = ClampAtLeast(steering?.SmartStop?.GoalToleranceCm ?? 80, 0),
                         ArrivedSlackCm = ClampAtLeast(steering?.SmartStop?.ArrivedSlackCm ?? 20, 0),
                         StoppedSpeedThresholdCmPerSec = ClampAtLeast(steering?.SmartStop?.StoppedSpeedThresholdCmPerSec ?? 5, 0),
+                    },
+                    TemporalCoherence = new Navigation2DSteeringTemporalCoherenceConfig
+                    {
+                        Enabled = steering?.TemporalCoherence?.Enabled ?? false,
+                        RequireSteadyStateWorld = steering?.TemporalCoherence?.RequireSteadyStateWorld ?? true,
+                        MaxReuseTicks = ClampAtLeast(steering?.TemporalCoherence?.MaxReuseTicks ?? 12, 1),
+                        PositionToleranceCm = ClampAtLeast(steering?.TemporalCoherence?.PositionToleranceCm ?? 2, 0),
+                        VelocityToleranceCmPerSec = ClampAtLeast(steering?.TemporalCoherence?.VelocityToleranceCmPerSec ?? 4, 0),
+                        PreferredVelocityToleranceCmPerSec = ClampAtLeast(steering?.TemporalCoherence?.PreferredVelocityToleranceCmPerSec ?? 4, 0),
+                        NeighborPositionQuantizationCm = ClampAtLeast(steering?.TemporalCoherence?.NeighborPositionQuantizationCm ?? 8, 1),
+                        NeighborVelocityQuantizationCmPerSec = ClampAtLeast(steering?.TemporalCoherence?.NeighborVelocityQuantizationCmPerSec ?? 8, 1),
                     },
                 },
                 Spatial = new Navigation2DSpatialPartitionConfig

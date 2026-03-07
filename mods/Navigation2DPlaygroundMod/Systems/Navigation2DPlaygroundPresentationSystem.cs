@@ -217,6 +217,16 @@ namespace Navigation2DPlaygroundMod.Systems
             int flowLoadedTiles = 0;
             int flowActivationRadius = 0;
             int flowMaxActiveTiles = 0;
+            string steeringMode = "Unavailable";
+            bool temporalCoherenceEnabled = false;
+            bool temporalRequireSteadyState = false;
+            int temporalMaxReuseTicks = 0;
+            bool steeringCacheFrameEnabled = false;
+            int steeringCacheLookupsFrame = 0;
+            int steeringCacheHitsFrame = 0;
+            int steeringCacheStoresFrame = 0;
+            float steeringCacheHitRate = 0f;
+            string steeringCacheState = "Unavailable";
             string spatialMode = "Unavailable";
             long spatialRebuilds = 0;
             long spatialIncrementalUpdates = 0;
@@ -235,7 +245,18 @@ namespace Navigation2DPlaygroundMod.Systems
                 {
                     flowActiveTiles += navRuntime.Flows[flowIndex].ActiveTileCount;
                     flowLoadedTiles = Math.Max(flowLoadedTiles, navRuntime.Flows[flowIndex].LoadedTileCount);
-                }
+                }                steeringMode = navRuntime.Config.Steering.Mode.ToString();
+                temporalCoherenceEnabled = navRuntime.Config.Steering.TemporalCoherence.Enabled;
+                temporalRequireSteadyState = navRuntime.Config.Steering.TemporalCoherence.RequireSteadyStateWorld;
+                temporalMaxReuseTicks = navRuntime.Config.Steering.TemporalCoherence.MaxReuseTicks;
+                steeringCacheFrameEnabled = navRuntime.AgentSoA.SteeringCacheFrameEnabled;
+                steeringCacheLookupsFrame = navRuntime.AgentSoA.SteeringCacheLookupsFrame;
+                steeringCacheHitsFrame = navRuntime.AgentSoA.SteeringCacheHitsFrame;
+                steeringCacheStoresFrame = navRuntime.AgentSoA.SteeringCacheStoresFrame;
+                steeringCacheHitRate = steeringCacheLookupsFrame > 0 ? (float)steeringCacheHitsFrame / steeringCacheLookupsFrame : 0f;
+                steeringCacheState = !temporalCoherenceEnabled
+                    ? "ConfigOff"
+                    : (steeringCacheFrameEnabled ? "Active" : (temporalRequireSteadyState ? "WaitingSteadyState" : "Ready"));
                 spatialMode = navRuntime.Config.Spatial.UpdateMode.ToString();
                 spatialRebuilds = navRuntime.CellMap.InstrumentedFullRebuilds;
                 spatialIncrementalUpdates = navRuntime.CellMap.InstrumentedIncrementalUpdates;
@@ -251,12 +272,10 @@ namespace Navigation2DPlaygroundMod.Systems
             int scenarioTeamCount = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioTeamCount);
             int flowDbgLines = _engine.GetService(Navigation2DPlaygroundKeys.FlowDebugLines);
             string scenarioId = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioId) ?? "unknown";
-            string scenarioName = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioName) ?? "Unknown";
-
-            int x = 16;
+            string scenarioName = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioName) ?? "Unknown";            int x = 16;
             int y = 180;
-            int w = 620;
-            int h = 188;
+            int w = 760;
+            int h = 228;
             var bg = new Vector4(0.04f, 0.05f, 0.08f, 0.68f);
             var border = new Vector4(0.35f, 0.75f, 1f, 0.5f);
             var title = new Vector4(0.9f, 0.95f, 1f, 1f);
@@ -267,12 +286,14 @@ namespace Navigation2DPlaygroundMod.Systems
             overlay.AddText(x + 10, y + 8, "Navigation2D Playground", 16, title);
             overlay.AddText(x + 10, y + 30, $"Scenario={scenarioIndex + 1}/{scenarioCount}  {scenarioName} [{scenarioId}]", 14, text);
             overlay.AddText(x + 10, y + 50, $"Agents/team={agentsPerTeam}  Teams={scenarioTeamCount}  Live={liveTotal}  Blockers={blockerCount}", 14, text);
-            overlay.AddText(x + 10, y + 70, $"FlowEnabled={flowEnabled}  FlowDebug={flowDebug}  Mode={flowMode}  Iter={flowIters}  ActiveTiles={flowActiveTiles}  LoadedTiles={flowLoadedTiles}", 14, text);
-            overlay.AddText(x + 10, y + 90, $"FlowRadius={flowActivationRadius}  FlowMaxActive={flowMaxActiveTiles}  FlowDbgLines={flowDbgLines}", 14, text);
-            overlay.AddText(x + 10, y + 110, $"Spatial={spatialMode}  Rebuilds={spatialRebuilds}  Incremental={spatialIncrementalUpdates}  DirtyTotal={spatialDirtyAgents}  CellMigrations={spatialCellMigrations}", 14, text);
-            overlay.AddText(x + 10, y + 136, "G ToggleFlow | H ToggleDebug | J CycleMode | N Prev | M Next", 13, hint);
-            overlay.AddText(x + 10, y + 154, "U +Iter | Y -Iter | K +Agents/team | L -Agents/team", 13, hint);
-            overlay.AddText(x + 10, y + 172, "R ResetScenario", 13, hint);
+            overlay.AddText(x + 10, y + 70, $"Steering={steeringMode}  CacheCfg={temporalCoherenceEnabled}  CacheFrame={steeringCacheFrameEnabled}  MaxReuse={temporalMaxReuseTicks}  RequireSteady={temporalRequireSteadyState}", 14, text);
+            overlay.AddText(x + 10, y + 90, $"CacheLookups={steeringCacheLookupsFrame}  Hits={steeringCacheHitsFrame}  Stores={steeringCacheStoresFrame}  HitRate={steeringCacheHitRate:P1}  State={steeringCacheState}", 14, text);
+            overlay.AddText(x + 10, y + 110, $"FlowEnabled={flowEnabled}  FlowDebug={flowDebug}  Mode={flowMode}  Iter={flowIters}  ActiveTiles={flowActiveTiles}  LoadedTiles={flowLoadedTiles}", 14, text);
+            overlay.AddText(x + 10, y + 130, $"FlowRadius={flowActivationRadius}  FlowMaxActive={flowMaxActiveTiles}  FlowDbgLines={flowDbgLines}", 14, text);
+            overlay.AddText(x + 10, y + 150, $"Spatial={spatialMode}  Rebuilds={spatialRebuilds}  Incremental={spatialIncrementalUpdates}  DirtyTotal={spatialDirtyAgents}  CellMigrations={spatialCellMigrations}", 14, text);
+            overlay.AddText(x + 10, y + 176, "G ToggleFlow | H ToggleDebug | J CycleMode | N Prev | M Next", 13, hint);
+            overlay.AddText(x + 10, y + 194, "U +Iter | Y -Iter | K +Agents/team | L -Agents/team", 13, hint);
+            overlay.AddText(x + 10, y + 212, "R ResetScenario", 13, hint);
         }
     }
 }
