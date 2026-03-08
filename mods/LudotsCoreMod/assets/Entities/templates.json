@@ -12,7 +12,7 @@
     "components": {
       "Health": { "Current": 50, "Max": 50 },
       "Name": { "Value": "Pine Tree" },
-      "Position": { "Value": { "X": 0, "Y": 0 } } 
+      "Position": { "Value": { "X": 0, "Y": 0 } }
     }
   },
   {
@@ -24,13 +24,7 @@
       "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
       "AttributeBuffer": { "base": { "Health": 100 } },
       "AbilityStateBuffer": {
-        "abilityIds": [
-          "Ability.Moba.SkillQ",
-          "Ability.Moba.SkillW",
-          "Ability.Moba.SkillE",
-          "Ability.Moba.SkillR",
-          "Ability.Nav.Move"
-        ]
+        "abilityIds": []
       },
       "GameplayTagContainer": {},
       "OrderBuffer": {},
