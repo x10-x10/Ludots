@@ -4,7 +4,7 @@
 
 ## 1 目录
 
-*   [RFC-0001 统一 UI Runtime 与 Fluent Authoring API 草案](RFC-0001-ui-runtime-fluent-authoring.md)
+*   当前无已登记 RFC 文档；`RFC-0001` 编号预留，正式草案尚未落盘
 
 ## 2 使用规则
 

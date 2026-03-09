@@ -44,6 +44,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
         // Scratch buffer for collected listener actions
         private readonly PhaseListenerCollectedAction[] _collectedActions = new PhaseListenerCollectedAction[32];
+        private int[] _scratchRegisterCountsByGraphId = new int[64];
 
         public EffectPhaseExecutor(
             GraphProgramRegistry programs,
@@ -77,9 +78,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             IntVector2 targetPos,
             EffectPhaseId phase,
             in EffectPhaseGraphBindings behavior,
-            EffectPresetType presetType)
+            EffectPresetType presetType,
+            BuiltinHandlerExecutionContext? builtinRuntime = null)
         {
-            ExecutePhase(world, api, caster, target, targetContext, targetPos, phase, behavior, presetType, effectTagId: 0, effectTemplateId: 0);
+            ExecutePhase(world, api, caster, target, targetContext, targetPos, phase, behavior, presetType, effectTagId: 0, effectTemplateId: 0, builtinRuntime);
         }
 
         /// <summary>
@@ -96,7 +98,8 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             in EffectPhaseGraphBindings behavior,
             EffectPresetType presetType,
             int effectTagId,
-            int effectTemplateId)
+            int effectTemplateId,
+            BuiltinHandlerExecutionContext? builtinRuntime = null)
         {
             // ① Pre graph (user-defined)
             int preGraphId = behavior.GetGraphId(phase, PhaseSlot.Pre);
@@ -108,7 +111,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             // ② Main handler (unless SkipMain)
             if (!behavior.IsSkipMain(phase))
             {
-                ExecuteMainHandler(world, api, caster, target, targetContext, targetPos, phase, presetType, effectTemplateId);
+                ExecuteMainHandler(world, api, caster, target, targetContext, targetPos, phase, presetType, effectTemplateId, builtinRuntime);
             }
 
             // ③ Post graph (user-defined)
@@ -137,7 +140,8 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             IntVector2 targetPos,
             EffectPhaseId phase,
             EffectPresetType presetType,
-            int effectTemplateId)
+            int effectTemplateId,
+            BuiltinHandlerExecutionContext? builtinRuntime)
         {
             if (!_presetTypes.IsRegistered(presetType)) return;
 
@@ -150,16 +154,17 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             {
                 case PhaseHandlerKind.Builtin:
                 {
-                    if (!_templates.TryGet(effectTemplateId, out var tplData))
+                    if (!_templates.TryGetRef(effectTemplateId, out int tplIdx))
                     {
                         throw new InvalidOperationException(
                             $"EffectPhaseExecutor: Builtin handler for phase {phase} requires template {effectTemplateId}, but it is not registered.");
                     }
+                    ref readonly var tplData = ref _templates.GetRef(tplIdx);
                     var context = new EffectContext { Source = caster, Target = target, TargetContext = targetContext };
                     var mergedParams = tplData.ConfigParams;
                     _builtinHandlers.Invoke(
                         (BuiltinHandlerId)handler.HandlerId,
-                        world, default, ref context, in mergedParams, in tplData);
+                        world, default, ref context, in mergedParams, in tplData, builtinRuntime);
                     break;
                 }
                 case PhaseHandlerKind.Graph:
@@ -302,11 +307,14 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             if (!_programs.TryGetProgram(graphProgramId, out var program)) return;
             if (program.Length == 0) return;
 
-            // Clear scratch registers
-            Array.Clear(_floatRegs, 0, _floatRegs.Length);
-            Array.Clear(_intRegs, 0, _intRegs.Length);
-            Array.Clear(_boolRegs, 0, _boolRegs.Length);
-            Array.Clear(_entityRegs, 0, _entityRegs.Length);
+            var scratchUsage = GetScratchUsage(graphProgramId, program);
+            if (scratchUsage.RegisterCount > 0)
+            {
+                Array.Clear(_floatRegs, 0, scratchUsage.RegisterCount);
+                Array.Clear(_intRegs, 0, scratchUsage.RegisterCount);
+                Array.Clear(_boolRegs, 0, scratchUsage.RegisterCount);
+                Array.Clear(_entityRegs, 0, scratchUsage.RegisterCount);
+            }
 
             // Set up fixed entity registers: E[0]=Caster, E[1]=Target, E[2]=TargetContext
             _entityRegs[0] = caster;
@@ -333,5 +341,67 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
             GasGraphOpHandlerTable.Execute(ref state, program, _handlers);
         }
+
+        private ScratchUsage GetScratchUsage(int graphProgramId, ReadOnlySpan<GraphInstruction> program)
+        {
+            if ((uint)graphProgramId < (uint)_scratchRegisterCountsByGraphId.Length)
+            {
+                int cachedCountPlusOne = _scratchRegisterCountsByGraphId[graphProgramId];
+                if (cachedCountPlusOne != 0)
+                {
+                    return new ScratchUsage(cachedCountPlusOne - 1);
+                }
+            }
+
+            var usage = AnalyzeScratchUsage(program);
+            EnsureScratchUsageCapacity(graphProgramId);
+            _scratchRegisterCountsByGraphId[graphProgramId] = usage.RegisterCount + 1;
+            return usage;
+        }
+
+        private void EnsureScratchUsageCapacity(int graphProgramId)
+        {
+            if ((uint)graphProgramId < (uint)_scratchRegisterCountsByGraphId.Length)
+            {
+                return;
+            }
+
+            int newSize = _scratchRegisterCountsByGraphId.Length;
+            while (newSize <= graphProgramId)
+            {
+                newSize <<= 1;
+            }
+
+            Array.Resize(ref _scratchRegisterCountsByGraphId, newSize);
+        }
+
+        private static ScratchUsage AnalyzeScratchUsage(ReadOnlySpan<GraphInstruction> program)
+        {
+            int maxRegisterIndex = -1;
+            for (int i = 0; i < program.Length; i++)
+            {
+                ref readonly var instruction = ref program[i];
+                maxRegisterIndex = Math.Max(maxRegisterIndex, instruction.Dst);
+                maxRegisterIndex = Math.Max(maxRegisterIndex, instruction.A);
+                maxRegisterIndex = Math.Max(maxRegisterIndex, instruction.B);
+                maxRegisterIndex = Math.Max(maxRegisterIndex, instruction.C);
+            }
+
+            if (maxRegisterIndex < 0)
+            {
+                return default;
+            }
+
+            int registerCount = maxRegisterIndex + 1;
+            if (registerCount > GraphVmLimits.MaxFloatRegisters)
+            {
+                registerCount = GraphVmLimits.MaxFloatRegisters;
+            }
+
+            return new ScratchUsage(registerCount);
+        }
+
+        private readonly record struct ScratchUsage(int RegisterCount);
     }
 }
+
