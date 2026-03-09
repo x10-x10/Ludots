@@ -31,7 +31,9 @@
   </ItemGroup>
 
   <Target Name="BuildSvgGenerators" BeforeTargets="CoreCompile">
-    <MSBuild Projects="..\externals\SVG\Generators\Svg.Generators.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+    <MSBuild Projects="..\externals\SVG\Generators\Svg.Generators.csproj"
+             Targets="Restore;Build"
+             Properties="Configuration=$(Configuration)" />
     <ItemGroup>
       <Analyzer Include="..\externals\SVG\Generators\bin\$(Configuration)\net9.0\Svg.Generators.dll" />
     </ItemGroup>
