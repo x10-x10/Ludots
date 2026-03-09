@@ -8,7 +8,7 @@
 |------|------|-------------------|
 | **C**amera | 相机 | CameraManager / CameraPresenter / CameraCullingSystem |
 | **C**haracter | 角色 | WorldPositionCm → VisualTransform 管线 |
-| **C**ontrol | 控制 | PlayerInputHandler / InputOrderMappingSystem |
+| **C**ontrol | 控制 | InputRuntimeSystem / AuthoritativeInput / InputOrderMappingSystem |
 
 ### 总体数据流
 
@@ -16,42 +16,41 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                        固定步 (Logic Tick)                        │
 │                                                                  │
-│  IInputBackend ──? PlayerInputHandler ──? InputOrderMappingSystem │
-│                         │                       │                │
-│                         │                  Order ──? GAS          │
-│                         │                              │         │
-│                         ▼                     ForceInput2D Sink  │
-│          Core Camera Behavior Pipeline             │             │
-│                    │                          Physics2D          │
-│                    ▼                               │             │
-│              CameraState                   Position2D            │
-│                                                │                 │
-│                                  Physics2DToWorldPositionSync    │
-│                                                │                 │
-│                                         WorldPositionCm          │
+│  AuthoritativeInputSnapshotSystem                                │
+│        │                                                         │
+│        └── CoreServiceKeys.AuthoritativeInput                    │
+│               ├── InputOrderMappingSystem ──? Order ──? GAS       │
+│               ├── EntityClickSelect / Gas*Response               │
+│               └── CameraRuntimeSystem ──? CameraManager.State     │
+│                                                  │               │
+│                                         ForceInput2D Sink        │
+│                                                  │               │
+│                                              Physics2D           │
+│                                                  │               │
+│                                   Physics2DToWorldPositionSync   │
+│                                                  │               │
+│                                           WorldPositionCm        │
 └──────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────┐
 │                       渲染帧 (Render Frame)                       │
 │                                                                  │
-│  CameraManager.Update ──? CameraState (updated)                  │
-│                                │                                 │
-│  SavePreviousWorldPosition     │                                 │
-│           │                    │                                 │
-│  WorldToVisualSync (lerp α)    │                                 │
-│           │                    │                                 │
-│     VisualTransform        CameraPresenter ──? ICameraAdapter    │
-│           │                    │                                 │
-│     CameraCulling ?────────────┘                                 │
-│           │                                                      │
-│     CullState ──? Performer 发射                                  │
+│  IInputBackend ──? PlayerInputHandler ──? InputRuntimeSystem      │
+│                                         ├── AuthoritativeInputAccumulator │
+│                                         └── CameraManager.CaptureVisualInput()
+│                                                                  │
+│  PresentationFrameSetup(α)                                       │
+│  WorldToVisualSync (lerp α)                                      │
+│  CameraPresenter(cameraManager, α) ──? ICameraAdapter            │
+│  CameraCulling ──? CullState ──? Performer 发射                   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 ### 帧时序
 
-- **Camera / Visual**：在渲染帧执行，使用 `float` 和插值 alpha
-- **Logic（位置/物理/GAS）**：在固定步执行，使用 `Fix64` 确定性数学
+- **Live Input Sampling**：`InputRuntimeSystem` 在渲染帧调用 `PlayerInputHandler.Update()`，把 live 输入累积到 `AuthoritativeInputAccumulator`，同时让 `CameraManager` 采样视觉帧输入。
+- **Logic Camera / Order / GAS**：`AuthoritativeInputSnapshotSystem`、`CameraRuntimeSystem`、`InputOrderMappingSystem` 和选择/响应系统都在固定步 `SystemGroup.InputCollection` 中消费冻结后的 `CoreServiceKeys.AuthoritativeInput`。
+- **Presentation**：`CameraPresenter`、`WorldToVisualSyncSystem`、`CameraCullingSystem` 在渲染帧用 `alpha` 对逻辑状态做插值与投影。
 
 ---
 
@@ -121,6 +120,7 @@ Map / Mod / Trigger
 public class CameraManager
 {
     public CameraState State { get; }
+    public CameraState PreviousState { get; }
     public CameraPreset? ActivePreset { get; }
     public CameraFollowMode FollowMode { get; set; }
     public ICameraFollowTarget? FollowTarget { get; }
@@ -133,10 +133,13 @@ public class CameraManager
     public void ActivateVirtualCamera(string id, float? blendDurationSeconds = null);
     public void ClearVirtualCamera();
     public void Update(float dt);
+    public CameraStateSnapshot GetInterpolatedState(float alpha);
 }
 ```
 
-- `Update()` 负责统一执行：follow 解析 → 基础 controller 更新 → virtual camera 覆盖/混合。
+- `ConfigureRuntime()` 只负责把 live `PlayerInputHandler` 和 `IViewController` 绑定进运行时上下文，不决定 fixed-step 时序。
+- `CameraRuntimeSystem.Update()` 在 `SystemGroup.InputCollection` 中推进相机：apply request → 冻结本 tick 的相机输入 → 复制 `State` 到 `PreviousState` → follow / controller / virtual camera。
+- `Update()` 负责统一执行：follow 解析 → 基础 controller 更新 → `VirtualCameraBrain` 通过 `TweenProgress` / `BlendCurve` 做覆盖与混合。
 - `ClearVirtualCamera()` 会回到当前基础相机状态，而不是停留在临时镜头。
 
 ### 2.5 Follow 与 VirtualCamera
@@ -163,7 +166,14 @@ public class CameraManager
 
 `src/Core/Presentation/Camera/CameraPresenter.cs`
 
-将逻辑 `CameraState` 转换为 3D 视觉坐标，发送给 `ICameraAdapter`。
+将固定步逻辑相机转换为当前渲染帧的 3D 视觉状态，发送给 `ICameraAdapter`。
+
+当前主线：
+
+- `CameraPresenter.Update(cameraManager, interpolationAlpha, cameraDebug)` 先调用 `cameraManager.GetInterpolatedState(alpha)`。
+- `CameraViewportUtil.StateToRenderState()` 把插值后的逻辑状态投影成 `CameraRenderState3D`。
+- Presenter 自己不再持有第二套 ad-hoc tween；表现平滑来自 `PreviousState` → `State` 的插值。
+- 需要真正的镜头过渡时，统一走 `VirtualCameraBrain` 的 `TweenProgress`，而不是在 Adapter / Presenter 再做一遍。
 
 **球坐标 → 笛卡尔公式**：
 
@@ -176,10 +186,10 @@ offsetZ  = -hDist × cos(Yaw)
 position = target + (offsetX, vDist, offsetZ)
 ```
 
-**Lerp 平滑**：
-- 首帧直接 snap
-- 后续帧：`t = clamp(SmoothSpeed × dt, 0, 1)`，`position = lerp(current, desired, t)`
-- 默认 `SmoothSpeed = 10.0`
+**平滑来源**：
+- 逻辑层：`CameraManager` 在固定步维护 `PreviousState` / `State`
+- 表现层：`CameraPresenter` 只按 `PresentationFrameSetupSystem` 给出的 `alpha` 插值
+- 演出层：`VirtualCameraBrain` 使用 `Cut` / `Linear` / `SmoothStep` tween 混合临时镜头
 
 **万向锁防御**：
 - 当 `|dot(forward, UnitY)| > 0.99` 时（即 Pitch ≈ 90°），Up 向量从 `UnitY` 切换为 `UnitZ`
@@ -301,9 +311,11 @@ public interface IInputBackend
 
 **设备路径格式**：`<Device>/Key`，如 `<Keyboard>/w`、`<Mouse>/LeftButton`、`<Mouse>/Scroll`
 
-### 4.2 PlayerInputHandler — Action 状态机
+### 4.2 PlayerInputHandler + InputRuntimeSystem — 视觉帧采样
 
 `src/Core/Input/Runtime/PlayerInputHandler.cs`
+
+`src/Core/Input/Systems/InputRuntimeSystem.cs`
 
 **Context 栈**：
 - `PushContext(contextId)` / `PopContext(contextId)` — 按优先级排序
@@ -330,11 +342,40 @@ public interface IInputBackend
 **InputBlocked**：
 - `handler.InputBlocked = true` → 所有 action 读取返回默认值
 
-### 4.3 InputOrderMappingSystem — 指令映射
+`InputRuntimeSystem` 的职责：
+
+- 读取 `CoreServiceKeys.InputHandler`
+- 根据 `CoreServiceKeys.UiCaptured` 设置 `input.InputBlocked`
+- 调用 `input.Update()`
+- 将本渲染帧输入写入 `AuthoritativeInputAccumulator`
+- 调用 `GameSession.Camera.CaptureVisualInput()`
+
+这条 live 路径只负责**采样**，不是固定步系统的直接读取接口。
+
+### 4.3 AuthoritativeInputSnapshotSystem — 固定步冻结
+
+`src/Core/Input/Systems/AuthoritativeInputSnapshotSystem.cs`
+
+`src/Core/Input/Runtime/AuthoritativeInputAccumulator.cs`
+
+`src/Core/Input/Runtime/FrozenInputActionReader.cs`
+
+固定步开始时：
+
+- `AuthoritativeInputSnapshotSystem` 调用 `AuthoritativeInputAccumulator.BuildTickSnapshot()`
+- 把当前 tick 的输入冻结到 `FrozenInputActionReader`
+- 通过 `CoreServiceKeys.AuthoritativeInput` 暴露给逻辑系统
+
+规则：
+
+- `SystemGroup.InputCollection` 里的逻辑输入消费者统一读取 `CoreServiceKeys.AuthoritativeInput`
+- 不要在 fixed-step system 里直接读 live `PlayerInputHandler`
+
+### 4.4 InputOrderMappingSystem — 指令映射
 
 `src/Core/Input/Orders/InputOrderMappingSystem.cs`
 
-将 InputAction 触发转换为 GAS Order。
+将权威 `InputAction` 触发转换为 GAS Order。
 
 **4 种交互模式**：
 
@@ -457,12 +498,22 @@ engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
 ### Camera → CameraCulling → Performer 贯通
 
 ```
-CameraManager.Update(dt)
-  └── Core behavior pipeline.Update(CameraState, dt)
-        └── 修改 CameraState
+InputRuntimeSystem.Update(renderDt)
+  ├── PlayerInputHandler.Update()
+  ├── AuthoritativeInputAccumulator.CaptureVisualFrame()
+  └── CameraManager.CaptureVisualInput()
 
-CameraPresenter.Update(CameraState, dt)
-  ├── 球坐标→笛卡尔 → Lerp 平滑
+AuthoritativeInputSnapshotSystem.Update(fixedDt)
+  └── FrozenInputActionReader (CoreServiceKeys.AuthoritativeInput)
+
+CameraRuntimeSystem.Update(fixedDt)
+  ├── Apply CameraPresetRequest / CameraPoseRequest / VirtualCameraRequest
+  ├── CameraManager.Update(fixedDt)
+  └── 修改 CameraManager.State / PreviousState
+
+CameraPresenter.Update(cameraManager, α)
+  ├── cameraManager.GetInterpolatedState(α)
+  ├── 球坐标→笛卡尔
   └── ICameraAdapter.UpdateCamera(CameraRenderState3D)
 
 CameraCullingSystem.Update(dt)
@@ -480,14 +531,22 @@ Performer 发射
 ```
 IInputBackend (平台原始输入)
   └── PlayerInputHandler.Update()
-        ├── Context 栈按优先级匹配 Binding
-        ├── 边缘检测 (PressedThisFrame / ReleasedThisFrame)
-        └── 处理器管线 (Deadzone → Normalize → Scale)
+        └── AuthoritativeInputAccumulator.CaptureVisualFrame()
 
-InputOrderMappingSystem.Update(dt)
+SystemGroup.InputCollection
+  └── AuthoritativeInputSnapshotSystem
+        └── FrozenInputActionReader (CoreServiceKeys.AuthoritativeInput)
+              ├── EntityClickSelect / GasSelectionResponse / GasInputResponse
+              ├── InputOrderMappingSystem / LocalOrderSource
+              └── CameraRuntimeSystem
+
+InputOrderMappingSystem.Update(fixedDt)
   ├── 遍历 mappings, 检查 trigger
   ├── 交互模式分发 (TargetFirst / SmartCast / AimCast)
-  └── OrderSubmitHandler(Order)
+  └── OrderSubmitHandler(Order) → OrderQueue
+
+AbilityActivation Phase
+  └── OrderBufferSystem / AbilitySystem / AbilityExecSystem
 
 GAS Effect Pipeline
   └── ForceInput2D Sink → Physics2D
@@ -508,18 +567,27 @@ WorldToVisualSyncSystem
 ### 完整帧序列
 
 ```
+═══════════ 渲染帧开始 (可变帧率) ═══════════════
+  InputRuntimeSystem       → PlayerInputHandler.Update()
+                         → AuthoritativeInputAccumulator.CaptureVisualFrame()
+                         → CameraManager.CaptureVisualInput()
+
 ═══════════ 固定步 (16.67ms / 60Hz) ═══════════
-  InputCollection          → PlayerInputHandler.Update()
+  SchemaUpdate             → SavePreviousWorldPosition
+  InputCollection          → GameSessionSystem.FixedUpdate()
+                         → AuthoritativeInputSnapshotSystem
+                         → LocalPlayerEntityResolverSystem
+                         → CameraRuntimeSystem.Update(fixedDt)
+                         → CoreInput / Demo 的输入与下单系统
   PostMovement             → Physics2DToWorldPositionSync
-  AbilityActivation        → InputOrderMappingSystem.Update()
+  AbilityActivation        → OrderBuffer / Reaction / Ability / AbilityExec
   EffectProcessing         → GAS pipeline
   AttributeCalculation     → Attribute aggregation
 
-═══════════ 渲染帧 (可变帧率) ════════════════════
-  SavePreviousWorldPosition
-  CameraManager.Update(renderDt)
-  CameraPresenter.Update(state, renderDt)
+═══════════ 渲染帧表现 (可变帧率) ═══════════════
+  PresentationFrameSetup   → InterpolationAlpha
   WorldToVisualSyncSystem(α)
+  CameraPresenter.Update(cameraManager, α)
   CameraCullingSystem
   Performer 发射
   ICameraAdapter.UpdateCamera() → 平台渲染
@@ -535,11 +603,13 @@ WorldToVisualSyncSystem
 |------|------|
 | `src/Core/Gameplay/Camera/CameraState.cs` | 相机状态数据 |
 | `src/Core/Gameplay/Camera/CameraManager.cs` | 中央管理服务 |
+| `src/Core/Systems/CameraRuntimeSystem.cs` | 固定步相机运行时 |
 | `src/Core/Gameplay/Camera/CameraPresetRegistry.cs` | 相机预设注册表 |
 | `src/Core/Gameplay/Camera/CameraPresetRequest.cs` | 相机预设请求 |
 | `src/Core/Gameplay/Camera/CameraPoseRequest.cs` | 相机机位请求 |
 | `src/Core/Gameplay/Camera/VirtualCameraRegistry.cs` | 临时镜头注册表 |
 | `src/Core/Gameplay/Camera/VirtualCameraRequest.cs` | 临时镜头请求 |
+| `src/Core/Gameplay/Camera/VirtualCameraBrain.cs` | 临时镜头混合与 tween |
 | `src/Core/Gameplay/Camera/CameraControllerFactory.cs` | Core 内部行为装配 |
 | `src/Core/Gameplay/Camera/Behaviors/*.cs` | Core 内部输入行为单元 |
 
@@ -561,7 +631,11 @@ WorldToVisualSyncSystem
 | 文件 | 说明 |
 |------|------|
 | `src/Core/Input/Runtime/IInputBackend.cs` | 平台输入抽象 |
-| `src/Core/Input/Runtime/PlayerInputHandler.cs` | Action 状态机 |
+| `src/Core/Input/Runtime/PlayerInputHandler.cs` | live Action 状态机 |
+| `src/Core/Input/Systems/InputRuntimeSystem.cs` | 渲染帧输入采样 |
+| `src/Core/Input/Runtime/AuthoritativeInputAccumulator.cs` | live 输入累积器 |
+| `src/Core/Input/Systems/AuthoritativeInputSnapshotSystem.cs` | fixed-step 输入冻结 |
+| `src/Core/Input/Runtime/FrozenInputActionReader.cs` | 权威输入快照 |
 | `src/Core/Input/Config/InputConfigModels.cs` | 输入配置模型 |
 | `src/Core/Input/Orders/InputOrderMappingSystem.cs` | 指令映射系统 |
 
@@ -588,11 +662,11 @@ WorldToVisualSyncSystem
 
 ### 交叉引用
 
-- [适配器原则与平台抽象](adapter_pattern.md) — Core/Adapter 边界
-- [Pacemaker 时间与步进](pacemaker.md) — 固定步/渲染帧时序
-- [表现管线与 Performer 体系](presentation_performer.md) — Performer 发射与 CullState
-- [Trigger 开发指南](trigger_guide.md) — Mod 中注册相机/输入
-- [Map、Mod 与空间服务可插拔](map_mod_spatial.md) — ISpatialQueryService
-- [GAS 分层架构与 Sink](gas_layered_architecture.md) — ForceInput2D Sink
+- [适配器原则与平台抽象](docs/architecture/adapter_pattern.md) — Core/Adapter 边界
+- [Pacemaker 时间与步进](docs/architecture/pacemaker.md) — 固定步/渲染帧时序
+- [表现管线与 Performer 体系](docs/architecture/presentation_performer.md) — Performer 发射与 CullState
+- [Trigger 开发指南](docs/architecture/trigger_guide.md) — Mod 中注册相机/输入
+- [Map、Mod 与空间服务可插拔](docs/architecture/map_mod_spatial.md) — ISpatialQueryService
+- [GAS 分层架构与 Sink](docs/architecture/gas_layered_architecture.md) — ForceInput2D Sink
 
 

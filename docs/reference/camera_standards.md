@@ -12,6 +12,13 @@
 
 Editor 和 Raylib 游戏客户端共享同一套轨道相机模型（Orbit Camera），通过 `MapConfig.DefaultCamera` 配置统一初始相机状态。
 
+## SSOT 边界
+
+- **逻辑相机 SSOT**：`src/Core/Gameplay/Camera/CameraManager.cs` 的 `State` / `PreviousState`。推进时机是 `src/Core/Systems/CameraRuntimeSystem.cs` 的固定步 `SystemGroup.InputCollection`。
+- **表现相机 SSOT**：`src/Core/Presentation/Camera/CameraPresenter.cs` 生成的 `SmoothedRenderState`。它只把逻辑状态按 `alpha` 插值后投影给 `ICameraAdapter`。
+- **输入边界**：`src/Core/Input/Systems/InputRuntimeSystem.cs` 只负责采样 live `PlayerInputHandler`；`src/Core/Input/Systems/AuthoritativeInputSnapshotSystem.cs` 负责冻结 `CoreServiceKeys.AuthoritativeInput`。固定步相机/输入/Order 系统一律读取冻结快照。
+- **过渡边界**：临时镜头切换由 `src/Core/Gameplay/Camera/VirtualCameraBrain.cs` 驱动，混合曲线来自 `src/Core/Tweening/TweenEasing.cs` 与 `VirtualCameraDefinition.BlendCurve`。`CameraPresenter` 和 Adapter 不再各自维护第二套相机 tween。
+
 ## 轨道相机模型
 
 相机围绕 `Target` 点做球面运动，由 4 个参数完全确定：
@@ -145,7 +152,17 @@ engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
 });
 ```
 
-不要直接写 `session.Camera.State`，也不要在 Adapter/Mod 装配 controller；统一通过 `CameraPresetRequest` / `CameraPoseRequest` / `VirtualCameraRequest` 进入 Core 主线。除非有特殊需求（如第一人称），否则不要随意改 `FovYDeg`。
+不要直接写 `session.Camera.State`，也不要在 Adapter/Mod 装配 controller 或额外做相机 tween；统一通过 `CameraPresetRequest` / `CameraPoseRequest` / `VirtualCameraRequest` 进入 Core 主线。临时镜头过渡的时长与曲线由 `VirtualCameraDefinition.DefaultBlendDuration` / `BlendCurve` 决定；表现层只负责按 `alpha` 平滑渲染。除非有特殊需求（如第一人称），否则不要随意改 `FovYDeg`。
+
+## 过渡规范
+
+`VirtualCameraRequest` 是唯一的临时镜头切换入口：
+
+- `Cut`：立即切镜
+- `Linear`：线性 blend
+- `SmoothStep`：平滑缓入缓出
+
+这些曲线由 `VirtualCameraBrain.Activate()` 启动，逻辑层 fixed-step 推进；表现层继续只做 `PreviousState` → `State` 插值。
 
 ## 已知的遗留配置
 

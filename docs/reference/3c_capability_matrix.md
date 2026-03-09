@@ -7,7 +7,8 @@
 - [x] Orbit3C 轨道相机（缩放/旋转/平移）
 - [x] 相机状态序列化结构（CameraState）
 - [x] `CameraPresetRegistry` / `VirtualCameraRegistry` + request 主线
-- [x] 球坐标→笛卡尔投影 + Lerp 平滑
+- [x] 固定步 CameraManager + 渲染帧 CameraPresenter 插值
+- [x] VirtualCamera blend（Cut / Linear / SmoothStep）
 - [x] 万向锁防御（Pitch ≈ 90° 切换 Up 向量）
 - [x] 视锥 AABB 裁剪 + 俯仰补偿
 - [x] 4 级 LOD（High / Medium / Low / Culled）
@@ -19,7 +20,7 @@
 
 ### 未实现
 
-- [ ] 相机动画/缓动曲线（仅线性 Lerp）
+- [ ] 复杂镜头编排（轨道 / Bezier / Timeline）
 - [ ] 相机震动（Screen Shake）
 - [ ] 电影镜头模式（轨道/Bezier 路径）
 - [ ] 多相机/分屏
@@ -56,6 +57,8 @@
 
 - [x] IInputBackend 平台抽象 + Raylib 实现
 - [x] PlayerInputHandler（Context 栈 + 优先级）
+- [x] InputRuntimeSystem → AuthoritativeInputSnapshotSystem 权威输入快照
+- [x] InputCollection 固定步系统统一读取 `CoreServiceKeys.AuthoritativeInput`
 - [x] 边缘检测（PressedThisFrame / ReleasedThisFrame）
 - [x] 处理器管线（Deadzone / Normalize / Scale）
 - [x] Vector2Composite（WASD→方向）
@@ -72,7 +75,6 @@
 ### 未实现
 
 - [ ] 手柄/Gamepad 支持
-- [ ] Tick 级输入缓冲（IInputSource 接口已定义，零实现）
 - [ ] HoveredEntity 鼠标悬停检测（回调始终 return false）
 - [ ] 输入录制/回放
 - [ ] 触摸屏适配

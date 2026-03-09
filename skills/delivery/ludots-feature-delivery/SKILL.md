@@ -19,6 +19,7 @@ Use this skill to deliver production-grade features with consistent acceptance e
 1. Reuse infrastructure first.
 - Reuse existing core systems, registries, queues, and config pipelines.
 - Do not create one-off mod-only engines or parallel runtime stacks.
+- For input/order/camera work, keep render-frame sampling (`PlayerInputHandler`) separate from fixed-step authoritative consumption (`CoreServiceKeys.AuthoritativeInput`), and keep camera transitions inside `CameraManager` / `VirtualCameraBrain`, not presenter/adapters.
 
 2. Ship headless end-to-end acceptance evidence.
 - Produce deterministic headless E2E output for the target feature.
