@@ -96,6 +96,22 @@ namespace Ludots.Core.Input.Runtime
             return _actionIndices.TryGetValue(actionId, out int actionIndex) && _actionStates[actionIndex].ReleasedThisFrame;
         }
 
+        public void CaptureFrame(AuthoritativeInputAccumulator accumulator)
+        {
+            if (accumulator == null) throw new ArgumentNullException(nameof(accumulator));
+
+            for (int i = 0; i < _actionStates.Length; i++)
+            {
+                var state = _actionStates[i];
+                accumulator.CaptureAction(
+                    state.Definition.Id,
+                    state.Value,
+                    state.Triggered,
+                    state.PressedThisFrame,
+                    state.ReleasedThisFrame);
+            }
+        }
+
         /// <summary>
         /// Inject action value for next Update() tick.
         /// Primarily for automation and deterministic test driving.

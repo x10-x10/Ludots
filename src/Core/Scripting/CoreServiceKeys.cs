@@ -74,6 +74,7 @@ namespace Ludots.Core.Scripting
 
         // --- Input ---
         public static readonly ServiceKey<PlayerInputHandler> InputHandler = new("InputHandler");
+        public static readonly ServiceKey<IInputActionReader> AuthoritativeInput = new("AuthoritativeInput");
         public static readonly ServiceKey<IInputBackend> InputBackend = new("InputBackend");
 
         // --- Camera & View ---

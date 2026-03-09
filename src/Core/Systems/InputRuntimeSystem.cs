@@ -9,10 +9,12 @@ namespace Ludots.Core.Systems
     public sealed class InputRuntimeSystem : ISystem<float>
     {
         private readonly Dictionary<string, object> _globals;
+        private readonly AuthoritativeInputAccumulator? _authoritativeInput;
  
-        public InputRuntimeSystem(Dictionary<string, object> globals)
+        public InputRuntimeSystem(Dictionary<string, object> globals, AuthoritativeInputAccumulator? authoritativeInput = null)
         {
             _globals = globals;
+            _authoritativeInput = authoritativeInput;
         }
  
         public void Initialize()
@@ -29,6 +31,7 @@ namespace Ludots.Core.Systems
             bool uiCaptured = _globals.TryGetValue(CoreServiceKeys.UiCaptured.Name, out var capturedObj) && capturedObj is bool b && b;
             input.InputBlocked = uiCaptured;
             input.Update();
+            _authoritativeInput?.CaptureVisualFrame(input);
 
             if (_globals.TryGetValue(CoreServiceKeys.GameSession.Name, out var sessionObj) && sessionObj is GameSession session)
             {

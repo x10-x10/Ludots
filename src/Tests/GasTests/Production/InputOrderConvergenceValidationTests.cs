@@ -53,7 +53,7 @@ namespace Ludots.Tests.GAS.Production
             var inputNames = GetSystemNames(engine, SystemGroup.InputCollection);
             var presentationNames = GetPresentationSystemNames(engine);
 
-            Assert.That(inputNames, Does.Contain("InputRuntimeSystem"));
+            Assert.That(inputNames, Does.Contain("AuthoritativeInputSnapshotSystem"));
             Assert.That(inputNames, Does.Contain("LocalPlayerEntityResolverSystem"));
             Assert.That(inputNames, Does.Contain("EntityClickSelectSystem"));
             Assert.That(inputNames, Does.Contain("GasSelectionResponseSystem"));
@@ -61,6 +61,9 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(inputNames, Does.Contain("TabTargetCycleSystem"));
             Assert.That(inputNames, Does.Contain("ViewModeSwitchSystem"));
             Assert.That(inputNames, Does.Contain("MobaLocalOrderSourceSystem"));
+            Assert.That(inputNames.IndexOf("AuthoritativeInputSnapshotSystem"), Is.LessThan(inputNames.IndexOf("EntityClickSelectSystem")));
+            Assert.That(inputNames.IndexOf("AuthoritativeInputSnapshotSystem"), Is.LessThan(inputNames.IndexOf("GasSelectionResponseSystem")));
+            Assert.That(inputNames.IndexOf("AuthoritativeInputSnapshotSystem"), Is.LessThan(inputNames.IndexOf("MobaLocalOrderSourceSystem")));
 
             Assert.That(presentationNames, Does.Not.Contain("LocalPlayerEntityResolverSystem"));
             Assert.That(presentationNames, Does.Not.Contain("EntityClickSelectSystem"));
