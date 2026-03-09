@@ -4,7 +4,7 @@ using Arch.System;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Scripting;
  
-namespace Ludots.Core.Presentation.Systems
+namespace Ludots.Core.Input.Systems
 {
     public sealed class LocalPlayerEntityResolverSystem : ISystem<float>
     {

@@ -4,7 +4,7 @@ using Ludots.Core.Gameplay;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Scripting;
  
-namespace Ludots.Core.Systems
+namespace Ludots.Core.Input.Systems
 {
     public sealed class InputRuntimeSystem : ISystem<float>
     {

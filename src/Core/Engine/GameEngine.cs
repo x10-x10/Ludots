@@ -28,6 +28,9 @@ using Ludots.Core.GraphRuntime;
 using Ludots.Core.NodeLibraries.GASGraph.Host;
 using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Gameplay.GAS.Orders;
+using Ludots.Core.Input.Interaction;
+using Ludots.Core.Input.Selection;
+using Ludots.Core.Input.Systems;
 using Ludots.Core.Presentation.Events;
 using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Assets;
@@ -616,7 +619,7 @@ namespace Ludots.Core.Engine
             // Phase 1: InputCollection
             RegisterSystem(sessionSystem, SystemGroup.InputCollection); // Session handles input gathering
             RegisterSystem(new AuthoritativeInputSnapshotSystem(authoritativeInput, authoritativeInputAccumulator), SystemGroup.InputCollection);
-            RegisterSystem(new Ludots.Core.Presentation.Systems.LocalPlayerEntityResolverSystem(World, GlobalContext), SystemGroup.InputCollection);
+            RegisterSystem(new LocalPlayerEntityResolverSystem(World, GlobalContext), SystemGroup.InputCollection);
             RegisterSystem(cameraRuntimeSystem, SystemGroup.InputCollection);
             RegisterSystem(clockSystem, SystemGroup.InputCollection);
             RegisterSystem(timedTagSystem, SystemGroup.InputCollection);

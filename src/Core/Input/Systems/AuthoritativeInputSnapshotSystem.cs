@@ -2,7 +2,7 @@ using System;
 using Arch.System;
 using Ludots.Core.Input.Runtime;
 
-namespace Ludots.Core.Systems
+namespace Ludots.Core.Input.Systems
 {
     /// <summary>
     /// Freezes one authoritative input snapshot at the start of each fixed-step InputCollection phase.

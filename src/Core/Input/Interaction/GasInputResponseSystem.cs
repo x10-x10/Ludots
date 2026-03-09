@@ -6,7 +6,7 @@ using Ludots.Core.Input.Interaction;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Scripting;
 
-namespace Ludots.Core.Presentation.Systems
+namespace Ludots.Core.Input.Interaction
 {
     /// <summary>
     /// Generic GAS input-response system.

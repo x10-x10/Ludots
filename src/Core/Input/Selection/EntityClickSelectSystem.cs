@@ -11,7 +11,7 @@ using Ludots.Core.Scripting;
 using Ludots.Core.Spatial;
 using Ludots.Platform.Abstractions;
 
-namespace Ludots.Core.Presentation.Systems
+namespace Ludots.Core.Input.Selection
 {
     /// <summary>
     /// Generic click-selection system.
