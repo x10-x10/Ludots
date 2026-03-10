@@ -43,7 +43,7 @@ namespace CameraShowcaseMod
             {
                 HubMapId => "Baseline shared profiles plus a local selection-follow profile.",
                 StackMapId => "Tagged reveal shot wins over map-default follow, then falls back.",
-                SelectionMapId => "SelectedOrLocalPlayer follow proves selection-driven authority.",
+                SelectionMapId => "Explicit selected-entity follow with no fallback if selection is lost.",
                 BootstrapMapId => "Shared bootstrap centers wide bounds before free camera control.",
                 _ => "Production sample for the unified virtual camera stack."
             };

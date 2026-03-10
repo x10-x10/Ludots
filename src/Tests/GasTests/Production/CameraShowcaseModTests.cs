@@ -53,7 +53,7 @@ namespace Ludots.Tests.GAS.Production
         }
 
         [Test]
-        public void CameraShowcaseMod_SelectionMode_TracksSelectedEntity()
+        public void CameraShowcaseMod_SelectionMode_TracksSelectedEntityWithoutFallback()
         {
             using var engine = CreateEngine(ShowcaseMods);
             LoadMap(engine, CameraShowcaseIds.HubMapId);
@@ -74,8 +74,9 @@ namespace Ludots.Tests.GAS.Production
             var brain = engine.GameSession.Camera.VirtualCameraBrain;
             Assert.That(brain, Is.Not.Null);
             Assert.That(brain!.ActiveCameraId, Is.EqualTo(CameraShowcaseIds.SelectionProfileId));
-            Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.True);
-            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(1200f, 800f)));
+            Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.Null);
+            Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(1200f, 800f)));
 
             Entity captain = FindEntityByName(engine.World, CameraShowcaseIds.CaptainName);
             Assert.That(captain, Is.Not.EqualTo(Entity.Null));
@@ -87,8 +88,9 @@ namespace Ludots.Tests.GAS.Production
 
             engine.GlobalContext.Remove(CoreServiceKeys.SelectedEntity.Name);
             Tick(engine, 3);
-            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(1200f, 800f)));
-            Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(1200f, 800f)));
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.Null);
+            Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
+            Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(3200f, 2000f)));
         }
 
         [Test]
@@ -155,14 +157,15 @@ namespace Ludots.Tests.GAS.Production
         }
 
         [Test]
-        public void CameraShowcaseMod_SelectionMap_DefaultProfile_FollowsSelectionAndFallsBackToHero()
+        public void CameraShowcaseMod_SelectionMap_DefaultProfile_FollowsSelectionWithoutFallback()
         {
             using var engine = CreateEngine(ShowcaseMods);
             LoadMap(engine, CameraShowcaseIds.SelectionMapId);
 
             Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(CameraShowcaseIds.SelectionProfileId));
-            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(1600f, 1200f)));
-            Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(1600f, 1200f)));
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.Null);
+            Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
+            Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(1200f, 800f)));
 
             Entity captain = FindEntityByName(engine.World, CameraShowcaseIds.CaptainName);
             Assert.That(captain, Is.Not.EqualTo(Entity.Null));
@@ -174,8 +177,9 @@ namespace Ludots.Tests.GAS.Production
 
             engine.GlobalContext.Remove(CoreServiceKeys.SelectedEntity.Name);
             Tick(engine, 3);
-            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(1600f, 1200f)));
-            Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(1600f, 1200f)));
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.Null);
+            Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
+            Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(3400f, 2200f)));
         }
 
         [Test]

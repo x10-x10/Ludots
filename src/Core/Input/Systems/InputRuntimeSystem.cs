@@ -35,6 +35,7 @@ namespace Ludots.Core.Input.Systems
 
             if (_globals.TryGetValue(CoreServiceKeys.GameSession.Name, out var sessionObj) && sessionObj is GameSession session)
             {
+                session.Camera.SetUserInputSuppressed(uiCaptured);
                 session.Camera.CaptureVisualInput();
             }
         }

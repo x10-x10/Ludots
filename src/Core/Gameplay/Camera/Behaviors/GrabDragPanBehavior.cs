@@ -40,7 +40,9 @@ namespace Ludots.Core.Gameplay.Camera.Behaviors
             Vector2 right = OrbitCameraDirectionUtil.RightFromYawDegrees(state.Yaw);
             Vector2 fwd = OrbitCameraDirectionUtil.ForwardFromYawDegrees(state.Yaw);
 
-            state.TargetCm += (right * delta.X + fwd * delta.Y) * cmPerPixel;
+            // Keep horizontal drag aligned with legacy camera-pan expectation while
+            // using raw pointer-delta vertical semantics (screen up = negative Y).
+            state.TargetCm += ((-right * delta.X) + (fwd * delta.Y)) * cmPerPixel;
         }
     }
 }

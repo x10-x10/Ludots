@@ -38,44 +38,40 @@ namespace CameraShowcaseMod.UI
                 ? modeId
                 : "map-default";
 
-            return Ui.Column(
-                Ui.Card(
-                    Ui.Text("Camera Showcase").FontSize(22f).Bold().Color("#F7FAFF"),
-                    Ui.Text(CameraShowcaseIds.DescribeMap(mapId)).FontSize(14f).Color("#D0D8E6").WhiteSpace(UiWhiteSpace.Normal),
-                    Ui.Text($"Map: {mapId}").FontSize(13f).Color("#8EA2BD"),
-                    Ui.Text($"Mode: {activeMode}").FontSize(13f).Color("#8EA2BD"),
-                    Ui.Text("Maps").FontSize(12f).Bold().Color("#F4C77D"),
-                    Ui.Row(
-                        BuildMapButton("Hub", mapId == CameraShowcaseIds.HubMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.HubMapId)),
-                        BuildMapButton("Stack", mapId == CameraShowcaseIds.StackMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.StackMapId)),
-                        BuildMapButton("Selection", mapId == CameraShowcaseIds.SelectionMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.SelectionMapId)),
-                        BuildMapButton("Bootstrap", mapId == CameraShowcaseIds.BootstrapMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.BootstrapMapId))
-                    ).Wrap().Gap(8f),
-                    Ui.Text("View Modes").FontSize(12f).Bold().Color("#F4C77D"),
-                    Ui.Row(
-                        BuildActionButton("Tactical", activeMode == CameraShowcaseIds.TacticalModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.TacticalModeId)),
-                        BuildActionButton("Follow", activeMode == CameraShowcaseIds.FollowModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.FollowModeId)),
-                        BuildActionButton("Inspect", activeMode == CameraShowcaseIds.InspectModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.InspectModeId)),
-                        BuildActionButton("Selection", activeMode == CameraShowcaseIds.SelectionModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.SelectionModeId))
-                    ).Wrap().Gap(8f),
-                    Ui.Text("Runtime").FontSize(12f).Bold().Color("#F4C77D"),
-                    Ui.Row(
-                        BuildActionButton("Reveal", false, ctx => ActivateVirtualCamera(engine, CameraShowcaseIds.RevealShotId)),
-                        BuildActionButton("Clear", false, ctx => ClearTopShot(engine)),
-                        BuildActionButton("Tighten", false, ctx => TightenActiveCameraPose(engine)),
-                        BuildActionButton("Reset", false, ctx => ResetActiveCameraPose(engine))
-                    ).Wrap().Gap(8f),
-                    Ui.Text("Keyboard: F1/F2/F3 shared modes, F4 selection mode, Tab cycles selection target.").FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
-                ).Width(440f)
-                 .Padding(16f)
-                 .Gap(10f)
-                 .Radius(18f)
-                 .Border(1f, ParseColor("#3A4E67"))
-                 .BackgroundGradient(155f, ParseColor("#142034"), ParseColor("#0B1220"))
-                 .BoxShadow(0f, 10f, 24f, ParseColor("#66000000"))
-                 .Absolute(16f, 16f)
-                 .ZIndex(20)
-            ).WidthPercent(100f).HeightPercent(100f);
+            return Ui.Card(
+                Ui.Text("Camera Showcase").FontSize(22f).Bold().Color("#F7FAFF"),
+                Ui.Text(CameraShowcaseIds.DescribeMap(mapId)).FontSize(14f).Color("#D0D8E6").WhiteSpace(UiWhiteSpace.Normal),
+                Ui.Text($"Map: {mapId}").FontSize(13f).Color("#8EA2BD"),
+                Ui.Text($"Mode: {activeMode}").FontSize(13f).Color("#8EA2BD"),
+                Ui.Text("Maps").FontSize(12f).Bold().Color("#F4C77D"),
+                Ui.Row(
+                    BuildMapButton("Hub", mapId == CameraShowcaseIds.HubMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.HubMapId)),
+                    BuildMapButton("Stack", mapId == CameraShowcaseIds.StackMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.StackMapId)),
+                    BuildMapButton("Selection", mapId == CameraShowcaseIds.SelectionMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.SelectionMapId)),
+                    BuildMapButton("Bootstrap", mapId == CameraShowcaseIds.BootstrapMapId, ctx => LoadShowcaseMap(engine, CameraShowcaseIds.BootstrapMapId))
+                ).Wrap().Gap(8f),
+                Ui.Text("View Modes").FontSize(12f).Bold().Color("#F4C77D"),
+                Ui.Row(
+                    BuildActionButton("Tactical", activeMode == CameraShowcaseIds.TacticalModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.TacticalModeId)),
+                    BuildActionButton("Follow", activeMode == CameraShowcaseIds.FollowModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.FollowModeId)),
+                    BuildActionButton("Inspect", activeMode == CameraShowcaseIds.InspectModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.InspectModeId)),
+                    BuildActionButton("Selection", activeMode == CameraShowcaseIds.SelectionModeId, ctx => viewModeManager?.SwitchTo(CameraShowcaseIds.SelectionModeId))
+                ).Wrap().Gap(8f),
+                Ui.Text("Runtime").FontSize(12f).Bold().Color("#F4C77D"),
+                Ui.Row(
+                    BuildActionButton("Reveal", false, ctx => ActivateVirtualCamera(engine, CameraShowcaseIds.RevealShotId)),
+                    BuildActionButton("Clear", false, ctx => ClearTopShot(engine)),
+                    BuildActionButton("Tighten", false, ctx => TightenActiveCameraPose(engine)),
+                    BuildActionButton("Reset", false, ctx => ResetActiveCameraPose(engine))
+                ).Wrap().Gap(8f),
+                Ui.Text("Keyboard: F1/F2/F3 shared modes, F4 selection mode, Tab cycles selection target.").FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
+            ).Width(440f)
+             .Padding(16f)
+             .Gap(10f)
+             .Radius(18f)
+             .Background("#101A29")
+             .Absolute(16f, 16f)
+             .ZIndex(20);
         }
 
         private static UiElementBuilder BuildMapButton(string label, bool active, System.Action<UiActionContext> onClick)
@@ -83,9 +79,8 @@ namespace CameraShowcaseMod.UI
             return Ui.Button(label, onClick)
                 .Padding(10f, 8f)
                 .Radius(999f)
-                .Border(1f, active ? ParseColor("#A8E6FF") : ParseColor("#3A4E67"))
-                .Background(active ? ParseColor("#244E66") : ParseColor("#182436"))
-                .Color(active ? ParseColor("#F7FAFF") : ParseColor("#C7D3E1"));
+                .Background(active ? "#244E66" : "#182436")
+                .Color(active ? "#F7FAFF" : "#C7D3E1");
         }
 
         private static UiElementBuilder BuildActionButton(string label, bool active, System.Action<UiActionContext> onClick)
@@ -93,9 +88,8 @@ namespace CameraShowcaseMod.UI
             return Ui.Button(label, onClick)
                 .Padding(10f, 8f)
                 .Radius(10f)
-                .Border(1f, active ? ParseColor("#F4C77D") : ParseColor("#314255"))
-                .Background(active ? ParseColor("#5B441A") : ParseColor("#121B29"))
-                .Color(ParseColor("#F7FAFF"));
+                .Background(active ? "#5B441A" : "#121B29")
+                .Color("#F7FAFF");
         }
 
         private static void LoadShowcaseMap(GameEngine engine, string mapId)

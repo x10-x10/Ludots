@@ -282,6 +282,7 @@ namespace Ludots.Core.Engine
             InitializeWorld(MergedConfig.WorldWidthInTiles, MergedConfig.WorldHeightInTiles);
             WorldMap = new WorldMap(MergedConfig.WorldWidthInTiles, MergedConfig.WorldHeightInTiles);
             GameSession = new GameSession();
+            SetService(CoreServiceKeys.GameSession, GameSession);
             int gridCellSizeCm = MergedConfig.GridCellSizeCm;
             int worldWidthCm = WorldMap.TotalWidth * gridCellSizeCm;
             int worldHeightCm = WorldMap.TotalHeight * gridCellSizeCm;

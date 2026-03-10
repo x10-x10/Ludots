@@ -35,8 +35,7 @@ namespace Ludots.Core.Gameplay.Camera
     {
         None,
         LocalPlayer,
-        SelectedEntity,
-        SelectedOrLocalPlayer
+        SelectedEntity
     }
 
     public enum CameraBlendCurve

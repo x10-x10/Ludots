@@ -46,7 +46,7 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
-        public void VirtualCameraRuntime_GrabDragPan_MapsScreenDragToGrabSemantics()
+        public void VirtualCameraRuntime_GrabDragPan_DragRight_MovesTargetPositiveX()
         {
             var (backend, handler) = BuildCameraInputHandler();
             var manager = CreateCameraManager(handler, new VirtualCameraDefinition
@@ -70,12 +70,83 @@ namespace Ludots.Tests.GAS
             manager.CaptureVisualInput();
 
             backend.Buttons["<Mouse>/MiddleButton"] = true;
-            backend.MousePosition = new Vector2(440f, 260f);
+            backend.MousePosition = new Vector2(440f, 300f);
             handler.Update();
             manager.Update(0.016f);
 
-            Assert.That(manager.State.TargetCm.X, Is.LessThan(0f));
+            Assert.That(manager.State.TargetCm.X, Is.GreaterThan(0f));
+            Assert.That(manager.State.TargetCm.Y, Is.EqualTo(0f).Within(0.01f));
+        }
+
+        [Test]
+        public void VirtualCameraRuntime_GrabDragPan_DragUp_MovesTargetNegativeY()
+        {
+            var (backend, handler) = BuildCameraInputHandler();
+            var manager = CreateCameraManager(handler, new VirtualCameraDefinition
+            {
+                Id = "GrabDrag",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                PanMode = CameraPanMode.None,
+                RotateMode = CameraRotateMode.None,
+                EnableGrabDrag = true,
+                Yaw = 0f,
+                Pitch = 60f,
+                DistanceCm = 5000f,
+                FovYDeg = 60f,
+                EnableZoom = false,
+                AllowUserInput = true
+            }, new StubViewController(1920f, 1080f));
+
+            backend.MousePosition = new Vector2(400f, 300f);
+            handler.Update();
+            manager.CaptureVisualInput();
+
+            backend.Buttons["<Mouse>/MiddleButton"] = true;
+            backend.MousePosition = new Vector2(400f, 260f);
+            handler.Update();
+            manager.Update(0.016f);
+
+            Assert.That(manager.State.TargetCm.X, Is.EqualTo(0f).Within(0.01f));
             Assert.That(manager.State.TargetCm.Y, Is.LessThan(0f));
+        }
+
+        [Test]
+        public void VirtualCameraRuntime_EdgePan_UserInputSuppressed_DoesNotMoveUntilReleased()
+        {
+            var (backend, handler) = BuildCameraInputHandler();
+            var manager = CreateCameraManager(handler, new VirtualCameraDefinition
+            {
+                Id = "EdgePanSuppressed",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                PanMode = CameraPanMode.EdgePan,
+                EdgePanMarginPx = 10f,
+                EdgePanSpeedCmPerSec = 8000f,
+                RotateMode = CameraRotateMode.None,
+                DistanceCm = 5000f,
+                Pitch = 60f,
+                FovYDeg = 60f,
+                Yaw = 180f,
+                EnableZoom = false,
+                AllowUserInput = true
+            }, new StubViewController(1920f, 1080f));
+
+            backend.MousePosition = new Vector2(0f, 0f);
+            handler.Update();
+            manager.SetUserInputSuppressed(true);
+            manager.CaptureVisualInput();
+            manager.Update(1f);
+
+            Assert.That(manager.State.TargetCm.X, Is.EqualTo(0f).Within(0.01f));
+            Assert.That(manager.State.TargetCm.Y, Is.EqualTo(0f).Within(0.01f));
+
+            handler.Update();
+            manager.SetUserInputSuppressed(false);
+            manager.CaptureVisualInput();
+            manager.Update(1f);
+
+            Assert.That(manager.State.TargetCm.Length(), Is.GreaterThan(0.01f));
         }
 
         private static (StubInputBackend backend, PlayerInputHandler handler) BuildCameraInputHandler()
@@ -85,6 +156,7 @@ namespace Ludots.Tests.GAS
             {
                 Actions = new List<InputActionDef>
                 {
+                    new() { Id = "PointerPos", Type = InputActionType.Axis2D },
                     new() { Id = "PointerDelta", Type = InputActionType.Axis2D },
                     new() { Id = "Look", Type = InputActionType.Axis2D },
                     new() { Id = "OrbitRotateHold", Type = InputActionType.Button },
@@ -97,6 +169,7 @@ namespace Ludots.Tests.GAS
                         Priority = 10,
                         Bindings = new List<InputBindingDef>
                         {
+                            new() { ActionId = "PointerPos", Path = "<Mouse>/Pos" },
                             new() { ActionId = "PointerDelta", Path = "<Mouse>/Delta" },
                             new()
                             {

@@ -1,0 +1,30 @@
+{
+  "Id": "camera_acceptance_projection",
+  "Tags": ["camera.acceptance", "camera.acceptance.projection"],
+  "DefaultCamera": {
+    "VirtualCameraId": "Camera.Acceptance.Profile.RtsMoba"
+  },
+  "Entities": [
+    {
+      "Template": "moba_hero",
+      "Overrides": {
+        "Name": { "Value": "CameraAcceptanceHero" },
+        "WorldPositionCm": { "Value": { "X": 1600, "Y": 1200 } }
+      }
+    },
+    {
+      "Template": "moba_dummy",
+      "Overrides": {
+        "Name": { "Value": "CameraAcceptanceScout" },
+        "WorldPositionCm": { "Value": { "X": 2600, "Y": 1600 } }
+      }
+    },
+    {
+      "Template": "moba_dummy",
+      "Overrides": {
+        "Name": { "Value": "CameraAcceptanceCaptain" },
+        "WorldPositionCm": { "Value": { "X": 3400, "Y": 2200 } }
+      }
+    }
+  ]
+}

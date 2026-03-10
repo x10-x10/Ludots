@@ -18,6 +18,7 @@ namespace Ludots.Core.Gameplay.Camera
         private CompositeCameraController? _controller;
         private string _controllerCameraId = string.Empty;
         private long _lastCapturedInputRevision = -1;
+        private bool _userInputSuppressed;
 
         /// <summary>
         /// The current fixed-step logic state of the camera.
@@ -60,6 +61,20 @@ namespace Ludots.Core.Gameplay.Camera
             VirtualCameraBrain = new VirtualCameraBrain(registry);
             InvalidateController();
             FollowTargetPositionCm = null;
+        }
+
+        /// <summary>
+        /// Suppresses controller-driven user input for the current runtime boundary.
+        /// Virtual camera follow/blend logic still advances normally.
+        /// </summary>
+        public void SetUserInputSuppressed(bool suppressed)
+        {
+            _userInputSuppressed = suppressed;
+            if (suppressed)
+            {
+                _pendingInput.Clear();
+                _logicInput.Clear();
+            }
         }
 
         public bool IsVirtualCameraActive(string id)
@@ -183,7 +198,7 @@ namespace Ludots.Core.Gameplay.Camera
             VirtualCameraBrain.ApplyToState(State, _logicInput, dt);
             EnsureController();
 
-            if (_controller != null && VirtualCameraBrain.AllowsInput)
+            if (_controller != null && VirtualCameraBrain.AllowsInput && !_userInputSuppressed)
             {
                 _controller.Update(State, dt);
                 VirtualCameraBrain.CapturePostControllerState(State);
@@ -216,6 +231,13 @@ namespace Ludots.Core.Gameplay.Camera
 
             if (!VirtualCameraBrain.AllowsInput)
             {
+                _pendingInput.Clear();
+                return;
+            }
+
+            if (_userInputSuppressed)
+            {
+                _pendingInput.Clear();
                 return;
             }
 

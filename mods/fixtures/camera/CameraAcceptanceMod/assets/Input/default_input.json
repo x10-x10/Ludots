@@ -1,7 +1,16 @@
 {
   "actions": [
-    { "id": "CameraAcceptance_ClearShot", "name": "CameraAcceptance_ClearShot", "type": "Button" },
-    { "id": "CameraAcceptance_ReplayShot", "name": "CameraAcceptance_ReplayShot", "type": "Button" }
+    { "id": "CameraAcceptanceModeRts", "name": "CameraAcceptanceModeRts", "type": "Button" },
+    { "id": "CameraAcceptanceModeTps", "name": "CameraAcceptanceModeTps", "type": "Button" },
+    { "id": "CameraAcceptanceModeFollowClose", "name": "CameraAcceptanceModeFollowClose", "type": "Button" },
+    { "id": "CameraAcceptanceModeFollowWide", "name": "CameraAcceptanceModeFollowWide", "type": "Button" },
+    { "id": "CameraAcceptanceBlendCut", "name": "CameraAcceptanceBlendCut", "type": "Button" },
+    { "id": "CameraAcceptanceBlendLinear", "name": "CameraAcceptanceBlendLinear", "type": "Button" },
+    { "id": "CameraAcceptanceBlendSmooth", "name": "CameraAcceptanceBlendSmooth", "type": "Button" },
+    { "id": "CameraAcceptanceTpsAimHold", "name": "CameraAcceptanceTpsAimHold", "type": "Button" },
+    { "id": "CameraAcceptanceStackReveal", "name": "CameraAcceptanceStackReveal", "type": "Button" },
+    { "id": "CameraAcceptanceStackAlert", "name": "CameraAcceptanceStackAlert", "type": "Button" },
+    { "id": "CameraAcceptanceStackClear", "name": "CameraAcceptanceStackClear", "type": "Button" }
   ],
   "contexts": [
     {
@@ -9,8 +18,17 @@
       "name": "Camera Acceptance Controls",
       "priority": 110,
       "bindings": [
-        { "actionId": "CameraAcceptance_ClearShot", "path": "<Keyboard>/enter" },
-        { "actionId": "CameraAcceptance_ReplayShot", "path": "<Keyboard>/r" }
+        { "actionId": "CameraAcceptanceModeRts", "path": "<Keyboard>/f1" },
+        { "actionId": "CameraAcceptanceModeTps", "path": "<Keyboard>/f2" },
+        { "actionId": "CameraAcceptanceModeFollowClose", "path": "<Keyboard>/f3" },
+        { "actionId": "CameraAcceptanceModeFollowWide", "path": "<Keyboard>/f4" },
+        { "actionId": "CameraAcceptanceBlendCut", "path": "<Keyboard>/1" },
+        { "actionId": "CameraAcceptanceBlendLinear", "path": "<Keyboard>/2" },
+        { "actionId": "CameraAcceptanceBlendSmooth", "path": "<Keyboard>/3" },
+        { "actionId": "CameraAcceptanceTpsAimHold", "path": "<Mouse>/RightButton" },
+        { "actionId": "CameraAcceptanceStackReveal", "path": "<Keyboard>/r" },
+        { "actionId": "CameraAcceptanceStackAlert", "path": "<Keyboard>/t" },
+        { "actionId": "CameraAcceptanceStackClear", "path": "<Keyboard>/enter" }
       ]
     }
   ]

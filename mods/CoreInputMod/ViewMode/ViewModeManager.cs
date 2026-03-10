@@ -162,9 +162,11 @@ namespace CoreInputMod.ViewMode
                 return;
             }
 
-            var followTargetKind = Enum.TryParse<CameraFollowTargetKind>(next.FollowTargetKind, ignoreCase: true, out var parsedKind)
-                ? parsedKind
-                : definition.FollowTargetKind;
+            if (!Enum.TryParse<CameraFollowTargetKind>(next.FollowTargetKind, ignoreCase: true, out var followTargetKind))
+            {
+                throw new InvalidOperationException(
+                    $"ViewMode '{next.Id}' declared unsupported FollowTargetKind '{next.FollowTargetKind}'.");
+            }
 
             _camera.ActivateVirtualCamera(
                 next.VirtualCameraId,

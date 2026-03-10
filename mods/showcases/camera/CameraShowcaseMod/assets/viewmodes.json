@@ -1,9 +1,9 @@
 [
   {
     "Id": "Camera.Mode.SelectionFollow",
-    "DisplayName": "Selection",
+    "DisplayName": "Selected Follow",
     "VirtualCameraId": "Camera.Showcase.Profile.SelectionFollow",
-    "FollowTargetKind": "SelectedOrLocalPlayer",
+    "FollowTargetKind": "SelectedEntity",
     "InteractionMode": "SmartCast",
     "SkillBarEnabled": false,
     "SwitchActionId": "CameraModeSelectionFollow"

@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Numerics;
 using Arch.Core;
+using Ludots.Core.Gameplay;
+using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Input.Config;
@@ -8,6 +10,8 @@ using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Interaction;
+using Ludots.Core.Input.Systems;
+using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Scripting;
 using Ludots.Platform.Abstractions;
 using NUnit.Framework;
@@ -139,6 +143,55 @@ namespace Ludots.Tests.GAS
             Assert.That(response.ResponseTagId, Is.EqualTo(700));
         }
 
+        [Test]
+        public void InputRuntimeSystem_UiCaptured_SuppressesCameraUserInputOnlyForCapturedFrames()
+        {
+            var (backend, handler) = BuildCameraHandler();
+            var session = new GameSession();
+            var registry = new VirtualCameraRegistry();
+            registry.Register(new VirtualCameraDefinition
+            {
+                Id = "EdgePan",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                PanMode = CameraPanMode.EdgePan,
+                EdgePanMarginPx = 10f,
+                EdgePanSpeedCmPerSec = 8000f,
+                RotateMode = CameraRotateMode.None,
+                DistanceCm = 5000f,
+                Pitch = 60f,
+                FovYDeg = 60f,
+                Yaw = 180f,
+                EnableZoom = false,
+                AllowUserInput = true
+            });
+            session.Camera.SetVirtualCameraRegistry(registry);
+            session.Camera.ConfigureRuntime(handler, new StubViewController());
+            session.Camera.ActivateVirtualCamera("EdgePan", blendDurationSeconds: 0f);
+
+            var globals = new Dictionary<string, object>
+            {
+                [CoreServiceKeys.InputHandler.Name] = handler,
+                [CoreServiceKeys.GameSession.Name] = session,
+                [CoreServiceKeys.UiCaptured.Name] = true,
+            };
+
+            var system = new InputRuntimeSystem(globals);
+
+            backend.MousePosition = Vector2.Zero;
+            system.Update(1f);
+            session.Camera.Update(1f);
+
+            Assert.That(session.Camera.State.TargetCm.X, Is.EqualTo(0f).Within(0.01f));
+            Assert.That(session.Camera.State.TargetCm.Y, Is.EqualTo(0f).Within(0.01f));
+
+            globals[CoreServiceKeys.UiCaptured.Name] = false;
+            system.Update(1f);
+            session.Camera.Update(1f);
+
+            Assert.That(session.Camera.State.TargetCm.Length(), Is.GreaterThan(0.01f));
+        }
+
         private static (TestInputBackend backend, PlayerInputHandler handler) BuildHandler()
         {
             var backend = new TestInputBackend();
@@ -169,17 +222,53 @@ namespace Ludots.Tests.GAS
             return (backend, handler);
         }
 
+        private static (TestInputBackend backend, PlayerInputHandler handler) BuildCameraHandler()
+        {
+            var backend = new TestInputBackend();
+            var config = new InputConfigRoot
+            {
+                Actions = new List<InputActionDef>
+                {
+                    new() { Id = "PointerPos", Type = InputActionType.Axis2D },
+                },
+                Contexts = new List<InputContextDef>
+                {
+                    new()
+                    {
+                        Id = "Camera",
+                        Priority = 1,
+                        Bindings = new List<InputBindingDef>
+                        {
+                            new() { ActionId = "PointerPos", Path = "<Mouse>/Pos", Processors = new() },
+                        }
+                    }
+                }
+            };
+
+            var handler = new PlayerInputHandler(backend, config);
+            handler.PushContext("Camera");
+            return (backend, handler);
+        }
+
         private sealed class TestInputBackend : IInputBackend
         {
             public Dictionary<string, bool> Buttons { get; } = new Dictionary<string, bool>();
+            public Vector2 MousePosition { get; set; }
 
             public float GetAxis(string devicePath) => 0f;
             public bool GetButton(string devicePath) => Buttons.TryGetValue(devicePath, out var down) && down;
-            public Vector2 GetMousePosition() => Vector2.Zero;
+            public Vector2 GetMousePosition() => MousePosition;
             public float GetMouseWheel() => 0f;
             public void EnableIME(bool enable) { }
             public void SetIMECandidatePosition(int x, int y) { }
             public string GetCharBuffer() => string.Empty;
+        }
+
+        private sealed class StubViewController : IViewController
+        {
+            public Vector2 Resolution { get; } = new Vector2(1920f, 1080f);
+            public float Fov => 60f;
+            public float AspectRatio => Resolution.X / Resolution.Y;
         }
     }
 }

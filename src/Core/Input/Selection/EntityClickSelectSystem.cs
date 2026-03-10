@@ -62,21 +62,19 @@ namespace Ludots.Core.Input.Selection
                 _globals.Remove(CoreServiceKeys.HoveredEntity.Name);
             }
 
-            if (!_globals.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var existingSelObj)
-                || existingSelObj is not Entity existingSel
-                || !_world.IsAlive(existingSel))
-            {
-                if (_globals.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localObj) && localObj is Entity local && _world.IsAlive(local))
-                {
-                    _globals[CoreServiceKeys.SelectedEntity.Name] = local;
-                }
-            }
-
             if (!input.PressedThisFrame(bindings.ConfirmActionId)) return;
             if (!GroundRaycastUtil.TryGetGroundWorldCm(in ray, out var worldCm)) return;
 
             var selected = FindNearestEntity(worldCm, PickRadiusCm);
-            _globals[CoreServiceKeys.SelectedEntity.Name] = selected;
+            if (_world.IsAlive(selected))
+            {
+                _globals[CoreServiceKeys.SelectedEntity.Name] = selected;
+            }
+            else
+            {
+                _globals.Remove(CoreServiceKeys.SelectedEntity.Name);
+            }
+
             OnEntitySelected?.Invoke(worldCm, selected);
         }
 
