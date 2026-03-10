@@ -100,12 +100,11 @@ namespace CameraAcceptanceMod.Systems
             }
 
             var brain = _engine.GameSession.Camera.VirtualCameraBrain;
-            bool shotActive = brain != null && brain.HasActiveCamera;
-            string shot = shotActive ? brain!.ActiveCameraId : "none";
-            string preset = _engine.GameSession.Camera.ActivePreset?.Id ?? "none";
+            bool hasAuthority = brain != null && brain.HasActiveCamera;
+            string activeVirtualCamera = hasAuthority ? brain!.ActiveCameraId : "none";
             string mode = _engine.GlobalContext.TryGetValue(ViewModeManager.ActiveModeIdKey, out var modeObj) && modeObj is string modeId
                 ? modeId
-                : "map-preset";
+                : "map-default";
 
             int x = 16;
             int y = 16;
@@ -119,8 +118,8 @@ namespace CameraAcceptanceMod.Systems
 
             overlay.AddRect(x, y, w, h, bg, border);
             overlay.AddText(x + 10, y + 8, "Camera Acceptance", 16, title);
-            overlay.AddText(x + 10, y + 32, $"Preset: {preset} | ViewMode: {mode}", 14, text);
-            overlay.AddText(x + 10, y + 52, $"VirtualShot: {shot}", 14, text);
+            overlay.AddText(x + 10, y + 32, $"Authority: {activeVirtualCamera} | ViewMode: {mode}", 14, text);
+            overlay.AddText(x + 10, y + 52, "Map default stays active under higher-priority shots.", 14, text);
             overlay.AddText(x + 10, y + 74, "F1/F2/F3: switch Tactical / Follow / Inspect", 13, hint);
             overlay.AddText(x + 10, y + 92, "Enter: clear shot | R: replay intro shot", 13, hint);
         }

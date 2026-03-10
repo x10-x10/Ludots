@@ -28,20 +28,20 @@ namespace Ludots.Tests.ThreeC
         [Test]
         public void CameraManager_AlwaysFollow_SnapsWhenTargetBecomesAvailable()
         {
-            var manager = new CameraManager();
-            var target = new StaticFollowTarget();
-            var preset = new CameraPreset
+            var manager = CreateManagerWithRegistry(new VirtualCameraDefinition
             {
-                Id = "FollowPreset",
+                Id = "FollowCamera",
+                Priority = 0,
                 RigKind = CameraRigKind.ThirdPerson,
                 DistanceCm = 400f,
                 Pitch = 15f,
                 Yaw = 180f,
                 FollowMode = CameraFollowMode.AlwaysFollow,
                 FollowTargetKind = CameraFollowTargetKind.LocalPlayer
-            };
+            });
+            var target = new StaticFollowTarget();
 
-            manager.ApplyPreset(preset, target, snapToFollowTargetWhenAvailable: true);
+            manager.ActivateVirtualCamera("FollowCamera", blendDurationSeconds: 0f, followTarget: target);
             manager.Update(0.016f);
 
             Assert.That(manager.State.IsFollowing, Is.False);
@@ -56,38 +56,40 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void CameraManager_VirtualCamera_ClearRestoresBaseState()
+        public void CameraManager_ClearVirtualCamera_FallsBackToNextActiveCamera()
         {
-            var manager = new CameraManager();
-            var registry = new VirtualCameraRegistry();
-            registry.Register(new VirtualCameraDefinition
-            {
-                Id = "FocusEnemy",
-                RigKind = CameraRigKind.TopDown,
-                TargetSource = VirtualCameraTargetSource.Fixed,
-                FixedTargetCm = new Vector2(2000f, 1000f),
-                Yaw = 225f,
-                Pitch = 70f,
-                DistanceCm = 12000f,
-                FovYDeg = 40f,
-                BlendCurve = CameraBlendCurve.Cut,
-                AllowUserInput = false
-            });
-            manager.SetVirtualCameraRegistry(registry);
-            manager.ApplyPreset(new CameraPreset
-            {
-                Id = "Base",
-                RigKind = CameraRigKind.Orbit,
-                DistanceCm = 5000f,
-                Pitch = 45f,
-                Yaw = 180f,
-                FovYDeg = 60f
-            });
+            var manager = CreateManagerWithRegistry(
+                new VirtualCameraDefinition
+                {
+                    Id = "Base",
+                    Priority = 0,
+                    RigKind = CameraRigKind.Orbit,
+                    DistanceCm = 5000f,
+                    Pitch = 45f,
+                    Yaw = 180f,
+                    FovYDeg = 60f
+                },
+                new VirtualCameraDefinition
+                {
+                    Id = "FocusEnemy",
+                    Priority = 1000,
+                    RigKind = CameraRigKind.TopDown,
+                    TargetSource = VirtualCameraTargetSource.Fixed,
+                    FixedTargetCm = new Vector2(2000f, 1000f),
+                    Yaw = 225f,
+                    Pitch = 70f,
+                    DistanceCm = 12000f,
+                    FovYDeg = 40f,
+                    BlendCurve = CameraBlendCurve.Cut,
+                    AllowUserInput = false
+                });
+
+            manager.ActivateVirtualCamera("Base", 0f);
             manager.ApplyPose(new CameraPoseRequest
             {
+                VirtualCameraId = "Base",
                 TargetCm = new Vector2(400f, 600f)
             });
-
             manager.Update(0.016f);
             var baseTarget = manager.State.TargetCm;
             var baseDistance = manager.State.DistanceCm;
@@ -103,6 +105,11 @@ namespace Ludots.Tests.ThreeC
             manager.ClearVirtualCamera();
             manager.Update(0.016f);
 
+            Assert.That(manager.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo("Base"));
+            Assert.That(manager.VirtualCameraBrain?.IsBlending, Is.True);
+
+            manager.Update(0.25f);
+
             Assert.That(manager.State.TargetCm, Is.EqualTo(baseTarget));
             Assert.That(manager.State.DistanceCm, Is.EqualTo(baseDistance));
             Assert.That(manager.State.Pitch, Is.EqualTo(basePitch));
@@ -110,39 +117,40 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void CameraManager_VirtualCamera_ClearAfterMultipleFramesRestoresBaseState()
+        public void CameraManager_ClearVirtualCamera_AfterMultipleFrames_FallsBackToNextActiveCamera()
         {
-            var manager = new CameraManager();
-            var registry = new VirtualCameraRegistry();
-            registry.Register(new VirtualCameraDefinition
-            {
-                Id = "LockFocus",
-                RigKind = CameraRigKind.TopDown,
-                TargetSource = VirtualCameraTargetSource.Fixed,
-                FixedTargetCm = new Vector2(8000f, 1200f),
-                Yaw = 200f,
-                Pitch = 75f,
-                DistanceCm = 15000f,
-                FovYDeg = 35f,
-                BlendCurve = CameraBlendCurve.Cut,
-                AllowUserInput = false
-            });
+            var manager = CreateManagerWithRegistry(
+                new VirtualCameraDefinition
+                {
+                    Id = "Base",
+                    Priority = 0,
+                    RigKind = CameraRigKind.Orbit,
+                    DistanceCm = 4200f,
+                    Pitch = 40f,
+                    Yaw = 135f,
+                    FovYDeg = 55f
+                },
+                new VirtualCameraDefinition
+                {
+                    Id = "LockFocus",
+                    Priority = 1000,
+                    RigKind = CameraRigKind.TopDown,
+                    TargetSource = VirtualCameraTargetSource.Fixed,
+                    FixedTargetCm = new Vector2(8000f, 1200f),
+                    Yaw = 200f,
+                    Pitch = 75f,
+                    DistanceCm = 15000f,
+                    FovYDeg = 35f,
+                    BlendCurve = CameraBlendCurve.Cut,
+                    AllowUserInput = false
+                });
 
-            manager.SetVirtualCameraRegistry(registry);
-            manager.ApplyPreset(new CameraPreset
-            {
-                Id = "Base",
-                RigKind = CameraRigKind.Orbit,
-                DistanceCm = 4200f,
-                Pitch = 40f,
-                Yaw = 135f,
-                FovYDeg = 55f
-            });
+            manager.ActivateVirtualCamera("Base", 0f);
             manager.ApplyPose(new CameraPoseRequest
             {
+                VirtualCameraId = "Base",
                 TargetCm = new Vector2(900f, 1100f)
             });
-
             manager.Update(0.016f);
             var baseTarget = manager.State.TargetCm;
             var baseYaw = manager.State.Yaw;
@@ -157,6 +165,11 @@ namespace Ludots.Tests.ThreeC
             manager.ClearVirtualCamera();
             manager.Update(0.016f);
 
+            Assert.That(manager.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo("Base"));
+            Assert.That(manager.VirtualCameraBrain?.IsBlending, Is.True);
+
+            manager.Update(0.25f);
+
             Assert.That(manager.State.TargetCm, Is.EqualTo(baseTarget));
             Assert.That(manager.State.Yaw, Is.EqualTo(baseYaw));
             Assert.That(manager.State.Pitch, Is.EqualTo(basePitch));
@@ -165,57 +178,64 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void CameraManager_ApplyPresetWhileVirtualCameraActive_UpdatesClearState()
+        public void CameraManager_ClearingTopCamera_FallsBackToLatestHigherPriorityBase()
         {
-            var manager = new CameraManager();
-            var registry = new VirtualCameraRegistry();
-            registry.Register(new VirtualCameraDefinition
-            {
-                Id = "TacticalLock",
-                RigKind = CameraRigKind.TopDown,
-                TargetSource = VirtualCameraTargetSource.Fixed,
-                FixedTargetCm = new Vector2(6400f, 3200f),
-                Yaw = 210f,
-                Pitch = 80f,
-                DistanceCm = 18000f,
-                FovYDeg = 42f,
-                BlendCurve = CameraBlendCurve.Cut,
-                AllowUserInput = false
-            });
+            var manager = CreateManagerWithRegistry(
+                new VirtualCameraDefinition
+                {
+                    Id = "BaseA",
+                    Priority = 0,
+                    RigKind = CameraRigKind.Orbit,
+                    DistanceCm = 3000f,
+                    Pitch = 35f,
+                    Yaw = 180f,
+                    FovYDeg = 60f
+                },
+                new VirtualCameraDefinition
+                {
+                    Id = "BaseB",
+                    Priority = 100,
+                    RigKind = CameraRigKind.ThirdPerson,
+                    DistanceCm = 600f,
+                    Pitch = 20f,
+                    Yaw = 160f,
+                    FovYDeg = 50f
+                },
+                new VirtualCameraDefinition
+                {
+                    Id = "TacticalLock",
+                    Priority = 1000,
+                    RigKind = CameraRigKind.TopDown,
+                    TargetSource = VirtualCameraTargetSource.Fixed,
+                    FixedTargetCm = new Vector2(6400f, 3200f),
+                    Yaw = 210f,
+                    Pitch = 80f,
+                    DistanceCm = 18000f,
+                    FovYDeg = 42f,
+                    BlendCurve = CameraBlendCurve.Cut,
+                    AllowUserInput = false
+                });
 
-            manager.SetVirtualCameraRegistry(registry);
-            manager.ApplyPreset(new CameraPreset
-            {
-                Id = "BaseA",
-                RigKind = CameraRigKind.Orbit,
-                DistanceCm = 3000f,
-                Pitch = 35f,
-                Yaw = 180f,
-                FovYDeg = 60f
-            });
+            manager.ActivateVirtualCamera("BaseA", 0f);
             manager.Update(0.016f);
 
             manager.ActivateVirtualCamera("TacticalLock", 0f);
             manager.Update(0.016f);
 
-            manager.ApplyPreset(new CameraPreset
-            {
-                Id = "BaseB",
-                RigKind = CameraRigKind.ThirdPerson,
-                DistanceCm = 600f,
-                Pitch = 20f,
-                Yaw = 160f,
-                FovYDeg = 50f,
-                FollowMode = CameraFollowMode.AlwaysFollow,
-                FollowTargetKind = CameraFollowTargetKind.LocalPlayer
-            });
+            manager.ActivateVirtualCamera("BaseB", 0f);
             manager.ApplyPose(new CameraPoseRequest
             {
+                VirtualCameraId = "BaseB",
                 TargetCm = new Vector2(1500f, 2500f)
             });
 
             manager.ClearVirtualCamera();
             manager.Update(0.016f);
+
+            Assert.That(manager.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo("BaseB"));
+            Assert.That(manager.VirtualCameraBrain?.IsBlending, Is.True);
+
+            manager.Update(0.25f);
 
             Assert.That(manager.State.RigKind, Is.EqualTo(CameraRigKind.ThirdPerson));
             Assert.That(manager.State.DistanceCm, Is.EqualTo(600f));
@@ -225,38 +245,38 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void CameraManager_VirtualCamera_ClearAfterFollowTargetResolves_RestoresResolvedBaseTarget()
+        public void CameraManager_ClearVirtualCamera_AfterFollowTargetResolves_FallsBackToResolvedFollowCamera()
         {
-            var manager = new CameraManager();
+            var manager = CreateManagerWithRegistry(
+                new VirtualCameraDefinition
+                {
+                    Id = "FollowBase",
+                    Priority = 0,
+                    RigKind = CameraRigKind.ThirdPerson,
+                    DistanceCm = 400f,
+                    Pitch = 15f,
+                    Yaw = 180f,
+                    FovYDeg = 60f,
+                    FollowMode = CameraFollowMode.AlwaysFollow,
+                    FollowTargetKind = CameraFollowTargetKind.LocalPlayer
+                },
+                new VirtualCameraDefinition
+                {
+                    Id = "IntroFocus",
+                    Priority = 1000,
+                    RigKind = CameraRigKind.TopDown,
+                    TargetSource = VirtualCameraTargetSource.Fixed,
+                    FixedTargetCm = new Vector2(6400f, 3200f),
+                    Yaw = 210f,
+                    Pitch = 75f,
+                    DistanceCm = 18000f,
+                    FovYDeg = 42f,
+                    BlendCurve = CameraBlendCurve.Cut,
+                    AllowUserInput = false
+                });
             var target = new StaticFollowTarget();
-            var registry = new VirtualCameraRegistry();
-            registry.Register(new VirtualCameraDefinition
-            {
-                Id = "IntroFocus",
-                RigKind = CameraRigKind.TopDown,
-                TargetSource = VirtualCameraTargetSource.Fixed,
-                FixedTargetCm = new Vector2(6400f, 3200f),
-                Yaw = 210f,
-                Pitch = 75f,
-                DistanceCm = 18000f,
-                FovYDeg = 42f,
-                BlendCurve = CameraBlendCurve.Cut,
-                AllowUserInput = false
-            });
 
-            manager.SetVirtualCameraRegistry(registry);
-            manager.ApplyPreset(new CameraPreset
-            {
-                Id = "TPSBase",
-                RigKind = CameraRigKind.ThirdPerson,
-                DistanceCm = 400f,
-                Pitch = 15f,
-                Yaw = 180f,
-                FovYDeg = 60f,
-                FollowMode = CameraFollowMode.AlwaysFollow,
-                FollowTargetKind = CameraFollowTargetKind.LocalPlayer
-            }, target, snapToFollowTargetWhenAvailable: true);
-
+            manager.ActivateVirtualCamera("FollowBase", 0f, followTarget: target, snapToFollowTargetWhenAvailable: true);
             manager.ActivateVirtualCamera("IntroFocus", 0f);
             manager.Update(0.016f);
 
@@ -269,6 +289,11 @@ namespace Ludots.Tests.ThreeC
             manager.ClearVirtualCamera();
             manager.Update(0.016f);
 
+            Assert.That(manager.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo("FollowBase"));
+            Assert.That(manager.VirtualCameraBrain?.IsBlending, Is.True);
+
+            manager.Update(0.25f);
+
             Assert.That(manager.State.TargetCm, Is.EqualTo(target.PositionCm.Value));
             Assert.That(manager.State.RigKind, Is.EqualTo(CameraRigKind.ThirdPerson));
             Assert.That(manager.State.DistanceCm, Is.EqualTo(400f));
@@ -278,35 +303,37 @@ namespace Ludots.Tests.ThreeC
         [Test]
         public void CameraManager_VirtualCamera_LinearBlendAdvancesByTweenProgress()
         {
-            var manager = new CameraManager();
-            var registry = new VirtualCameraRegistry();
-            registry.Register(new VirtualCameraDefinition
-            {
-                Id = "BlendFocus",
-                RigKind = CameraRigKind.TopDown,
-                TargetSource = VirtualCameraTargetSource.Fixed,
-                FixedTargetCm = new Vector2(2000f, 1000f),
-                Yaw = 270f,
-                Pitch = 70f,
-                DistanceCm = 9000f,
-                FovYDeg = 45f,
-                DefaultBlendDuration = 1f,
-                BlendCurve = CameraBlendCurve.Linear,
-                AllowUserInput = false
-            });
+            var manager = CreateManagerWithRegistry(
+                new VirtualCameraDefinition
+                {
+                    Id = "Base",
+                    Priority = 0,
+                    RigKind = CameraRigKind.Orbit,
+                    DistanceCm = 3000f,
+                    Pitch = 40f,
+                    Yaw = 180f,
+                    FovYDeg = 60f
+                },
+                new VirtualCameraDefinition
+                {
+                    Id = "BlendFocus",
+                    Priority = 1000,
+                    RigKind = CameraRigKind.TopDown,
+                    TargetSource = VirtualCameraTargetSource.Fixed,
+                    FixedTargetCm = new Vector2(2000f, 1000f),
+                    Yaw = 270f,
+                    Pitch = 70f,
+                    DistanceCm = 9000f,
+                    FovYDeg = 45f,
+                    DefaultBlendDuration = 1f,
+                    BlendCurve = CameraBlendCurve.Linear,
+                    AllowUserInput = false
+                });
 
-            manager.SetVirtualCameraRegistry(registry);
-            manager.ApplyPreset(new CameraPreset
-            {
-                Id = "Base",
-                RigKind = CameraRigKind.Orbit,
-                DistanceCm = 3000f,
-                Pitch = 40f,
-                Yaw = 180f,
-                FovYDeg = 60f
-            });
+            manager.ActivateVirtualCamera("Base", 0f);
             manager.ApplyPose(new CameraPoseRequest
             {
+                VirtualCameraId = "Base",
                 TargetCm = new Vector2(400f, 200f)
             });
 
@@ -352,6 +379,19 @@ namespace Ludots.Tests.ThreeC
             Assert.That(float.IsNaN(renderState.Target.Y), Is.False);
             Assert.That(float.IsNaN(renderState.Target.Z), Is.False);
             Assert.That(Vector3.DistanceSquared(renderState.Position, renderState.Target), Is.GreaterThan(0.1f));
+        }
+
+        private static CameraManager CreateManagerWithRegistry(params VirtualCameraDefinition[] definitions)
+        {
+            var manager = new CameraManager();
+            var registry = new VirtualCameraRegistry();
+            for (int i = 0; i < definitions.Length; i++)
+            {
+                registry.Register(definitions[i]);
+            }
+
+            manager.SetVirtualCameraRegistry(registry);
+            return manager;
         }
     }
 }

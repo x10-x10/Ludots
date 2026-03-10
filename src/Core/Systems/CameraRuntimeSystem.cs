@@ -16,18 +16,18 @@ namespace Ludots.Core.Systems
         private readonly World _world;
         private readonly CameraManager _cameraManager;
         private readonly Dictionary<string, object> _globals;
-        private readonly CameraPresetRegistry _presetRegistry;
+        private readonly VirtualCameraRegistry _virtualCameraRegistry;
 
         public CameraRuntimeSystem(
             World world,
             CameraManager cameraManager,
             Dictionary<string, object> globals,
-            CameraPresetRegistry presetRegistry)
+            VirtualCameraRegistry virtualCameraRegistry)
         {
             _world = world ?? throw new ArgumentNullException(nameof(world));
             _cameraManager = cameraManager ?? throw new ArgumentNullException(nameof(cameraManager));
             _globals = globals ?? throw new ArgumentNullException(nameof(globals));
-            _presetRegistry = presetRegistry ?? throw new ArgumentNullException(nameof(presetRegistry));
+            _virtualCameraRegistry = virtualCameraRegistry ?? throw new ArgumentNullException(nameof(virtualCameraRegistry));
         }
 
         public void Initialize()
@@ -36,46 +36,14 @@ namespace Ludots.Core.Systems
 
         public void Update(in float dt)
         {
-            ApplyCameraPresetRequest();
-            ApplyCameraPoseRequest();
             ApplyVirtualCameraRequest();
+            ApplyCameraPoseRequest();
             _cameraManager.Update(dt);
         }
 
         public void BeforeUpdate(in float dt) { }
         public void AfterUpdate(in float dt) { }
         public void Dispose() { }
-
-        private void ApplyCameraPresetRequest()
-        {
-            if (!_globals.TryGetValue(CoreServiceKeys.CameraPresetRequest.Name, out var requestObj) ||
-                requestObj is not CameraPresetRequest request)
-            {
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(request.PresetId))
-            {
-                throw new InvalidOperationException("CameraPresetRequest.PresetId is required.");
-            }
-
-            if (!_presetRegistry.TryGet(request.PresetId, out var preset) || preset == null)
-            {
-                throw new InvalidOperationException($"Camera preset '{request.PresetId}' is not registered.");
-            }
-
-            if (request.ClearActiveVirtualCamera)
-            {
-                _cameraManager.ClearVirtualCamera();
-            }
-
-            _cameraManager.ApplyPreset(
-                preset,
-                CameraFollowTargetFactory.Build(_world, _globals, request.FollowTargetKindOverride ?? preset.FollowTargetKind),
-                request.SnapToFollowTargetWhenAvailable);
-
-            _globals.Remove(CoreServiceKeys.CameraPresetRequest.Name);
-        }
 
         private void ApplyCameraPoseRequest()
         {
@@ -97,14 +65,39 @@ namespace Ludots.Core.Systems
                 return;
             }
 
-            if (request.Clear || string.IsNullOrWhiteSpace(request.Id))
+            if (request.Clear)
             {
-                _cameraManager.ClearVirtualCamera();
+                if (string.IsNullOrWhiteSpace(request.Id))
+                {
+                    _cameraManager.ClearVirtualCamera();
+                }
+                else
+                {
+                    _cameraManager.DeactivateVirtualCamera(request.Id, request.BlendDurationSeconds);
+                }
+
+                _globals.Remove(CoreServiceKeys.VirtualCameraRequest.Name);
+                return;
             }
-            else
+
+            if (string.IsNullOrWhiteSpace(request.Id))
             {
-                _cameraManager.ActivateVirtualCamera(request.Id, request.BlendDurationSeconds);
+                throw new InvalidOperationException("VirtualCameraRequest.Id is required when Clear=false.");
             }
+
+            var definition = _virtualCameraRegistry.Get(request.Id);
+            var followTarget = CameraFollowTargetFactory.Build(
+                _world,
+                _globals,
+                request.FollowTargetKindOverride ?? definition.FollowTargetKind);
+
+            _cameraManager.ActivateVirtualCamera(
+                request.Id,
+                request.BlendDurationSeconds,
+                request.PriorityOverride,
+                followTarget,
+                request.SnapToFollowTargetWhenAvailable,
+                request.ResetRuntimeState);
 
             _globals.Remove(CoreServiceKeys.VirtualCameraRequest.Name);
         }

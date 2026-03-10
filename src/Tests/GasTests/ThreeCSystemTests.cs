@@ -143,12 +143,13 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void CameraManager_ConfiguredPreset_UpdatesStateFromInput()
+        public void CameraManager_ConfiguredVirtualCamera_UpdatesStateFromInput()
         {
             var (backend, handler) = BuildOrbitInputHandler();
-            var manager = CreateOrbitPresetManager(handler, new CameraPreset
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
             {
                 Id = "ManagerRotate",
+                Priority = 0,
                 RigKind = CameraRigKind.Orbit,
                 DistanceCm = 1000f,
                 Pitch = 45f,
@@ -182,6 +183,8 @@ namespace Ludots.Tests.ThreeC
                 {
                     new() { Id = "Move", Type = InputActionType.Axis2D },
                     new() { Id = "Zoom", Type = InputActionType.Axis1D },
+                    new() { Id = "Look", Type = InputActionType.Axis2D },
+                    new() { Id = "PointerDelta", Type = InputActionType.Axis2D },
                     new() { Id = "PointerPos", Type = InputActionType.Axis2D },
                     new() { Id = "OrbitRotateHold", Type = InputActionType.Button },
                     new() { Id = "RotateLeft", Type = InputActionType.Button },
@@ -196,6 +199,8 @@ namespace Ludots.Tests.ThreeC
                         Bindings = new List<InputBindingDef>
                         {
                             new() { ActionId = "Zoom", Path = "<Mouse>/Scroll", Processors = new() },
+                            new() { ActionId = "Look", Path = "<Mouse>/Delta", Processors = new() { new InputModifierDef { Type = "Invert", Parameters = new() { new InputParameterDef { Name = "Y", Value = 1f } } } } },
+                            new() { ActionId = "PointerDelta", Path = "<Mouse>/Delta", Processors = new() },
                             new() { ActionId = "PointerPos", Path = "<Mouse>/Pos", Processors = new() },
                             new() { ActionId = "OrbitRotateHold", Path = "<Mouse>/MiddleButton", Processors = new() },
                             new() { ActionId = "RotateLeft", Path = "<Keyboard>/q", Processors = new() },
@@ -210,12 +215,13 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void PresetRuntime_Zoom_ClampsToMinMax()
+        public void VirtualCameraRuntime_Zoom_ClampsToMinMax()
         {
             var (backend, handler) = BuildOrbitInputHandler();
-            var manager = CreateOrbitPresetManager(handler, new CameraPreset
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
             {
                 Id = "TestZoom",
+                Priority = 0,
                 RigKind = CameraRigKind.Orbit,
                 DistanceCm = 1000f,
                 Pitch = 45f,
@@ -242,12 +248,13 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void PresetRuntime_Zoom_AccumulatesAcrossVisualFrames_AndConsumesOncePerFixedTick()
+        public void VirtualCameraRuntime_Zoom_AccumulatesAcrossVisualFrames_AndConsumesOncePerFixedTick()
         {
             var (backend, handler) = BuildOrbitInputHandler();
-            var manager = CreateOrbitPresetManager(handler, new CameraPreset
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
             {
                 Id = "AccumulatedZoom",
+                Priority = 0,
                 RigKind = CameraRigKind.Orbit,
                 DistanceCm = 5000f,
                 Pitch = 45f,
@@ -281,12 +288,13 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void PresetRuntime_KeyboardRotate_YawWraps360()
+        public void VirtualCameraRuntime_KeyboardRotate_YawWraps360()
         {
             var (backend, handler) = BuildOrbitInputHandler();
-            var manager = CreateOrbitPresetManager(handler, new CameraPreset
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
             {
                 Id = "TestRotate",
+                Priority = 0,
                 RigKind = CameraRigKind.Orbit,
                 DistanceCm = 1000f,
                 Pitch = 45f,
@@ -310,12 +318,13 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void PresetRuntime_PitchClamp_RespectsMaxBound()
+        public void VirtualCameraRuntime_PitchClamp_RespectsMaxBound()
         {
             var (backend, handler) = BuildOrbitInputHandler();
-            var manager = CreateOrbitPresetManager(handler, new CameraPreset
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
             {
                 Id = "TestPitch",
+                Priority = 0,
                 RigKind = CameraRigKind.Orbit,
                 DistanceCm = 1000f,
                 Pitch = 80f,
@@ -330,23 +339,26 @@ namespace Ludots.Tests.ThreeC
             });
 
             backend.Buttons["<Mouse>/MiddleButton"] = true;
-            backend.MousePos = new Vector2(100f, 100f);
-            handler.Update();
-            manager.Update(0.016f);
-
             backend.MousePos = new Vector2(100f, 500f);
             handler.Update();
             manager.Update(0.016f);
 
-            That(manager.State.Pitch, Is.LessThanOrEqualTo(85f), "Pitch must not exceed MaxPitchDeg");
-            That(manager.State.Pitch, Is.GreaterThanOrEqualTo(10f), "Pitch must not fall below MinPitchDeg");
+            backend.MousePos = new Vector2(100f, 100f);
+            handler.Update();
+            manager.Update(0.016f);
+
+            That(manager.State.Pitch, Is.EqualTo(85f).Within(0.01f), "Upward drag should raise pitch until MaxPitchDeg");
         }
 
-        private static CameraManager CreateOrbitPresetManager(PlayerInputHandler handler, CameraPreset preset)
+        private static CameraManager CreateOrbitCameraManager(PlayerInputHandler handler, VirtualCameraDefinition definition)
         {
             var manager = new CameraManager();
+            var registry = new VirtualCameraRegistry();
+            definition.AllowUserInput = true;
+            registry.Register(definition);
+            manager.SetVirtualCameraRegistry(registry);
             manager.ConfigureRuntime(handler, new StubViewController());
-            manager.ApplyPreset(preset);
+            manager.ActivateVirtualCamera(definition.Id, blendDurationSeconds: 0f);
             return manager;
         }
         //  C. Camera Presenter

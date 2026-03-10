@@ -615,7 +615,6 @@ namespace Ludots.Tests.GAS.Production
                 InstallDummyInput(engine);
                 engine.Start();
                 engine.LoadMap(mapId);
-                engine.GlobalContext.Remove(CoreServiceKeys.CameraPresetRequest.Name);
                 engine.GlobalContext.Remove(CoreServiceKeys.CameraPoseRequest.Name);
                 engine.GlobalContext.Remove(CoreServiceKeys.VirtualCameraRequest.Name);
 

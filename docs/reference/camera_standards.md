@@ -2,7 +2,7 @@
 文档类型: 开发指南
 创建日期: 2026-03-02
 维护人: X28技术团队
-文档版本: v1.0
+文档版本: v2.0
 适用范围: 3C Camera 标准
 ---
 
@@ -10,175 +10,158 @@
 
 ## 概述
 
-Editor 和 Raylib 游戏客户端共享同一套轨道相机模型（Orbit Camera），通过 `MapConfig.DefaultCamera` 配置统一初始相机状态。
+当前相机体系的标准模型是“全部皆为 virtual camera”。`src/Core/Gameplay/Camera/VirtualCameraDefinition.cs` 同时承担 profile 和 shot 两种用途：
+
+- profile：长期存在的基础机位，例如 `Camera.Profile.Follow`
+- shot：短时覆盖的高优先级镜头，例如 `Camera.Shot.IntroFocus`
+
+运行时由 `src/Core/Gameplay/Camera/VirtualCameraBrain.cs` 按优先级和激活序列解析唯一权威机位，再由 `src/Core/Gameplay/Camera/CameraManager.cs` 推进逻辑状态。
 
 ## SSOT 边界
 
-- **逻辑相机 SSOT**：`src/Core/Gameplay/Camera/CameraManager.cs` 的 `State` / `PreviousState`。推进时机是 `src/Core/Systems/CameraRuntimeSystem.cs` 的固定步 `SystemGroup.InputCollection`。
-- **表现相机 SSOT**：`src/Core/Presentation/Camera/CameraPresenter.cs` 生成的 `SmoothedRenderState`。它只把逻辑状态按 `alpha` 插值后投影给 `ICameraAdapter`。
-- **输入边界**：`src/Core/Input/Systems/InputRuntimeSystem.cs` 只负责采样 live `PlayerInputHandler`；`src/Core/Input/Systems/AuthoritativeInputSnapshotSystem.cs` 负责冻结 `CoreServiceKeys.AuthoritativeInput`。固定步相机/输入/Order 系统一律读取冻结快照。
-- **过渡边界**：临时镜头切换由 `src/Core/Gameplay/Camera/VirtualCameraBrain.cs` 驱动，混合曲线来自 `src/Core/Tweening/TweenEasing.cs` 与 `VirtualCameraDefinition.BlendCurve`。`CameraPresenter` 和 Adapter 不再各自维护第二套相机 tween。
+- 逻辑相机 SSOT：`src/Core/Gameplay/Camera/CameraManager.cs` 的 `State` / `PreviousState`
+- 虚拟相机栈 SSOT：`src/Core/Gameplay/Camera/VirtualCameraBrain.cs` 的 active set、priority、runtime state
+- 输入 SSOT：`src/Core/Input/Systems/AuthoritativeInputSnapshotSystem.cs` 写入的 `CoreServiceKeys.AuthoritativeInput`
+- 表现相机 SSOT：`src/Core/Presentation/Camera/CameraPresenter.cs` 基于 `alpha` 插值得到的渲染态
 
-## 轨道相机模型
+约束：
 
-相机围绕 `Target` 点做球面运动，由 4 个参数完全确定：
+- 逻辑相机只在固定步 `SystemGroup.InputCollection` 中推进
+- 表现层不再维护第二套镜头 tween
+- 相机行为与输入读取必须共用固定步快照，不得跨层各自 tick
 
-| 参数 | 单位 | 含义 | 默认值 |
-|:--|:--|:--|:--|
-| `TargetXCm` / `TargetYCm` | cm | 相机注视点（逻辑坐标 → 3D: X=X, Z=Y） | 0 |
-| `Yaw` | 度 | 水平旋转。0°=北，90°=东，180°=南 | 180 |
-| `Pitch` | 度 | 俯仰角。0°=平视，90°=垂直俯视 | 45 |
-| `DistanceCm` | cm | 相机到注视点的距离 | 14142 (~141m) |
-| `FovYDeg` | 度 | 垂直视场角 | 60 |
+## Virtual Camera 栈
 
-### Yaw 方向约定
+每个 virtual camera 都由 `Camera/virtual_cameras.json` 通过 `src/Core/Gameplay/Camera/VirtualCameraDefinitionLoader.cs` 加载进 `src/Core/Gameplay/Camera/VirtualCameraRegistry.cs`。
 
-```
-          North (Z-)
-            |
-  West -----+-----> East (X+)
-  (X-)      |
-          South (Z+)
+关键字段：
 
-Yaw=0°:   camera at North, looking South
-Yaw=90°:  camera at East, looking West
-Yaw=180°: camera at South, looking North  ← Editor 默认
-Yaw=270°: camera at West, looking East
-```
+- `priority`：决定谁拥有权威
+- `rigKind`：`Orbit` / `TopDown` / `ThirdPerson` / `FirstPerson`
+- `targetSource`：`CurrentState` / `Fixed` / `FollowTarget`
+- `followMode` / `followTargetKind`：决定跟随策略
+- `defaultBlendDuration` / `blendCurve`：决定逻辑层镜头过渡
+- `allowUserInput`：决定当前权威相机是否允许输入驱动
 
-### 3D 坐标映射
+解析规则：
 
-```
-逻辑层 (cm):  WorldPositionCm.X → 3D X (米)
-              WorldPositionCm.Y → 3D Z (米)
-              Height            → 3D Y (米)
-
-CameraPresenter:
-  camX = target.X + hDist * sin(yaw)
-  camY = vDist
-  camZ = target.Z - hDist * cos(yaw)
-  where hDist = distance * cos(pitch), vDist = distance * sin(pitch)
-```
-
-## 视口与同屏数量
-
-Core 层通过 `CameraViewportUtil` 和 `CameraCullingSystem` 完全掌控视口公式与同屏实体数量：
-
-- **视口公式**：`logicHeight = 2×DistanceCm×tan(FovY/2)/sin(Pitch)`，`logicWidth = logicHeight×AspectRatio`（含 1.5× 安全边距）
-- **同屏数量**：由 `CameraCullingSystem` 根据视口 AABB 与 LOD 距离阈值决定
-- **工具类**：`CameraViewportUtil.ComputeViewportExtent`、`DistanceForVerticalExtent`、`WorldToScreen`（纯数学，平台无关）
-
-## 相机预设 (Camera Preset)
-
-预设从 `Camera/presets.json` 加载，经 ConfigPipeline 合并（Mod 可扩展/覆盖）。内置预设：Moba、Rts、TopDown、Tactical、Default、TPS、FPS。
-
-MapConfig 可通过 `PresetId` 引用预设，显式字段覆盖预设值：
-
-```json
-{
-  "DefaultCamera": {
-    "PresetId": "Moba",
-    "TargetXCm": 0,
-    "TargetYCm": 0
-  }
-}
-```
+1. 先按 `priority` 取最大值
+2. 同优先级按最近激活序列取胜
+3. `Clear=true` 只清当前栈顶 authoritative camera
+4. 清栈顶后自动回落到下一台 active virtual camera
+5. 回落同样遵循目标 virtual camera 的 blend 配置
 
 ## MapConfig.DefaultCamera
 
-每张地图在 JSON 中声明默认相机：
+地图默认相机现在通过 `MapConfig.DefaultCamera.VirtualCameraId` 声明，语义是“激活哪台基础 virtual camera”，而不是“应用 preset”。
+
+示例：
 
 ```json
 {
-  "Id": "entry",
+  "Id": "camera_acceptance_entry",
   "DefaultCamera": {
-    "TargetXCm": 0,
-    "TargetYCm": 0,
-    "Yaw": 180,
-    "Pitch": 45,
-    "DistanceCm": 14142,
-    "FovYDeg": 60
+    "VirtualCameraId": "Camera.Profile.Follow",
+    "TargetXCm": 1200,
+    "TargetYCm": 800
   }
 }
 ```
 
-或使用 `PresetId` 引用预设（见上文）。
+加载顺序见 `src/Core/Engine/GameEngine.cs` 的 `ApplyDefaultCamera(MapConfig)`：
 
-### 加载优先级
+1. `ResetVirtualCameras()`
+2. 激活 map default virtual camera
+3. 通过 `CameraPoseRequest` 应用地图级 pose override
+4. 触发 `MapLoaded`，允许 Mod 继续加 shot 或补 pose
 
-1. `MapConfig.DefaultCamera` — 地图级配置（基础）
-2. Mod Trigger — 可覆盖（如 MobaDemoMod 设置 DistanceCm=25000）
-3. 运行时用户操作 — 滚轮缩放、右键旋转
+## Request 主线
 
-### Editor 行为
+当前主线只允许以下两个请求进入 Core：
 
-- **加载地图时**: 从 `mapConfig.DefaultCamera` 读取，设置 Three.js 相机位置
-- **保存地图时**: 将当前 Editor 相机状态反推为轨道参数，写入 `mapConfig.DefaultCamera`
-- **无配置时**: 使用默认值（yaw=180, pitch=45, dist≈141m, fov=60）
+- `src/Core/Gameplay/Camera/VirtualCameraRequest.cs`
+- `src/Core/Gameplay/Camera/CameraPoseRequest.cs`
 
-### Engine 行为
-
-- `GameEngine.LoadMap()` 调用 `ApplyDefaultCamera(mapConfig)` 设置 `CameraState`
-- 在 `MapLoaded` 事件之前执行，Mod trigger 可以覆盖
-
-## 标准默认值
-
-所有新地图应使用以下默认相机（除非有明确的游戏设计需求）：
-
-```json
-"DefaultCamera": {
-  "Yaw": 180,
-  "Pitch": 45,
-  "DistanceCm": 14142,
-  "FovYDeg": 60
-}
-```
-
-这等价于 Editor 的默认视角 `camera.position.set(0, 100, 100); camera.lookAt(0, 0, 0)`。
-
-## Mod 覆盖指南
-
-如果 Mod 需要不同的初始相机（如 MOBA 鸟瞰、RTS 远景），在 Trigger 中发起 Core request：
+推荐写法：
 
 ```csharp
-engine.SetService(CoreServiceKeys.CameraPresetRequest, new CameraPresetRequest
+engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
 {
-    PresetId = "Moba"
+    Id = "Camera.Shot.IntroFocus"
 });
+
 engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
 {
+    VirtualCameraId = "Camera.Profile.Follow",
     DistanceCm = 25000f,
     Pitch = 60f
 });
 ```
 
-不要直接写 `session.Camera.State`，也不要在 Adapter/Mod 装配 controller 或额外做相机 tween；统一通过 `CameraPresetRequest` / `CameraPoseRequest` / `VirtualCameraRequest` 进入 Core 主线。临时镜头过渡的时长与曲线由 `VirtualCameraDefinition.DefaultBlendDuration` / `BlendCurve` 决定；表现层只负责按 `alpha` 平滑渲染。除非有特殊需求（如第一人称），否则不要随意改 `FovYDeg`。
+禁止行为：
 
-## 过渡规范
+- 直接写 `session.Camera.State`
+- 在 Adapter / Presenter / Mod 内再造一套 camera tween
+- 引入 `CameraPresetRequest`、`ApplyPreset()` 之类的旧入口
 
-`VirtualCameraRequest` 是唯一的临时镜头切换入口：
+## 输入与过渡时序
 
-- `Cut`：立即切镜
-- `Linear`：线性 blend
-- `SmoothStep`：平滑缓入缓出
+相关代码路径：
 
-这些曲线由 `VirtualCameraBrain.Activate()` 启动，逻辑层 fixed-step 推进；表现层继续只做 `PreviousState` → `State` 插值。
+- live 输入采样：`src/Core/Input/Systems/InputRuntimeSystem.cs`
+- 权威输入冻结：`src/Core/Input/Systems/AuthoritativeInputSnapshotSystem.cs`
+- 相机逻辑推进：`src/Core/Systems/CameraRuntimeSystem.cs`
+- 相机逻辑状态：`src/Core/Gameplay/Camera/CameraManager.cs`
+- 过渡曲线：`src/Core/Tweening/TweenEasing.cs`
+- 表现插值：`src/Core/Presentation/Camera/CameraPresenter.cs`
 
-## 已知的遗留配置
+规则：
 
-以下 Mod 仍有硬编码相机参数，应逐步迁移到 DefaultCamera：
+- 输入在哪个 fixed-step snapshot 被消费，相机逻辑就在哪个 snapshot 推进
+- `VirtualCameraBrain` 的 blend 是逻辑层过渡，不是纯视觉补帧
+- `CameraPresenter` 只负责 `PreviousState -> State` 的渲染插值
+- 逻辑层默认 fixed 30 Hz，见 `assets/Configs/Engine/clock.json`
 
-| Mod | 当前方式 | 建议 |
+## Mod 编写规范
+
+当前推荐的 camera mod 分层：
+
+- `mods/capabilities/camera/CameraProfilesMod`
+  - 提供可复用基础 virtual camera profile
+  - 提供 `viewmodes.json`
+- `mods/capabilities/camera/VirtualCameraShotsMod`
+  - 提供声明式 shot
+  - 通过 map tag 或 trigger 激活
+- `mods/capabilities/camera/CameraBootstrapMod`
+  - 只负责地图空间到相机 pose 的启动补正
+- `mods/fixtures/camera/CameraAcceptanceMod`
+  - 提供最小验收地图和基础夹具
+- `mods/showcases/camera/CameraShowcaseMod`
+  - 提供生产级 camera 示例：共享 profile、局部 selection-follow profile、shot 栈、bootstrap、runtime pose override
+
+编写要求：
+
+- profile 和 shot 都必须落到 `virtual_cameras.json`
+- 视角模式切换通过 `mods/CoreInputMod/ViewMode/ViewModeManager.cs`
+- 通用选择 / ViewMode / TabTarget 输入绑定收口在 `mods/CoreInputMod/assets/Input/default_input.json`
+- 地图级默认机位只写 `DefaultCamera.VirtualCameraId`
+- 短时镜头通过 `VirtualCameraRequest`
+
+## 已知迁移点
+
+以下内容仍应继续收口到 virtual camera 主线：
+
+| 模块 | 当前状态 | 目标 |
 |:--|:--|:--|
-| MobaDemoMod | moba_config.json + trigger | 改为 DefaultCamera + trigger 仅覆盖 target |
-| CameraBootstrapMod | 仅负责按地图边界设置 target/distance | Preset 权威保持在 DefaultCamera / CameraProfilesMod |
-| TerrainBenchmarkMod | 硬编码 yaw=35, pitch=60, dist=40000 | 改为 DefaultCamera |
-| Physics2DPlaygroundMod | 硬编码 pitch=60, dist=12000 | 改为 DefaultCamera |
-| Navigation2DPlaygroundMod | 硬编码 pitch=65, dist=18000 | 改为 DefaultCamera |
-| PerformanceVisualizationMod | 硬编码 dist=80000 | 改为 DefaultCamera |
+| `TerrainBenchmarkMod` | 仍在 trigger 里补 pose | 尽量把基础机位前移到 `DefaultCamera` |
+| `Physics2DPlaygroundMod` | 仍有场景特定 pose override | 保留 override，避免重复声明基础 virtual camera |
+| `Navigation2DPlaygroundMod` | 仍有场景特定 pose override | 同上 |
+| `PerformanceVisualizationMod` | 仍有远景 pose override | 同上 |
 
 ## 废弃项
 
-- `CameraControllerRegistry` / `CameraControllerRequest` — 已移出主线，Mod 不再注册或切换 controller
-- `CameraLogic.cs` — 已被 `CameraPreset` / request 主线取代，距离限制 500-10000 过时
-- Raylib 初始 Camera3D `fovy=45` — 已改为 60 与 CameraState 统一
+- `CameraPreset.cs`
+- `CameraPresetLoader.cs`
+- `CameraPresetRegistry.cs`
+- `CameraPresetRequest.cs`
+- 任何“preset + overlay shot + restore pre-state”的并行心智模型

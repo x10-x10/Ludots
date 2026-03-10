@@ -167,12 +167,13 @@ namespace ModdingTest
                 inputHandler.PushContext("Default_Gameplay");
                 engine.SetService(CoreServiceKeys.InputHandler, inputHandler);
 
-                engine.SetService(CoreServiceKeys.CameraPresetRequest, new CameraPresetRequest
+                engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
                 {
-                    PresetId = "Default"
+                    Id = "Default"
                 });
                 engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
                 {
+                    VirtualCameraId = "Default",
                     Yaw = 0f,
                     Pitch = 60f,
                     DistanceCm = 60000f
@@ -194,7 +195,7 @@ namespace ModdingTest
                 if (yaw > 0.1f)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("SUCCESS: CameraPresetRequest applied and orbit camera responds to raw input.");
+                    Console.WriteLine("SUCCESS: VirtualCameraRequest applied and orbit camera responds to raw input.");
                 }
                 else
                 {

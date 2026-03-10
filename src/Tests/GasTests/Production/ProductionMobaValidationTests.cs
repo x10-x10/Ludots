@@ -32,7 +32,6 @@ namespace Ludots.Tests.GAS.Production
 
                 engine.Start();
                 engine.LoadMap(engine.MergedConfig.StartupMapId);
-                engine.GlobalContext.Remove(Ludots.Core.Scripting.CoreServiceKeys.CameraPresetRequest.Name);
                 engine.GlobalContext.Remove(Ludots.Core.Scripting.CoreServiceKeys.CameraPoseRequest.Name);
                 engine.GlobalContext.Remove(Ludots.Core.Scripting.CoreServiceKeys.VirtualCameraRequest.Name);
 

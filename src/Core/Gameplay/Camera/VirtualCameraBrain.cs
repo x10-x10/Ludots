@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using Ludots.Core.Input.Runtime;
 using Ludots.Core.Tweening;
 
 namespace Ludots.Core.Gameplay.Camera
@@ -7,9 +9,11 @@ namespace Ludots.Core.Gameplay.Camera
     public sealed class VirtualCameraBrain
     {
         private readonly VirtualCameraRegistry _registry;
-        private RuntimeVirtualCamera? _active;
+        private readonly Dictionary<string, RuntimeVirtualCamera> _active = new(StringComparer.OrdinalIgnoreCase);
         private CameraStateSnapshot _blendFrom;
         private TweenProgress _blendProgress;
+        private long _activationSequence;
+        private RuntimeVirtualCamera? _resolved;
 
         public VirtualCameraBrain(VirtualCameraRegistry registry)
         {
@@ -17,37 +21,142 @@ namespace Ludots.Core.Gameplay.Camera
             _blendProgress.Complete();
         }
 
-        public bool HasActiveCamera => _active != null;
-        public bool AllowsInput => _active != null && _active.Definition.AllowUserInput && !IsBlending;
+        public bool HasActiveCamera => _resolved != null;
         public bool IsBlending => _blendProgress.IsActive;
-        public string ActiveCameraId => _active?.Definition.Id ?? string.Empty;
+        public bool AllowsInput => _resolved != null && _resolved.Definition.AllowUserInput && !IsBlending;
+        public string ActiveCameraId => _resolved?.Definition.Id ?? string.Empty;
+        public VirtualCameraDefinition? ActiveDefinition => _resolved?.Definition;
+        public Vector2? ActiveFollowTargetPositionCm => _resolved?.ResolvedFollowTargetPositionCm;
 
-        public void Activate(string id, CameraState currentState, float? blendDurationSeconds = null)
+        public bool IsActive(string id)
+        {
+            return !string.IsNullOrWhiteSpace(id) && _active.ContainsKey(id);
+        }
+
+        public void Activate(
+            string id,
+            CameraState currentState,
+            float? blendDurationSeconds = null,
+            int? priorityOverride = null,
+            ICameraFollowTarget? followTarget = null,
+            bool snapToFollowTargetWhenAvailable = true,
+            bool resetRuntimeState = true)
         {
             if (currentState == null) throw new ArgumentNullException(nameof(currentState));
 
+            var currentOutput = CaptureCurrentOutputState(currentState);
+
             var definition = _registry.Get(id);
-            _active = new RuntimeVirtualCamera(definition, FromDefinition(definition, currentState));
-            _blendFrom = CameraStateSnapshot.FromState(currentState);
-            _blendProgress.Start(
-                Math.Max(0f, blendDurationSeconds ?? definition.DefaultBlendDuration),
-                ToTweenEasing(definition.BlendCurve));
+            if (!_active.TryGetValue(id, out var runtime))
+            {
+                runtime = new RuntimeVirtualCamera(definition, FromDefinition(definition, currentOutput));
+                _active[id] = runtime;
+            }
+            else
+            {
+                runtime.Definition = definition;
+                if (resetRuntimeState)
+                {
+                    runtime.RuntimeState = FromDefinition(definition, currentOutput);
+                }
+            }
+
+            runtime.Priority = priorityOverride ?? definition.Priority;
+            runtime.FollowTarget = followTarget;
+            runtime.PendingFollowSnap = snapToFollowTargetWhenAvailable;
+            runtime.ActivationSequence = ++_activationSequence;
+
+            ResolveActiveCamera();
+            BeginBlendFrom(currentOutput, blendDurationSeconds ?? definition.DefaultBlendDuration);
         }
 
-        public void Clear()
+        public bool Deactivate(string id, CameraState currentState, float? blendDurationSeconds = null)
         {
-            _active = null;
+            if (string.IsNullOrWhiteSpace(id) || currentState == null)
+            {
+                return false;
+            }
+
+            var currentOutput = CaptureCurrentOutputState(currentState);
+            if (!_active.Remove(id))
+            {
+                return false;
+            }
+
+            string previousActiveId = ActiveCameraId;
+            ResolveActiveCamera();
+
+            if (_resolved == null)
+            {
+                _blendProgress.Complete();
+                return true;
+            }
+
+            if (!string.Equals(previousActiveId, ActiveCameraId, StringComparison.OrdinalIgnoreCase))
+            {
+                BeginBlendFrom(currentOutput, blendDurationSeconds ?? _resolved.Definition.DefaultBlendDuration);
+            }
+
+            return true;
+        }
+
+        public void ClearAll()
+        {
+            _active.Clear();
+            _resolved = null;
             _blendProgress.Complete();
         }
 
-        public void ApplyToState(CameraState state, Vector2? followTargetPositionCm, float dt)
+        public bool ApplyPose(CameraPoseRequest request)
         {
-            if (state == null || _active == null)
+            if (request == null)
+            {
+                return false;
+            }
+
+            var runtime = ResolveTargetRuntime(request.VirtualCameraId);
+            if (runtime == null)
+            {
+                return false;
+            }
+
+            ref var state = ref runtime.RuntimeState;
+            if (request.TargetCm.HasValue) state.TargetCm = request.TargetCm.Value;
+            if (request.Yaw.HasValue) state.Yaw = request.Yaw.Value;
+            if (request.Pitch.HasValue) state.Pitch = request.Pitch.Value;
+            if (request.DistanceCm.HasValue) state.DistanceCm = request.DistanceCm.Value;
+            if (request.FovYDeg.HasValue) state.FovYDeg = request.FovYDeg.Value;
+            return true;
+        }
+
+        public bool SetFollowTarget(string id, ICameraFollowTarget? followTarget, bool snapToFollowTargetWhenAvailable = true)
+        {
+            if (string.IsNullOrWhiteSpace(id) || !_active.TryGetValue(id, out var runtime))
+            {
+                return false;
+            }
+
+            runtime.FollowTarget = followTarget;
+            runtime.PendingFollowSnap = snapToFollowTargetWhenAvailable;
+            return true;
+        }
+
+        public void ApplyToState(CameraState state, IInputActionReader? input, float dt)
+        {
+            if (state == null)
             {
                 return;
             }
 
-            var desired = ResolveDesiredSnapshot(_active, followTargetPositionCm);
+            ResolveActiveCamera();
+            if (_resolved == null)
+            {
+                return;
+            }
+
+            ResolveRuntimeStates(input);
+            var desired = _resolved.RuntimeState;
+
             if (IsBlending)
             {
                 float t = _blendProgress.Tick(dt);
@@ -62,39 +171,132 @@ namespace Ludots.Core.Gameplay.Camera
 
         public void CapturePostControllerState(CameraState state)
         {
-            if (_active == null || !AllowsInput)
+            if (_resolved == null || !AllowsInput || state == null)
             {
                 return;
             }
 
-            var captured = CameraStateSnapshot.FromState(state);
-            ref var runtime = ref _active.RuntimeState;
-            runtime.Yaw = captured.Yaw;
-            runtime.Pitch = captured.Pitch;
-            runtime.DistanceCm = captured.DistanceCm;
-            runtime.FovYDeg = captured.FovYDeg;
-            runtime.RigKind = captured.RigKind;
+            _resolved.RuntimeState = CameraStateSnapshot.FromState(state);
+        }
 
-            if (_active.Definition.TargetSource == VirtualCameraTargetSource.Fixed)
+        private RuntimeVirtualCamera? ResolveTargetRuntime(string id)
+        {
+            if (!string.IsNullOrWhiteSpace(id) && _active.TryGetValue(id, out var targeted))
             {
-                runtime.TargetCm = captured.TargetCm;
+                return targeted;
+            }
+
+            return _resolved;
+        }
+
+        private void ResolveRuntimeStates(IInputActionReader? input)
+        {
+            foreach (var pair in _active)
+            {
+                var runtime = pair.Value;
+                runtime.ResolvedFollowTargetPositionCm = ResolveFollowTargetPosition(runtime.FollowTarget);
+
+                if (runtime.ResolvedFollowTargetPositionCm.HasValue && runtime.PendingFollowSnap)
+                {
+                    runtime.RuntimeState.TargetCm = runtime.ResolvedFollowTargetPositionCm.Value;
+                    runtime.PendingFollowSnap = false;
+                }
+
+                bool shouldFollow = ShouldFollow(runtime, input);
+                if (shouldFollow && runtime.ResolvedFollowTargetPositionCm.HasValue)
+                {
+                    runtime.RuntimeState.TargetCm = runtime.ResolvedFollowTargetPositionCm.Value;
+                    runtime.RuntimeState.IsFollowing = true;
+                }
+                else
+                {
+                    runtime.RuntimeState.IsFollowing = false;
+                }
             }
         }
 
-        private static CameraStateSnapshot ResolveDesiredSnapshot(RuntimeVirtualCamera active, Vector2? followTargetPositionCm)
+        private bool ShouldFollow(RuntimeVirtualCamera runtime, IInputActionReader? input)
         {
-            var desired = active.RuntimeState;
-            if (active.Definition.TargetSource == VirtualCameraTargetSource.FollowTarget && followTargetPositionCm.HasValue)
+            if (runtime.ResolvedFollowTargetPositionCm == null)
             {
-                desired.TargetCm = followTargetPositionCm.Value;
-                desired.IsFollowing = true;
-            }
-            else
-            {
-                desired.IsFollowing = false;
+                return false;
             }
 
-            return desired;
+            if (runtime.Definition.TargetSource == VirtualCameraTargetSource.FollowTarget)
+            {
+                return true;
+            }
+
+            return runtime.Definition.FollowMode switch
+            {
+                CameraFollowMode.None => false,
+                CameraFollowMode.AlwaysFollow => true,
+                CameraFollowMode.HoldToLock => ReferenceEquals(runtime, _resolved)
+                    && input != null
+                    && input.ReadAction<bool>(runtime.Definition.FollowActionId),
+                _ => false
+            };
+        }
+
+        private static Vector2? ResolveFollowTargetPosition(ICameraFollowTarget? followTarget)
+        {
+            if (followTarget != null && followTarget.TryGetPosition(out var resolved))
+            {
+                return resolved;
+            }
+
+            return null;
+        }
+
+        private void ResolveActiveCamera()
+        {
+            RuntimeVirtualCamera? best = null;
+            foreach (var runtime in _active.Values)
+            {
+                if (best == null)
+                {
+                    best = runtime;
+                    continue;
+                }
+
+                if (runtime.Priority > best.Priority ||
+                    (runtime.Priority == best.Priority && runtime.ActivationSequence > best.ActivationSequence))
+                {
+                    best = runtime;
+                }
+            }
+
+            _resolved = best;
+        }
+
+        private CameraStateSnapshot CaptureCurrentOutputState(CameraState currentState)
+        {
+            ResolveActiveCamera();
+            if (_resolved == null)
+            {
+                return CameraStateSnapshot.FromState(currentState);
+            }
+
+            ResolveRuntimeStates(input: null);
+            var desired = _resolved.RuntimeState;
+            return IsBlending
+                ? CameraStateSnapshot.Lerp(_blendFrom, desired, _blendProgress.Progress)
+                : desired;
+        }
+
+        private void BeginBlendFrom(CameraStateSnapshot currentOutput, float durationSeconds)
+        {
+            _blendFrom = currentOutput;
+            if (durationSeconds <= 0f)
+            {
+                _blendProgress.Complete();
+                return;
+            }
+
+            var easing = _resolved != null
+                ? ToTweenEasing(_resolved.Definition.BlendCurve)
+                : TweenEasing.Linear;
+            _blendProgress.Start(durationSeconds, easing);
         }
 
         private static TweenEasing ToTweenEasing(CameraBlendCurve curve)
@@ -108,19 +310,7 @@ namespace Ludots.Core.Gameplay.Camera
             };
         }
 
-        private sealed class RuntimeVirtualCamera
-        {
-            public RuntimeVirtualCamera(VirtualCameraDefinition definition, CameraStateSnapshot runtimeState)
-            {
-                Definition = definition;
-                RuntimeState = runtimeState;
-            }
-
-            public VirtualCameraDefinition Definition { get; }
-            public CameraStateSnapshot RuntimeState;
-        }
-
-        private static CameraStateSnapshot FromDefinition(VirtualCameraDefinition definition, CameraState currentState)
+        private static CameraStateSnapshot FromDefinition(VirtualCameraDefinition definition, CameraStateSnapshot currentState)
         {
             return new CameraStateSnapshot
             {
@@ -135,6 +325,23 @@ namespace Ludots.Core.Gameplay.Camera
                 ZoomLevel = currentState.ZoomLevel,
                 IsFollowing = false
             };
+        }
+
+        private sealed class RuntimeVirtualCamera
+        {
+            public RuntimeVirtualCamera(VirtualCameraDefinition definition, CameraStateSnapshot runtimeState)
+            {
+                Definition = definition;
+                RuntimeState = runtimeState;
+            }
+
+            public VirtualCameraDefinition Definition { get; set; }
+            public CameraStateSnapshot RuntimeState;
+            public int Priority;
+            public ICameraFollowTarget? FollowTarget;
+            public Vector2? ResolvedFollowTargetPositionCm;
+            public bool PendingFollowSnap;
+            public long ActivationSequence;
         }
     }
 }

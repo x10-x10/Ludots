@@ -21,6 +21,7 @@ namespace Ludots.Tests.GAS.Production
     {
         private const string ViewModeManagerGlobalKey = "CoreInputMod.ViewModeManager";
         private const string ActiveViewModeIdGlobalKey = "CoreInputMod.ActiveViewModeId";
+        private const int BlendSettleFrames = 20;
 
         private static readonly string[] CameraCapabilityMods =
         {
@@ -47,13 +48,13 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(brain, Is.Not.Null);
             Assert.That(brain!.HasActiveCamera, Is.True);
             Assert.That(brain.ActiveCameraId, Is.EqualTo(VirtualCameraShotIds.IntroFocus));
-            Assert.That(engine.GameSession.Camera.ActivePreset?.Id, Is.EqualTo(CameraProfileIds.FollowPreset));
+            Assert.That(brain.IsActive(CameraProfileIds.FollowCamera), Is.True);
             Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.TopDown));
             Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(6400f, 3200f)));
         }
 
         [Test]
-        public void CameraAcceptanceMod_ClearRequest_RestoresFollowPresetAndHeroTarget()
+        public void CameraAcceptanceMod_ClearRequest_RestoresFollowCameraAndHeroTarget()
         {
             using var engine = CreateEngine(CameraCapabilityMods);
             LoadMap(engine, CameraAcceptanceIds.EntryMapId);
@@ -62,12 +63,16 @@ namespace Ludots.Tests.GAS.Production
             {
                 Clear = true
             });
-            Tick(engine, frames: 5);
+            TickUntil(engine, () => engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId == CameraProfileIds.FollowCamera);
 
             var brain = engine.GameSession.Camera.VirtualCameraBrain;
             Assert.That(brain, Is.Not.Null);
-            Assert.That(brain!.HasActiveCamera, Is.False);
-            Assert.That(engine.GameSession.Camera.ActivePreset?.Id, Is.EqualTo(CameraProfileIds.FollowPreset));
+            Assert.That(brain!.HasActiveCamera, Is.True);
+            Assert.That(brain.ActiveCameraId, Is.EqualTo(CameraProfileIds.FollowCamera));
+            Assert.That(brain.IsActive(VirtualCameraShotIds.IntroFocus), Is.False);
+
+            Tick(engine, frames: BlendSettleFrames);
+
             Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.ThirdPerson));
             Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(1200f, 800f)));
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(1200f, 800f)));
@@ -79,7 +84,7 @@ namespace Ludots.Tests.GAS.Production
         }
 
         [Test]
-        public void CameraProfilesMod_ViewModeSwitch_AppliesPresetAuthority()
+        public void CameraProfilesMod_ViewModeSwitch_AppliesVirtualCameraAuthority()
         {
             using var engine = CreateEngine(CameraCapabilityMods);
             LoadMap(engine, CameraAcceptanceIds.EntryMapId);
@@ -91,23 +96,34 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(GetActiveMode(manager!), Is.Null, "Shared camera profiles should register without forcing an initial mode.");
 
             Assert.That(SwitchViewMode(manager!, CameraProfileIds.TacticalMode), Is.True);
-            Tick(engine, frames: 2);
-            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.HasActiveCamera, Is.False);
-            Assert.That(engine.GameSession.Camera.ActivePreset?.Id, Is.EqualTo(CameraProfileIds.TacticalPreset));
-            Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.Orbit));
-            Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
+            Tick(engine, frames: 1);
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.HasActiveCamera, Is.True);
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(VirtualCameraShotIds.IntroFocus));
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.IsActive(CameraProfileIds.TacticalCamera), Is.True);
+            Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.TopDown));
             Assert.That(engine.GlobalContext[ActiveViewModeIdGlobalKey], Is.EqualTo(CameraProfileIds.TacticalMode));
 
+            engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
+            {
+                Clear = true
+            });
+            TickUntil(engine, () => engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId == CameraProfileIds.TacticalCamera);
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(CameraProfileIds.TacticalCamera));
+
+            Tick(engine, frames: BlendSettleFrames);
+            Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.Orbit));
+            Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
+
             Assert.That(SwitchViewMode(manager!, CameraProfileIds.FollowMode), Is.True);
-            Tick(engine, frames: 2);
-            Assert.That(engine.GameSession.Camera.ActivePreset?.Id, Is.EqualTo(CameraProfileIds.FollowPreset));
+            Tick(engine, frames: BlendSettleFrames);
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(CameraProfileIds.FollowCamera));
             Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.ThirdPerson));
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(1200f, 800f)));
             Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.True);
 
             Assert.That(SwitchViewMode(manager!, CameraProfileIds.InspectMode), Is.True);
-            Tick(engine, frames: 2);
-            Assert.That(engine.GameSession.Camera.ActivePreset?.Id, Is.EqualTo(CameraProfileIds.InspectPreset));
+            Tick(engine, frames: BlendSettleFrames);
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(CameraProfileIds.InspectCamera));
             Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.TopDown));
             Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
             Assert.That(engine.GlobalContext[ActiveViewModeIdGlobalKey], Is.EqualTo(CameraProfileIds.InspectMode));
@@ -150,8 +166,8 @@ namespace Ludots.Tests.GAS.Production
             using var engine = CreateEngine(CameraCapabilityMods);
             LoadMap(engine, CameraAcceptanceIds.BootstrapMapId);
 
-            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.HasActiveCamera, Is.False);
-            Assert.That(engine.GameSession.Camera.ActivePreset?.Id, Is.EqualTo(CameraProfileIds.TacticalPreset));
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.HasActiveCamera, Is.True);
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(CameraProfileIds.TacticalCamera));
             Assert.That(engine.GameSession.Camera.State.RigKind, Is.EqualTo(CameraRigKind.Orbit));
             Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(3000f, 2000f)));
             Assert.That(engine.GameSession.Camera.State.DistanceCm, Is.EqualTo(5400f));
@@ -195,6 +211,21 @@ namespace Ludots.Tests.GAS.Production
             {
                 engine.Tick(1f / 60f);
             }
+        }
+
+        private static void TickUntil(GameEngine engine, Func<bool> predicate, int maxFrames = 30)
+        {
+            for (int i = 0; i < maxFrames; i++)
+            {
+                if (predicate())
+                {
+                    return;
+                }
+
+                engine.Tick(1f / 60f);
+            }
+
+            Assert.That(predicate(), Is.True, $"Predicate was not satisfied within {maxFrames} frames.");
         }
 
         private static Entity FindEntityByName(World world, string name)

@@ -603,14 +603,11 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.GroundOverlayBuffer, groundOverlayBuffer);
             SetService(CoreServiceKeys.PerformerDefinitionRegistry, performerDefinitions);
             SetService(CoreServiceKeys.PerformerInstanceBuffer, performerInstances);
-            var cameraPresetRegistry = new CameraPresetRegistry();
-            new CameraPresetLoader(ConfigPipeline, cameraPresetRegistry).Load(ConfigCatalog, ConfigConflictReport);
-            SetService(CoreServiceKeys.CameraPresetRegistry, cameraPresetRegistry);
             var virtualCameraRegistry = new VirtualCameraRegistry();
             new VirtualCameraDefinitionLoader(ConfigPipeline, virtualCameraRegistry).Load(ConfigCatalog, ConfigConflictReport);
             SetService(CoreServiceKeys.VirtualCameraRegistry, virtualCameraRegistry);
             GameSession.Camera.SetVirtualCameraRegistry(virtualCameraRegistry);
-            var cameraRuntimeSystem = new CameraRuntimeSystem(World, GameSession.Camera, GlobalContext, cameraPresetRegistry);
+            var cameraRuntimeSystem = new CameraRuntimeSystem(World, GameSession.Camera, GlobalContext, virtualCameraRegistry);
             RegisterSystem(new GasBudgetResetSystem(gasBudget), SystemGroup.SchemaUpdate);
             RegisterSystem(schemaUpdateSystem, SystemGroup.SchemaUpdate);
             
@@ -990,28 +987,40 @@ namespace Ludots.Core.Engine
         private void ApplyDefaultCamera(MapConfig mapConfig)
         {
             var cam = mapConfig?.DefaultCamera;
-            CameraPreset preset = null;
+            var registry = GetService(CoreServiceKeys.VirtualCameraRegistry)
+                ?? throw new InvalidOperationException("VirtualCameraRegistry is required before loading maps.");
 
-            var presetReg = GetService(CoreServiceKeys.CameraPresetRegistry);
+            string virtualCameraId = string.IsNullOrWhiteSpace(cam?.VirtualCameraId)
+                ? "Default"
+                : cam.VirtualCameraId;
 
-            if (cam != null && !string.IsNullOrWhiteSpace(cam.PresetId) && presetReg != null)
-                presetReg.TryGet(cam.PresetId, out preset);
-
-            if (preset == null && presetReg != null)
-                presetReg.TryGet("Default", out preset);
-
-            if (preset != null)
+            if (!registry.TryGet(virtualCameraId, out var definition) || definition == null)
             {
-                EnsureCameraRuntimeConfigured();
-                GameSession.Camera.ApplyPreset(
-                    preset,
-                    CameraFollowTargetFactory.Build(World, GlobalContext, preset.FollowTargetKind));
+                if (!string.IsNullOrWhiteSpace(cam?.VirtualCameraId))
+                {
+                    throw new InvalidOperationException($"Map DefaultCamera.VirtualCameraId '{cam.VirtualCameraId}' is not registered.");
+                }
+
+                if (!registry.TryGet("Default", out definition) || definition == null)
+                {
+                    return;
+                }
+
+                virtualCameraId = definition.Id;
             }
+
+            GameSession.Camera.ResetVirtualCameras();
+            GameSession.Camera.ActivateVirtualCamera(
+                virtualCameraId,
+                blendDurationSeconds: 0f,
+                followTarget: CameraFollowTargetFactory.Build(World, GlobalContext, definition.FollowTargetKind),
+                snapToFollowTargetWhenAvailable: definition.SnapToFollowTargetWhenAvailable);
 
             if (cam != null)
             {
                 GameSession.Camera.ApplyPose(new CameraPoseRequest
                 {
+                    VirtualCameraId = virtualCameraId,
                     TargetCm = (cam.TargetXCm.HasValue || cam.TargetYCm.HasValue)
                         ? new System.Numerics.Vector2(cam.TargetXCm ?? 0f, cam.TargetYCm ?? 0f)
                         : null,

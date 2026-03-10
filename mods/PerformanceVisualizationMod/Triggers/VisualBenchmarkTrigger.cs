@@ -39,13 +39,14 @@ namespace PerformanceVisualizationMod.Triggers
 
             if (engine != null && gameSession != null)
             {
-                _modContext.Log("[VisualBenchmark] Requesting benchmark camera preset...");
-                engine.SetService(CoreServiceKeys.CameraPresetRequest, new CameraPresetRequest
+                _modContext.Log("[VisualBenchmark] Requesting benchmark virtual camera...");
+                engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
                 {
-                    PresetId = "TopDown"
+                    Id = "TopDown"
                 });
                 engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
                 {
+                    VirtualCameraId = "TopDown",
                     TargetCm = new Vector2(50000, 50000),
                     DistanceCm = 80000f,
                     Pitch = 60f

@@ -2,6 +2,7 @@
   {
     "id": "Camera.Profile.Tactical",
     "displayName": "Camera Tactical",
+    "priority": 100,
     "rigKind": "Orbit",
     "distanceCm": 6500,
     "pitch": 58,
@@ -20,11 +21,12 @@
     "enableZoom": true,
     "zoomCmPerWheel": 1200,
     "followMode": "None",
-    "followTargetKind": "None"
+    "allowUserInput": true
   },
   {
     "id": "Camera.Profile.Follow",
     "displayName": "Camera Follow",
+    "priority": 100,
     "rigKind": "ThirdPerson",
     "distanceCm": 500,
     "pitch": 18,
@@ -40,11 +42,13 @@
     "enableZoom": true,
     "zoomCmPerWheel": 120,
     "followMode": "AlwaysFollow",
-    "followTargetKind": "LocalPlayer"
+    "followTargetKind": "LocalPlayer",
+    "allowUserInput": true
   },
   {
     "id": "Camera.Profile.Inspect",
     "displayName": "Camera Inspect",
+    "priority": 100,
     "rigKind": "TopDown",
     "distanceCm": 4200,
     "pitch": 82,
@@ -63,6 +67,6 @@
     "enableZoom": true,
     "zoomCmPerWheel": 900,
     "followMode": "None",
-    "followTargetKind": "None"
+    "allowUserInput": true
   }
 ]

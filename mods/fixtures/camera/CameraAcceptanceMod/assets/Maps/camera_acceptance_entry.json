@@ -2,7 +2,7 @@
   "Id": "camera_acceptance_entry",
   "Tags": ["camera.acceptance", "camera.shot:Camera.Shot.IntroFocus"],
   "DefaultCamera": {
-    "PresetId": "Camera.Profile.Follow"
+    "VirtualCameraId": "Camera.Profile.Follow"
   },
   "Entities": [
     {

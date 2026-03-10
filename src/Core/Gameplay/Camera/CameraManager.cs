@@ -12,12 +12,11 @@ namespace Ludots.Core.Gameplay.Camera
     {
         private readonly CameraInputAccumulator _pendingInput = new();
         private readonly FrozenInputActionReader _logicInput = new();
-        private readonly CameraState _preVirtualState = new();
 
         private PlayerInputHandler? _liveInput;
         private CameraBehaviorContext? _runtimeContext;
         private CompositeCameraController? _controller;
-        private bool _pendingFollowSnap;
+        private string _controllerCameraId = string.Empty;
         private long _lastCapturedInputRevision = -1;
 
         /// <summary>
@@ -31,24 +30,13 @@ namespace Ludots.Core.Gameplay.Camera
         /// </summary>
         public CameraState PreviousState { get; } = new();
 
-        public CameraPreset? ActivePreset { get; private set; }
-
         public bool IsRuntimeConfigured => _runtimeContext != null;
 
         /// <summary>
-        /// Camera follow mode from the active preset.
-        /// </summary>
-        public CameraFollowMode FollowMode { get; set; }
-
-        public string FollowActionId { get; private set; } = "CameraLock";
-
-        /// <summary>
-        /// World position (cm) of the follow target, set externally each frame.
+        /// World position (cm) of the authoritative follow target for the active virtual camera.
         /// Null means no valid follow target.
         /// </summary>
-        public Vector2? FollowTargetPositionCm { get; set; }
-
-        public ICameraFollowTarget? FollowTarget { get; private set; }
+        public Vector2? FollowTargetPositionCm { get; private set; }
 
         public VirtualCameraBrain? VirtualCameraBrain { get; private set; }
 
@@ -61,35 +49,22 @@ namespace Ludots.Core.Gameplay.Camera
         {
             _liveInput = input ?? throw new ArgumentNullException(nameof(input));
             _runtimeContext = new CameraBehaviorContext(_logicInput, view ?? throw new ArgumentNullException(nameof(view)));
-            _controller = ActivePreset != null ? CameraControllerFactory.FromPreset(ActivePreset, _runtimeContext) : null;
+            InvalidateController();
             ResetInputTracking();
-            CaptureVisualInput();
+            CaptureVisualInput(force: true);
             CopyState(State, PreviousState);
         }
 
         public void SetVirtualCameraRegistry(VirtualCameraRegistry registry)
         {
             VirtualCameraBrain = new VirtualCameraBrain(registry);
+            InvalidateController();
+            FollowTargetPositionCm = null;
         }
 
-        public void ApplyPreset(CameraPreset preset, ICameraFollowTarget? followTarget = null, bool snapToFollowTargetWhenAvailable = true)
+        public bool IsVirtualCameraActive(string id)
         {
-            if (preset == null) throw new ArgumentNullException(nameof(preset));
-
-            ActivePreset = preset;
-            State.RigKind = preset.RigKind;
-            State.DistanceCm = preset.DistanceCm;
-            State.Pitch = preset.Pitch;
-            State.FovYDeg = preset.FovYDeg;
-            State.Yaw = preset.Yaw;
-            FollowMode = preset.FollowMode;
-            FollowActionId = string.IsNullOrWhiteSpace(preset.FollowActionId) ? "CameraLock" : preset.FollowActionId;
-            FollowTarget = followTarget;
-            _pendingFollowSnap = snapToFollowTargetWhenAvailable;
-            _controller = _runtimeContext != null ? CameraControllerFactory.FromPreset(preset, _runtimeContext) : null;
-            ResetInputTracking();
-            TrySnapToFollowTarget();
-            SyncVirtualBaseState();
+            return VirtualCameraBrain != null && VirtualCameraBrain.IsActive(id);
         }
 
         public void ApplyPose(CameraPoseRequest? request)
@@ -99,26 +74,53 @@ namespace Ludots.Core.Gameplay.Camera
                 return;
             }
 
-            if (request.TargetCm.HasValue) State.TargetCm = request.TargetCm.Value;
-            if (request.Yaw.HasValue) State.Yaw = request.Yaw.Value;
-            if (request.Pitch.HasValue) State.Pitch = request.Pitch.Value;
-            if (request.DistanceCm.HasValue) State.DistanceCm = request.DistanceCm.Value;
-            if (request.FovYDeg.HasValue) State.FovYDeg = request.FovYDeg.Value;
-            SyncVirtualBaseState();
+            if (VirtualCameraBrain != null && VirtualCameraBrain.ApplyPose(request))
+            {
+                return;
+            }
+
+            ApplyPoseToState(State, request);
         }
 
-        public void SetFollowTarget(ICameraFollowTarget? followTarget, bool snapToFollowTargetWhenAvailable = true)
-        {
-            FollowTarget = followTarget;
-            _pendingFollowSnap = snapToFollowTargetWhenAvailable;
-            TrySnapToFollowTarget();
-        }
-
-        public void ActivateVirtualCamera(string id, float? blendDurationSeconds = null)
+        public void ActivateVirtualCamera(
+            string id,
+            float? blendDurationSeconds = null,
+            int? priorityOverride = null,
+            ICameraFollowTarget? followTarget = null,
+            bool snapToFollowTargetWhenAvailable = true,
+            bool resetRuntimeState = true)
         {
             if (VirtualCameraBrain == null) throw new InvalidOperationException("VirtualCameraRegistry is not configured.");
-            CopyState(State, _preVirtualState);
-            VirtualCameraBrain.Activate(id, State, blendDurationSeconds);
+
+            VirtualCameraBrain.Activate(
+                id,
+                State,
+                blendDurationSeconds,
+                priorityOverride,
+                followTarget,
+                snapToFollowTargetWhenAvailable,
+                resetRuntimeState);
+
+            ResetInputTracking();
+            InvalidateController();
+        }
+
+        public bool DeactivateVirtualCamera(string id, float? blendDurationSeconds = null)
+        {
+            if (VirtualCameraBrain == null)
+            {
+                return false;
+            }
+
+            bool removed = VirtualCameraBrain.Deactivate(id, State, blendDurationSeconds);
+            if (removed)
+            {
+                ResetInputTracking();
+                InvalidateController();
+                FollowTargetPositionCm = VirtualCameraBrain.ActiveFollowTargetPositionCm;
+            }
+
+            return removed;
         }
 
         public void ClearVirtualCamera()
@@ -128,8 +130,30 @@ namespace Ludots.Core.Gameplay.Camera
                 return;
             }
 
-            VirtualCameraBrain.Clear();
-            CopyState(_preVirtualState, State);
+            DeactivateVirtualCamera(VirtualCameraBrain.ActiveCameraId);
+        }
+
+        public void ResetVirtualCameras()
+        {
+            if (VirtualCameraBrain == null)
+            {
+                return;
+            }
+
+            VirtualCameraBrain.ClearAll();
+            ResetInputTracking();
+            InvalidateController();
+            FollowTargetPositionCm = null;
+        }
+
+        public bool SetFollowTarget(string virtualCameraId, ICameraFollowTarget? followTarget, bool snapToFollowTargetWhenAvailable = true)
+        {
+            if (VirtualCameraBrain == null)
+            {
+                return false;
+            }
+
+            return VirtualCameraBrain.SetFollowTarget(virtualCameraId, followTarget, snapToFollowTargetWhenAvailable);
         }
 
         /// <summary>
@@ -150,24 +174,22 @@ namespace Ludots.Core.Gameplay.Camera
             _pendingInput.BuildTickSnapshot(_logicInput);
             CopyState(State, PreviousState);
 
-            Vector2? followTargetPosition = ResolveFollowTargetPosition();
-            UpdateFollowState(followTargetPosition);
+            if (VirtualCameraBrain == null || !VirtualCameraBrain.HasActiveCamera)
+            {
+                FollowTargetPositionCm = null;
+                return;
+            }
 
-            if (_controller != null && (VirtualCameraBrain == null || VirtualCameraBrain.AllowsInput))
+            VirtualCameraBrain.ApplyToState(State, _logicInput, dt);
+            EnsureController();
+
+            if (_controller != null && VirtualCameraBrain.AllowsInput)
             {
                 _controller.Update(State, dt);
-            }
-
-            if (VirtualCameraBrain != null)
-            {
-                if (!VirtualCameraBrain.HasActiveCamera || VirtualCameraBrain.AllowsInput)
-                {
-                    CopyState(State, _preVirtualState);
-                }
-
-                VirtualCameraBrain.ApplyToState(State, followTargetPosition, dt);
                 VirtualCameraBrain.CapturePostControllerState(State);
             }
+
+            FollowTargetPositionCm = VirtualCameraBrain.ActiveFollowTargetPositionCm;
         }
 
         public CameraStateSnapshot GetInterpolatedState(float alpha)
@@ -180,7 +202,7 @@ namespace Ludots.Core.Gameplay.Camera
 
         private void CaptureVisualInput(bool force)
         {
-            if (_liveInput == null)
+            if (_liveInput == null || VirtualCameraBrain == null || !VirtualCameraBrain.HasActiveCamera)
             {
                 return;
             }
@@ -192,116 +214,57 @@ namespace Ludots.Core.Gameplay.Camera
 
             _lastCapturedInputRevision = _liveInput.UpdateRevision;
 
-            if (ActivePreset != null)
-            {
-                var preset = ActivePreset;
-                _pendingInput.CaptureContinuous(preset.MoveActionId, _liveInput.ReadAction<Vector2>(preset.MoveActionId));
-                _pendingInput.AccumulateOneShot(preset.ZoomActionId, _liveInput.ReadAction<float>(preset.ZoomActionId));
-                _pendingInput.CaptureContinuous(preset.PointerPosActionId, _liveInput.ReadAction<Vector2>(preset.PointerPosActionId));
-                _pendingInput.CaptureContinuous(preset.RotateHoldActionId, _liveInput.ReadAction<bool>(preset.RotateHoldActionId));
-                _pendingInput.CaptureContinuous(preset.RotateLeftActionId, _liveInput.ReadAction<bool>(preset.RotateLeftActionId));
-                _pendingInput.CaptureContinuous(preset.RotateRightActionId, _liveInput.ReadAction<bool>(preset.RotateRightActionId));
-                _pendingInput.CaptureContinuous(preset.GrabDragHoldActionId, _liveInput.ReadAction<bool>(preset.GrabDragHoldActionId));
-            }
-
-            _pendingInput.CaptureContinuous(FollowActionId, _liveInput.ReadAction<bool>(FollowActionId));
-        }
-
-        private void UpdateFollowState(Vector2? followTargetPosition)
-        {
-            if (followTargetPosition.HasValue)
-            {
-                FollowTargetPositionCm = followTargetPosition.Value;
-                if (_pendingFollowSnap)
-                {
-                    State.TargetCm = followTargetPosition.Value;
-                    _pendingFollowSnap = false;
-                    SyncVirtualBaseFollowState(targetCm: followTargetPosition.Value, isFollowing: false);
-                }
-            }
-            else
-            {
-                FollowTargetPositionCm = null;
-            }
-
-            if (FollowMode == CameraFollowMode.None)
-            {
-                State.IsFollowing = false;
-                SyncVirtualBaseFollowState(isFollowing: false);
-                return;
-            }
-
-            bool shouldFollow = FollowMode == CameraFollowMode.AlwaysFollow;
-            if (!shouldFollow && _runtimeContext != null)
-            {
-                shouldFollow = _runtimeContext.Input.ReadAction<bool>(FollowActionId);
-            }
-
-            if (!shouldFollow || !followTargetPosition.HasValue)
-            {
-                State.IsFollowing = false;
-                SyncVirtualBaseFollowState(isFollowing: false);
-                return;
-            }
-
-            State.TargetCm = followTargetPosition.Value;
-            State.IsFollowing = true;
-            SyncVirtualBaseFollowState(targetCm: followTargetPosition.Value, isFollowing: true);
-        }
-
-        private Vector2? ResolveFollowTargetPosition()
-        {
-            if (FollowTarget != null && FollowTarget.TryGetPosition(out var resolved))
-            {
-                return resolved;
-            }
-
-            return FollowTargetPositionCm;
-        }
-
-        private void TrySnapToFollowTarget()
-        {
-            if (!_pendingFollowSnap)
+            if (!VirtualCameraBrain.AllowsInput)
             {
                 return;
             }
 
-            if (FollowTarget != null && FollowTarget.TryGetPosition(out var resolved))
-            {
-                State.TargetCm = resolved;
-                FollowTargetPositionCm = resolved;
-                _pendingFollowSnap = false;
-                SyncVirtualBaseState();
-            }
-        }
-
-        private void SyncVirtualBaseState()
-        {
-            if (VirtualCameraBrain != null && VirtualCameraBrain.HasActiveCamera)
-            {
-                CopyState(State, _preVirtualState);
-            }
-        }
-
-        private void SyncVirtualBaseFollowState(Vector2 targetCm, bool isFollowing)
-        {
-            if (VirtualCameraBrain == null || !VirtualCameraBrain.HasActiveCamera)
+            var definition = VirtualCameraBrain.ActiveDefinition;
+            if (definition == null)
             {
                 return;
             }
 
-            _preVirtualState.TargetCm = targetCm;
-            _preVirtualState.IsFollowing = isFollowing;
+            _pendingInput.CaptureContinuous(definition.MoveActionId, _liveInput.ReadAction<Vector2>(definition.MoveActionId));
+            _pendingInput.AccumulateOneShot(definition.ZoomActionId, _liveInput.ReadAction<float>(definition.ZoomActionId));
+            _pendingInput.CaptureContinuous(definition.PointerPosActionId, _liveInput.ReadAction<Vector2>(definition.PointerPosActionId));
+            _pendingInput.AccumulateOneShot(definition.PointerDeltaActionId, _liveInput.ReadAction<Vector2>(definition.PointerDeltaActionId));
+            _pendingInput.AccumulateOneShot(definition.LookActionId, _liveInput.ReadAction<Vector2>(definition.LookActionId));
+            _pendingInput.CaptureContinuous(definition.RotateHoldActionId, _liveInput.ReadAction<bool>(definition.RotateHoldActionId));
+            _pendingInput.CaptureContinuous(definition.RotateLeftActionId, _liveInput.ReadAction<bool>(definition.RotateLeftActionId));
+            _pendingInput.CaptureContinuous(definition.RotateRightActionId, _liveInput.ReadAction<bool>(definition.RotateRightActionId));
+            _pendingInput.CaptureContinuous(definition.GrabDragHoldActionId, _liveInput.ReadAction<bool>(definition.GrabDragHoldActionId));
+            _pendingInput.CaptureContinuous(definition.FollowActionId, _liveInput.ReadAction<bool>(definition.FollowActionId));
         }
 
-        private void SyncVirtualBaseFollowState(bool isFollowing)
+        private void EnsureController()
         {
-            if (VirtualCameraBrain == null || !VirtualCameraBrain.HasActiveCamera)
+            if (_runtimeContext == null || VirtualCameraBrain == null || !VirtualCameraBrain.HasActiveCamera)
+            {
+                InvalidateController();
+                return;
+            }
+
+            var definition = VirtualCameraBrain.ActiveDefinition;
+            if (definition == null)
+            {
+                InvalidateController();
+                return;
+            }
+
+            if (_controller != null && string.Equals(_controllerCameraId, definition.Id, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            _preVirtualState.IsFollowing = isFollowing;
+            _controller = CameraControllerFactory.FromDefinition(definition, _runtimeContext);
+            _controllerCameraId = definition.Id;
+        }
+
+        private void InvalidateController()
+        {
+            _controller = null;
+            _controllerCameraId = string.Empty;
         }
 
         private void ResetInputTracking()
@@ -309,6 +272,15 @@ namespace Ludots.Core.Gameplay.Camera
             _pendingInput.Clear();
             _logicInput.Clear();
             _lastCapturedInputRevision = -1;
+        }
+
+        private static void ApplyPoseToState(CameraState state, CameraPoseRequest request)
+        {
+            if (request.TargetCm.HasValue) state.TargetCm = request.TargetCm.Value;
+            if (request.Yaw.HasValue) state.Yaw = request.Yaw.Value;
+            if (request.Pitch.HasValue) state.Pitch = request.Pitch.Value;
+            if (request.DistanceCm.HasValue) state.DistanceCm = request.DistanceCm.Value;
+            if (request.FovYDeg.HasValue) state.FovYDeg = request.FovYDeg.Value;
         }
 
         private static void CopyState(CameraState source, CameraState destination)

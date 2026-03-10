@@ -44,19 +44,20 @@ namespace TerrainBenchmarkMod.Triggers
                 autoRadius = 120000f;
             }
 
-            engine.SetService(CoreServiceKeys.CameraPresetRequest, new CameraPresetRequest
+            engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
             {
-                PresetId = "TopDown"
+                Id = "TopDown"
             });
             engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
             {
+                VirtualCameraId = "TopDown",
                 TargetCm = center,
                 Yaw = 35f,
                 Pitch = 60f,
                 DistanceCm = MathF.Max(40000f, autoRadius)
             });
 
-            _context.Log("[TerrainBenchmarkMod] Camera preset + pose requested");
+            _context.Log("[TerrainBenchmarkMod] Virtual camera + pose requested");
             return Task.CompletedTask;
         }
     }

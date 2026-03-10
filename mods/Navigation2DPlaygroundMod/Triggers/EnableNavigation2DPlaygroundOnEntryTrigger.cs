@@ -87,12 +87,13 @@ namespace Navigation2DPlaygroundMod.Triggers
                         _inputContextActive = true;
                     }
 
-                    engine.SetService(CoreServiceKeys.CameraPresetRequest, new CameraPresetRequest
+                    engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
                     {
-                        PresetId = "Default"
+                        Id = "Default"
                     });
                     engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
                     {
+                        VirtualCameraId = "Default",
                         TargetCm = System.Numerics.Vector2.Zero,
                         Pitch = 65f,
                         DistanceCm = 18000f

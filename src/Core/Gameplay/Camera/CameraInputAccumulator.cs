@@ -58,6 +58,23 @@ namespace Ludots.Core.Gameplay.Camera
             _oneShotValues[actionId] = delta;
         }
 
+        public void AccumulateOneShot(string actionId, Vector2 value)
+        {
+            if (string.IsNullOrWhiteSpace(actionId) || value.LengthSquared() < 0.0001f)
+            {
+                return;
+            }
+
+            var delta = new Vector3(value.X, value.Y, 0f);
+            if (_oneShotValues.TryGetValue(actionId, out var existing))
+            {
+                _oneShotValues[actionId] = existing + delta;
+                return;
+            }
+
+            _oneShotValues[actionId] = delta;
+        }
+
         public void BuildTickSnapshot(FrozenInputActionReader snapshot)
         {
             snapshot.Clear();

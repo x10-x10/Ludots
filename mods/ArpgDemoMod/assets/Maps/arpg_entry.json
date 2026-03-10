@@ -2,7 +2,7 @@
   "Id": "arpg_entry",
   "Tags": ["arpg"],
   "DefaultCamera": {
-    "PresetId": "TPS"
+    "VirtualCameraId": "TPS"
   },
   "Entities": [
     { "Template": "arpg_hero", "Overrides": { "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } } } },

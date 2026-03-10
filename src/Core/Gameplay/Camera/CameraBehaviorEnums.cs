@@ -48,6 +48,7 @@ namespace Ludots.Core.Gameplay.Camera
 
     public enum VirtualCameraTargetSource
     {
+        CurrentState,
         Fixed,
         FollowTarget
     }

@@ -2,7 +2,7 @@
   "Id": "camera_bootstrap_center",
   "Tags": ["camera.acceptance", "camera.bootstrap.center_bounds"],
   "DefaultCamera": {
-    "PresetId": "Camera.Profile.Tactical"
+    "VirtualCameraId": "Camera.Profile.Tactical"
   },
   "Entities": [
     {
