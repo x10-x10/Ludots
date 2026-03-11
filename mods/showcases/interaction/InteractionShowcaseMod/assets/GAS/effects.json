@@ -1,0 +1,448 @@
+[
+  {
+    "id": "Effect.Interaction.DuelBolt",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -18.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.BlinkStep",
+    "tags": ["Effect.Interaction.Movement"],
+    "presetType": "Displacement",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "displacement": {
+      "directionMode": "ToTarget",
+      "totalDistanceCm": 520,
+      "totalDurationTicks": 2,
+      "overrideNavigation": true
+    }
+  },
+  {
+    "id": "Effect.Interaction.FireLance",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Line",
+      "length": 760,
+      "halfWidth": 80
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 16
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.FireLanceHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.FireLanceHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -14.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.NovaPulse",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Circle",
+      "radius": 280
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 12
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.NovaPulseHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.NovaPulseHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -10.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.ArcDash",
+    "tags": ["Effect.Interaction.Movement"],
+    "presetType": "Displacement",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "displacement": {
+      "directionMode": "ToTarget",
+      "totalDistanceCm": 320,
+      "totalDurationTicks": 8,
+      "overrideNavigation": true
+    }
+  },
+  {
+    "id": "Effect.Interaction.ArcaneGuardAura",
+    "tags": ["Effect.Interaction.Toggle"],
+    "presetType": "Buff",
+    "lifetime": "Infinite",
+    "participatesInResponse": false,
+    "modifiers": [
+      { "attribute": "Shield", "op": "Add", "value": 45.0 },
+      { "attribute": "MoveSpeed", "op": "Add", "value": -20.0 }
+    ],
+    "expireCondition": {
+      "kind": "TagPresent",
+      "tag": "State.Arcweaver.Guarding"
+    }
+  },
+  {
+    "id": "Effect.Interaction.GuardRelease",
+    "tags": ["Effect.Interaction.Buff"],
+    "presetType": "Heal",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "modifiers": [
+      { "attribute": "Shield", "op": "Add", "value": 12.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.RuneBurst",
+    "tags": ["Effect.Interaction.Zone"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Circle",
+      "radius": 260
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": false,
+      "maxTargets": 20
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.RuneBurstHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.RuneBurstHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -22.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.Challenge",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -16.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.BannerLeap",
+    "tags": ["Effect.Interaction.Movement"],
+    "presetType": "Displacement",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "displacement": {
+      "directionMode": "ToTarget",
+      "totalDistanceCm": 460,
+      "totalDurationTicks": 10,
+      "overrideNavigation": true
+    }
+  },
+  {
+    "id": "Effect.Interaction.CleaveCone",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Cone",
+      "radius": 360,
+      "halfAngle": 42
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 12
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.CleaveConeHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.CleaveConeHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -12.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.Shockwave",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Circle",
+      "radius": 260
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 12
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.ShockwaveHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.ShockwaveHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -13.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.ChargeDash",
+    "tags": ["Effect.Interaction.Movement"],
+    "presetType": "Displacement",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "displacement": {
+      "directionMode": "ToTarget",
+      "totalDistanceCm": 300,
+      "totalDurationTicks": 8,
+      "overrideNavigation": true
+    }
+  },
+  {
+    "id": "Effect.Interaction.IronWallAura",
+    "tags": ["Effect.Interaction.Toggle"],
+    "presetType": "Buff",
+    "lifetime": "Infinite",
+    "participatesInResponse": false,
+    "modifiers": [
+      { "attribute": "Shield", "op": "Add", "value": 65.0 },
+      { "attribute": "Armor", "op": "Add", "value": 20.0 }
+    ],
+    "expireCondition": {
+      "kind": "TagPresent",
+      "tag": "State.Vanguard.IronWall"
+    }
+  },
+  {
+    "id": "Effect.Interaction.GroundSlam",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Circle",
+      "radius": 220
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": false,
+      "maxTargets": 12
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.GroundSlamHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.GroundSlamHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -20.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.SupportBeam",
+    "tags": ["Effect.Interaction.Heal"],
+    "presetType": "Heal",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": 22.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.TacticalJump",
+    "tags": ["Effect.Interaction.Movement"],
+    "presetType": "Displacement",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "displacement": {
+      "directionMode": "ToTarget",
+      "totalDistanceCm": 560,
+      "totalDurationTicks": 8,
+      "overrideNavigation": true
+    }
+  },
+  {
+    "id": "Effect.Interaction.VolleyLine",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Line",
+      "length": 720,
+      "halfWidth": 90
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 20
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.VolleyLineHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.VolleyLineHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -12.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.Overclock",
+    "tags": ["Effect.Interaction.Buff"],
+    "presetType": "Buff",
+    "lifetime": "After",
+    "participatesInResponse": false,
+    "duration": {
+      "durationTicks": 180
+    },
+    "modifiers": [
+      { "attribute": "MoveSpeed", "op": "Add", "value": 80.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.ThrustJump",
+    "tags": ["Effect.Interaction.Movement"],
+    "presetType": "Displacement",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "displacement": {
+      "directionMode": "ToTarget",
+      "totalDistanceCm": 320,
+      "totalDurationTicks": 7,
+      "overrideNavigation": true
+    }
+  },
+  {
+    "id": "Effect.Interaction.ShieldNetAura",
+    "tags": ["Effect.Interaction.Toggle"],
+    "presetType": "Buff",
+    "lifetime": "Infinite",
+    "participatesInResponse": false,
+    "modifiers": [
+      { "attribute": "Shield", "op": "Add", "value": 30.0 },
+      { "attribute": "MoveSpeed", "op": "Add", "value": 35.0 }
+    ],
+    "expireCondition": {
+      "kind": "TagPresent",
+      "tag": "State.Commander.ShieldNet"
+    }
+  },
+  {
+    "id": "Effect.Interaction.OrbitalStrike",
+    "tags": ["Effect.Interaction.Zone"],
+    "presetType": "PeriodicSearch",
+    "lifetime": "After",
+    "participatesInResponse": false,
+    "duration": {
+      "durationTicks": 180,
+      "periodTicks": 30
+    },
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Circle",
+      "radius": 280
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": false,
+      "maxTargets": 24
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Interaction.OrbitalStrikeTick"
+    }
+  },
+  {
+    "id": "Effect.Interaction.OrbitalStrikeTick",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -8.0 }
+    ]
+  },
+  {
+    "id": "Effect.Interaction.Stress.Fireball",
+    "tags": ["Effect.Interaction.Projectile"],
+    "presetType": "LaunchProjectile",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "projectile": {
+      "speed": 1400,
+      "range": 2600,
+      "arcHeight": 0,
+      "impactEffect": "Effect.Interaction.Stress.FireballHit"
+    }
+  },
+  {
+    "id": "Effect.Interaction.Stress.FireballHit",
+    "tags": ["Effect.Interaction.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -6.0 }
+    ]
+  }
+]

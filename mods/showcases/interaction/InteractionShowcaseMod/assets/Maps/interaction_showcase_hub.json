@@ -1,0 +1,55 @@
+{
+  "Id": "interaction_showcase_hub",
+  "Tags": ["interaction.showcase", "interaction.showcase.hub"],
+  "DefaultCamera": {
+    "VirtualCameraId": "Camera.Profile.Tactical"
+  },
+  "Entities": [
+    {
+      "Template": "interaction_arcweaver",
+      "Overrides": {
+        "WorldPositionCm": { "Value": { "X": 1100, "Y": 850 } }
+      }
+    },
+    {
+      "Template": "interaction_vanguard",
+      "Overrides": {
+        "WorldPositionCm": { "Value": { "X": 1550, "Y": 420 } }
+      }
+    },
+    {
+      "Template": "interaction_commander",
+      "Overrides": {
+        "WorldPositionCm": { "Value": { "X": 1620, "Y": 1230 } }
+      }
+    },
+    {
+      "Template": "interaction_enemy_raider",
+      "Overrides": {
+        "Name": { "Value": "EnemySkirmisherA" },
+        "WorldPositionCm": { "Value": { "X": 2500, "Y": 820 } }
+      }
+    },
+    {
+      "Template": "interaction_enemy_raider",
+      "Overrides": {
+        "Name": { "Value": "EnemySkirmisherB" },
+        "WorldPositionCm": { "Value": { "X": 2680, "Y": 1120 } }
+      }
+    },
+    {
+      "Template": "interaction_enemy_bruiser",
+      "Overrides": {
+        "Name": { "Value": "EnemyBruiserA" },
+        "WorldPositionCm": { "Value": { "X": 3050, "Y": 780 } }
+      }
+    },
+    {
+      "Template": "interaction_enemy_bruiser",
+      "Overrides": {
+        "Name": { "Value": "EnemyBruiserB" },
+        "WorldPositionCm": { "Value": { "X": 3180, "Y": 1180 } }
+      }
+    }
+  ]
+}
