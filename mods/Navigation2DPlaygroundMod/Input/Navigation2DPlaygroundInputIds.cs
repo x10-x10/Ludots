@@ -1,4 +1,4 @@
-namespace Navigation2DPlaygroundMod.Input
+﻿namespace Navigation2DPlaygroundMod.Input
 {
     public static class Navigation2DPlaygroundInputContexts
     {
@@ -14,6 +14,8 @@ namespace Navigation2DPlaygroundMod.Input
         public const string DecreaseFlowIterations = "Nav2D_DecreaseFlowIterations";
         public const string IncreaseAgentsPerTeam = "Nav2D_IncreaseAgentsPerTeam";
         public const string DecreaseAgentsPerTeam = "Nav2D_DecreaseAgentsPerTeam";
+        public const string PreviousScenario = "Nav2D_PreviousScenario";
+        public const string NextScenario = "Nav2D_NextScenario";
         public const string ResetScenario = "Nav2D_ResetScenario";
     }
 }
