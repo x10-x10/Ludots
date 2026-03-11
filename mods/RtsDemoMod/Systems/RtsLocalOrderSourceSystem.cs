@@ -39,7 +39,7 @@ namespace RtsDemoMod.Systems
             _mapping = _helper.TryCreateMapping(_ctx);
             if (_mapping != null)
             {
-                _globals[SkillBarOverlaySystem.SkillBarKeyLabelsKey] = new[] { "Q", "W", "E" };
+                _globals[SkillBarOverlaySystem.SkillBarKeyLabelsKey] = new[] { "Q", "W", "E", "R" };
             }
         }
 

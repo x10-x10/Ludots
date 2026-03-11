@@ -26,6 +26,7 @@ namespace CoreInputMod.Systems
         private readonly OrderQueue _orders;
 
         public int CastAbilityOrderTypeId { get; }
+        public int MoveToOrderTypeId { get; }
         public int StopOrderTypeId { get; }
 
         public LocalOrderSourceHelper(World world, Dictionary<string, object> globals, OrderQueue orders)
@@ -36,6 +37,7 @@ namespace CoreInputMod.Systems
             if (globals.TryGetValue(CoreServiceKeys.GameConfig.Name, out var configObj) && configObj is GameConfig config)
             {
                 CastAbilityOrderTypeId = config.Constants.OrderTypeIds["castAbility"];
+                MoveToOrderTypeId = config.Constants.OrderTypeIds["moveTo"];
                 StopOrderTypeId = config.Constants.OrderTypeIds["stop"];
             }
         }
@@ -61,6 +63,7 @@ namespace CoreInputMod.Systems
             mapping.SetOrderTypeKeyResolver(key => key switch
             {
                 "castAbility" => CastAbilityOrderTypeId,
+                "moveTo" => MoveToOrderTypeId,
                 "stop" => StopOrderTypeId,
                 _ => 0
             });

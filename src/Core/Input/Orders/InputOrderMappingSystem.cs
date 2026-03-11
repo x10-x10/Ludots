@@ -559,11 +559,6 @@ namespace Ludots.Core.Input.Orders
         {
             order = default;
             int orderTypeId = _orderTypeKeyResolver!(mapping.OrderTypeKey + orderTypeSuffix);
-            if (orderTypeId <= 0)
-            {
-                // Fallback: try base order type key (for .End when mod only registered base key)
-                orderTypeId = _orderTypeKeyResolver(mapping.OrderTypeKey);
-            }
             if (orderTypeId <= 0) return false;
 
             Entity actor = _localPlayer;
