@@ -270,7 +270,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     if (World.Has<BlackboardSpatialBuffer>(actor))
                     {
                         ref var bbSpatial = ref World.Get<BlackboardSpatialBuffer>(actor);
-                        if (bbSpatial.TryGetPoint(OrderBlackboardKeys.Cast_TargetPosition, out var targetPos))
+                        int pointCount = bbSpatial.GetPointCount(OrderBlackboardKeys.Cast_TargetPosition);
+                        int targetPointIndex = pointCount > 1 ? pointCount - 1 : 0;
+                        if (pointCount > 0 &&
+                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, targetPointIndex, out var targetPos))
                         {
                             exec.TargetPosCm = Fix64Vec2.FromFloat(targetPos.X, targetPos.Z);
                             exec.HasTargetPos = 1;
