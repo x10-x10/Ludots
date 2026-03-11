@@ -35,7 +35,7 @@ namespace Ludots.Tests.GAS.Production
         };
 
         [Test]
-        public void CameraAcceptanceMod_ProjectionMap_ClickGround_EmitsCueMarkerThenExpires()
+        public void CameraAcceptanceMod_ProjectionMap_ClickGround_SpawnsEntity_AndEmitsCueMarkerThenExpires()
         {
             using var engine = CreateEngine(AcceptanceMods);
             LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
@@ -43,7 +43,12 @@ namespace Ludots.Tests.GAS.Production
             AssertProjectionViewportState(engine);
 
             var backend = GetInputBackend(engine);
+            int beforeDummyCount = CountEntitiesByName(engine.World, "Dummy");
             ClickGround(engine, backend, new Vector2(3200f, 2000f));
+
+            int afterDummyCount = CountEntitiesByName(engine.World, "Dummy");
+            Assert.That(afterDummyCount, Is.EqualTo(beforeDummyCount + 1), "Ground click should enqueue a runtime entity spawn.");
+            Assert.That(HasNamedEntityAt(engine.World, "Dummy", new WorldCmInt2(3200, 2000)), Is.True, "Spawned entity should land on the raycast point.");
 
             var primitives = engine.GetService(CoreServiceKeys.PresentationPrimitiveDrawBuffer);
             Assert.That(primitives, Is.Not.Null);
@@ -247,6 +252,7 @@ namespace Ludots.Tests.GAS.Production
         private static void LoadMap(GameEngine engine, string mapId, int frames = 5)
         {
             engine.LoadMap(mapId);
+            Assert.That(engine.CurrentMapSession?.PrimaryBoard, Is.Not.Null, $"{mapId} must declare a primary board.");
             Tick(engine, frames);
         }
 
@@ -346,6 +352,44 @@ namespace Ludots.Tests.GAS.Production
                 }
             });
             return result;
+        }
+
+        private static int CountEntitiesByName(World world, string name)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<Name>();
+            world.Query(in query, (ref Name entityName) =>
+            {
+                if (string.Equals(entityName.Value, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                }
+            });
+            return count;
+        }
+
+        private static bool HasNamedEntityAt(World world, string name, in WorldCmInt2 worldCm)
+        {
+            bool found = false;
+            int targetX = worldCm.X;
+            int targetY = worldCm.Y;
+            var query = new QueryDescription().WithAll<Name, WorldPositionCm>();
+            world.Query(in query, (ref Name entityName, ref WorldPositionCm position) =>
+            {
+                if (found)
+                {
+                    return;
+                }
+
+                if (!string.Equals(entityName.Value, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                var positionCm = position.Value.ToWorldCmInt2();
+                found = positionCm.X == targetX && positionCm.Y == targetY;
+            });
+            return found;
         }
 
         private static void AssertProjectionViewportState(GameEngine engine)

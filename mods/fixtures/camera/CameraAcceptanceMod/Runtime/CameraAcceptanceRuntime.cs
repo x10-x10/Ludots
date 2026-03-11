@@ -5,7 +5,9 @@ using CameraAcceptanceMod.UI;
 using CoreInputMod.Triggers;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Camera;
+using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Mathematics;
+using Ludots.Core.Mathematics.FixedPoint;
 using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.Commands;
 using Ludots.Core.Scripting;
@@ -33,7 +35,7 @@ namespace CameraAcceptanceMod.Runtime
                     "CameraAcceptanceMod requires CoreInputMod entity selection callbacks to be installed before GameStart handlers run.");
             }
 
-            callbacks.Add((worldCm, _) => HandleSelectionConfirmed(engine, worldCm));
+            callbacks.Add((worldCm, entity) => HandleSelectionConfirmed(engine, worldCm, entity));
             _selectionCallbacksInstalled = true;
         }
 
@@ -106,11 +108,17 @@ namespace CameraAcceptanceMod.Runtime
             _panelController.ClearIfOwned(root);
         }
 
-        private void HandleSelectionConfirmed(GameEngine engine, in WorldCmInt2 worldCm)
+        private void HandleSelectionConfirmed(GameEngine engine, in WorldCmInt2 worldCm, Entity selectedEntity)
         {
             string? mapId = engine.CurrentMapSession?.MapId.Value;
             if (string.Equals(mapId, CameraAcceptanceIds.ProjectionMapId, System.StringComparison.OrdinalIgnoreCase))
             {
+                if (engine.World.IsAlive(selectedEntity))
+                {
+                    return;
+                }
+
+                EnqueueProjectionSpawn(engine, worldCm);
                 EmitCueMarker(engine, worldCm);
                 return;
             }
@@ -141,6 +149,27 @@ namespace CameraAcceptanceMod.Runtime
                 Param0 = new Vector4(0.15f, 0.88f, 1f, 1f),
                 Param1 = 0.45f
             });
+        }
+
+        private static void EnqueueProjectionSpawn(GameEngine engine, in WorldCmInt2 worldCm)
+        {
+            if (engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is not RuntimeEntitySpawnQueue spawnQueue)
+            {
+                throw new System.InvalidOperationException("RuntimeEntitySpawnQueue is required for projection verification.");
+            }
+
+            var request = new RuntimeEntitySpawnRequest
+            {
+                Kind = RuntimeEntitySpawnKind.Template,
+                TemplateId = CameraAcceptanceIds.ProjectionSpawnTemplateId,
+                WorldPositionCm = Fix64Vec2.FromInt(worldCm.X, worldCm.Y),
+                MapId = engine.CurrentMapSession?.MapId ?? default,
+            };
+
+            if (!spawnQueue.TryEnqueue(request))
+            {
+                throw new System.InvalidOperationException("Projection verification spawn queue is full.");
+            }
         }
 
         private int ResolveCueMarkerPrefabId(GameEngine engine)

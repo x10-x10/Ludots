@@ -46,6 +46,7 @@ namespace CameraAcceptanceMod
         public const string CaptainName = "CameraAcceptanceCaptain";
         public const string FocusDummyName = "CameraAcceptanceDummy";
         public const string AlarmDummyName = "CameraAcceptanceAlarmDummy";
+        public const string ProjectionSpawnTemplateId = "moba_dummy";
 
         public static bool IsAcceptanceMap(string? mapId)
         {
@@ -61,7 +62,7 @@ namespace CameraAcceptanceMod
         {
             return mapId switch
             {
-                ProjectionMapId => "Projection and raycast acceptance. Left click ground to spawn a transient performer marker.",
+                ProjectionMapId => "Projection and raycast acceptance. Left click empty ground to spawn an entity and a transient performer marker.",
                 RtsMapId => "RTS/MOBA behavior composition. Validate middle-drag, edge scroll, WASD pan, and wheel zoom.",
                 TpsMapId => "TPS behavior composition. Hold right mouse to aim/look, then use wheel zoom.",
                 BlendMapId => "Blend acceptance. Pick a curve, then left click ground to move the camera there smoothly.",
@@ -75,7 +76,7 @@ namespace CameraAcceptanceMod
         {
             return mapId switch
             {
-                ProjectionMapId => "Use the panel to move between scenarios. On this map, left click ground and verify the cue marker appears then expires. The panel should also reflect viewport-visible entities from core culling.",
+                ProjectionMapId => "Use the panel to move between scenarios. On this map, left click empty ground and verify a spawned entity appears at the raycast point while the cue marker still appears then expires.",
                 RtsMapId => "Keyboard: WASD pan. Mouse: move to screen edge for edge-scroll, hold middle mouse to drag-pan, wheel to zoom.",
                 TpsMapId => "Hold right mouse and drag to rotate. Wheel zooms. This map stays on the follow target while you aim.",
                 BlendMapId => "Pick Cut / Linear / Smooth in the panel, then left click a ground point to trigger the blend.",
