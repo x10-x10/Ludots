@@ -57,11 +57,8 @@ namespace Ludots.Core.Input.Orders
         Held = 2,
         
         /// <summary>
-        /// Double-tap trigger. This does not belong in InputTriggerType 鈥?double-click-select-same-type
-        /// is a selection system concern (see advanced selection system design).
-        /// Retained for enum stability; will be removed when selection system is implemented.
+        /// Trigger when the action is pressed twice within the configured window.
         /// </summary>
-        [Obsolete("Double-tap selection belongs to the selection system, not InputTriggerType. Will be removed.")]
         DoubleTap = 3
     }
     
@@ -210,6 +207,12 @@ namespace Ludots.Core.Input.Orders
         /// </summary>
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public InputTriggerType Trigger { get; set; } = InputTriggerType.PressedThisFrame;
+
+        /// <summary>
+        /// Double-tap time window in seconds.
+        /// Only meaningful when <see cref="Trigger"/> is <see cref="InputTriggerType.DoubleTap"/>.
+        /// </summary>
+        public float DoubleTapWindowSeconds { get; set; } = 0.30f;
         
         /// <summary>
         /// The order type key (must match a key in OrderTypeRegistry).

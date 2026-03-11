@@ -116,6 +116,7 @@ namespace Ludots.Core.Input.Orders
         private readonly InputOrderMappingConfig _config;
         private readonly Dictionary<string, InputOrderMapping> _mappingsByActionId;
         private readonly Dictionary<string, InputOrderMapping> _userOverrides;
+        private readonly Dictionary<string, float> _lastPressedAtSecondsByActionId = new();
         
         // Callbacks
         private OrderTypeKeyResolver? _orderTypeKeyResolver;
@@ -134,6 +135,7 @@ namespace Ludots.Core.Input.Orders
         // Context
         private Entity _localPlayer;
         private int _playerId = 1;
+        private float _elapsedSeconds;
 
         // Aiming state (AimCast mode)
         private bool _isAiming;
@@ -226,6 +228,10 @@ namespace Ludots.Core.Input.Orders
         {
             if (_orderSubmitHandler == null) return;
             if (_orderTypeKeyResolver == null) return;
+            if (dt > 0f)
+            {
+                _elapsedSeconds += dt;
+            }
 
             var mode = _config.InteractionMode;
 
@@ -271,7 +277,7 @@ namespace Ludots.Core.Input.Orders
                     continue; // Release is handled in ProcessHeldStartEndReleases
                 }
                 
-                if (!CheckTrigger(actionId, effectiveMapping.Trigger)) continue;
+                if (!CheckTrigger(actionId, effectiveMapping)) continue;
 
                 // Skill mappings are affected by InteractionMode; non-skill mappings always go through immediately.
                 // Per-ability CastModeOverride takes precedence over the global InteractionMode.
@@ -325,16 +331,30 @@ namespace Ludots.Core.Input.Orders
             }
         }
 
-        private bool CheckTrigger(string actionId, InputTriggerType trigger)
+        private bool CheckTrigger(string actionId, InputOrderMapping mapping)
         {
-            return trigger switch
+            return mapping.Trigger switch
             {
                 InputTriggerType.PressedThisFrame => _input.PressedThisFrame(actionId),
                 InputTriggerType.ReleasedThisFrame => _input.ReleasedThisFrame(actionId),
                 InputTriggerType.Held => _input.IsDown(actionId),
-                InputTriggerType.DoubleTap => false, // Obsolete; belongs to selection system
+                InputTriggerType.DoubleTap => CheckDoubleTap(actionId, mapping.DoubleTapWindowSeconds),
                 _ => false
             };
+        }
+
+        private bool CheckDoubleTap(string actionId, float windowSeconds)
+        {
+            if (!_input.PressedThisFrame(actionId))
+            {
+                return false;
+            }
+
+            float effectiveWindow = windowSeconds > 0f ? windowSeconds : 0.30f;
+            bool triggered = _lastPressedAtSecondsByActionId.TryGetValue(actionId, out float lastPressedAt) &&
+                             _elapsedSeconds - lastPressedAt <= effectiveWindow;
+            _lastPressedAtSecondsByActionId[actionId] = _elapsedSeconds;
+            return triggered;
         }
 
         // Interaction mode handling

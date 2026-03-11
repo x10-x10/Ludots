@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 using Arch.Core;
 using MobaDemoMod.GAS;
 using Ludots.Core.Engine;
@@ -258,6 +259,62 @@ namespace Ludots.Tests.GAS
             registry.Register(2, in def);
             That(registry.TryGet(2, out var retrieved), Is.True);
             That(retrieved.HasToggleSpec, Is.False);
+        }
+
+        [Test]
+        public void AbilityExecLoader_CompileAbility_ParsesToggleSpecAndIndicator()
+        {
+            TagRegistry.Clear();
+            EffectTemplateIdRegistry.Clear();
+            EffectTemplateIdRegistry.Register("Effect.Toggle.GuardAura");
+
+            var obj = JsonNode.Parse(
+                """
+                {
+                  "exec": {
+                    "clockId": "FixedFrame",
+                    "items": [
+                      { "kind": "End", "tick": 0 }
+                    ]
+                  },
+                  "toggleSpec": {
+                    "toggleTag": "State.Guarding",
+                    "activeEffects": ["Effect.Toggle.GuardAura"],
+                    "deactivateExec": {
+                      "clockId": "FixedFrame",
+                      "items": [
+                        { "kind": "End", "tick": 0 }
+                      ]
+                    }
+                  },
+                  "indicator": {
+                    "shape": "Cone",
+                    "range": 620,
+                    "radius": 180,
+                    "angleDeg": 45,
+                    "showRangeCircle": true,
+                    "validColor": "#33CC66AA",
+                    "invalidColor": [1.0, 0.2, 0.2, 0.5]
+                  }
+                }
+                """)!.AsObject();
+
+            var def = Ludots.Core.Gameplay.GAS.Config.AbilityExecLoader.CompileAbility(obj, "Ability.Test.Guard", "GAS/abilities.json");
+
+            That(def.HasToggleSpec, Is.True);
+            That(def.ToggleSpec.ToggleTagId, Is.EqualTo(TagRegistry.Register("State.Guarding")));
+            That(def.ToggleSpec.ActiveEffectCount, Is.EqualTo(1));
+            unsafe
+            {
+                That(def.ToggleSpec.ActiveEffectTemplateIds[0], Is.EqualTo(EffectTemplateIdRegistry.GetId("Effect.Toggle.GuardAura")));
+            }
+
+            That(def.HasIndicator, Is.True);
+            That(def.Indicator.Shape, Is.EqualTo(TargetShape.Cone));
+            That(def.Indicator.Range, Is.EqualTo(620f));
+            That(def.Indicator.Radius, Is.EqualTo(180f));
+            That(def.Indicator.Angle, Is.EqualTo(MathF.PI / 4f).Within(0.0001f));
+            That(def.Indicator.ShowRangeCircle, Is.True);
         }
 
         [Test]

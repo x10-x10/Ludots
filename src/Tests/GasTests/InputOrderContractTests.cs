@@ -105,6 +105,51 @@ namespace Ludots.Tests.GAS
             Assert.That(startupContexts, Does.Contain("Rts_Gameplay"));
         }
 
+        [Test]
+        public void DoubleTapTrigger_SubmitsOnlyOnSecondPressWithinWindow()
+        {
+            var (backend, handler) = BuildHandler();
+            var config = new InputOrderMappingConfig
+            {
+                Mappings = new List<InputOrderMapping>
+                {
+                    new()
+                    {
+                        ActionId = "Attack",
+                        Trigger = InputTriggerType.DoubleTap,
+                        DoubleTapWindowSeconds = 0.25f,
+                        OrderTypeKey = "dash",
+                        SelectionType = OrderSelectionType.None,
+                        RequireSelection = false,
+                        IsSkillMapping = false
+                    }
+                }
+            };
+
+            var orders = new List<Ludots.Core.Gameplay.GAS.Orders.Order>();
+            var system = new InputOrderMappingSystem(handler, config);
+            system.SetOrderTypeKeyResolver(key => key == "dash" ? 77 : 0);
+            system.SetOrderSubmitHandler((in Ludots.Core.Gameplay.GAS.Orders.Order order) => orders.Add(order));
+
+            using var world = World.Create();
+            system.SetLocalPlayer(world.Create(), 1);
+
+            backend.Buttons["<Keyboard>/a"] = true;
+            handler.Update();
+            system.Update(0.10f);
+
+            backend.Buttons["<Keyboard>/a"] = false;
+            handler.Update();
+            system.Update(0.05f);
+
+            backend.Buttons["<Keyboard>/a"] = true;
+            handler.Update();
+            system.Update(0.10f);
+
+            Assert.That(orders.Count, Is.EqualTo(1));
+            Assert.That(orders[0].OrderTypeId, Is.EqualTo(77));
+        }
+
         private static (TestInputBackend backend, PlayerInputHandler handler) BuildHandler()
         {
             var backend = new TestInputBackend();
