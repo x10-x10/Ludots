@@ -1,10 +1,13 @@
-{
+﻿{
   "Id": "nav2d_playground",
   "Tags": [
     "nav_playground"
   ],
   "DefaultCamera": {
-    "VirtualCameraId": "Default",
+    "PresetId": "Default",
+    "TargetXCm": 0,
+    "TargetYCm": 0,
+    "Pitch": 65,
     "DistanceCm": 18000
   },
   "Entities": []

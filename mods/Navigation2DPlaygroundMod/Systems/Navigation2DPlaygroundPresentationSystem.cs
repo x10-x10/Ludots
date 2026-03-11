@@ -74,17 +74,23 @@ namespace Navigation2DPlaygroundMod.Systems
             {
                 var visuals = chunk.GetSpan<VisualTransform>();
                 var teams = chunk.GetSpan<NavPlaygroundTeam>();
+                bool isBlockerChunk = chunk.Has<NavPlaygroundBlocker>();
 
                 for (int i = 0; i < chunk.Count; i++)
                 {
                     ref var vt = ref visuals[i];
-                    var color = teams[i].Id == 0 ? new Vector4(0.1f, 0.9f, 0.2f, 1f) : new Vector4(0.95f, 0.15f, 0.2f, 1f);
+                    var color = isBlockerChunk
+                        ? new Vector4(0.35f, 0.55f, 1f, 1f)
+                        : teams[i].Id == 0
+                            ? new Vector4(0.1f, 0.9f, 0.2f, 1f)
+                            : new Vector4(0.95f, 0.15f, 0.2f, 1f);
+                    var scale = isBlockerChunk ? new Vector3(0.8f, 0.8f, 0.8f) : new Vector3(0.6f, 0.6f, 0.6f);
 
                     draw.TryAdd(new PrimitiveDrawItem
                     {
                         MeshAssetId = _sphereMeshId,
                         Position = new Vector3(vt.Position.X, 0.25f, vt.Position.Z),
-                        Scale = new Vector3(0.6f, 0.6f, 0.6f),
+                        Scale = scale,
                         Color = color
                     });
                 }
@@ -95,6 +101,11 @@ namespace Navigation2DPlaygroundMod.Systems
         {
             foreach (ref var chunk in _world.Query(in _desiredVelQuery))
             {
+                if (chunk.Has<NavPlaygroundBlocker>())
+                {
+                    continue;
+                }
+
                 var visuals = chunk.GetSpan<VisualTransform>();
                 var desired = chunk.GetSpan<NavDesiredVelocity2D>();
                 var teams = chunk.GetSpan<NavPlaygroundTeam>();
@@ -131,10 +142,10 @@ namespace Navigation2DPlaygroundMod.Systems
             int startFlow = mode == 1 ? 0 : (mode == 2 ? 1 : 0);
             int endFlowExclusive = mode == 1 ? 1 : (mode == 2 ? 2 : nav.FlowCount);
 
-            // Fix4: 表现层只做只读采样，不调用 SetGoalPoint/Step
-            // 模拟层 (Navigation2DSteeringSystem2D) 已负责驱动 flowfield 计算
+            // Fix4: 表现层只做只读采样，不调�?SetGoalPoint/Step
+            // 模拟�?(Navigation2DSteeringSystem2D) 已负责驱�?flowfield 计算
 
-            // Fix6: 缩小箭头间距(12→4m)和箭头长度(4→1.5m)，更好匹配agent尺寸
+            // Fix6: 缩小箭头间距(12�?m)和箭头长�?4�?.5m)，更好匹配agent尺寸
             float halfM = 90f;
             float stepM = 4f;
             float arrowLenM = 1.5f;
@@ -202,6 +213,42 @@ namespace Navigation2DPlaygroundMod.Systems
             bool flowDebug = false;
             int flowMode = 0;
             int flowIters = 0;
+            int flowActiveTiles = 0;
+            int flowLoadedTiles = 0;
+            int flowActivationRadius = 0;
+            int flowMaxActiveTiles = 0;
+            int flowWindowWidth = 0;
+            int flowWindowHeight = 0;
+            int flowWindowChecks = 0;
+            int flowSelectedTiles = 0;
+            int flowRetainedTiles = 0;
+            int flowNewTiles = 0;
+            int flowEvictedTiles = 0;
+            int flowIncrementalTiles = 0;
+            int flowGoalSeedCells = 0;
+            int flowFrontierEnqueues = 0;
+            int flowFrontierProcessed = 0;
+            int flowFullRebuilds = 0;
+            int flowMaxWindowWidth = 0;
+            int flowMaxWindowHeight = 0;
+            bool flowWorldBoundsEnabled = false;
+            bool flowBudgetClamped = false;
+            bool flowWorldClamped = false;
+            string steeringMode = "Unavailable";
+            bool temporalCoherenceEnabled = false;
+            bool temporalRequireSteadyState = false;
+            int temporalMaxReuseTicks = 0;
+            bool steeringCacheFrameEnabled = false;
+            int steeringCacheLookupsFrame = 0;
+            int steeringCacheHitsFrame = 0;
+            int steeringCacheStoresFrame = 0;
+            float steeringCacheHitRate = 0f;
+            string steeringCacheState = "Unavailable";
+            string spatialMode = "Unavailable";
+            long spatialRebuilds = 0;
+            long spatialIncrementalUpdates = 0;
+            long spatialDirtyAgents = 0;
+            long spatialCellMigrations = 0;
             if (_engine.GlobalContext.TryGetValue(CoreServiceKeys.Navigation2DRuntime.Name, out var navObj) &&
                 navObj is Navigation2DRuntime navRuntime)
             {
@@ -209,32 +256,90 @@ namespace Navigation2DPlaygroundMod.Systems
                 flowDebug = navRuntime.FlowDebugEnabled;
                 flowMode = navRuntime.FlowDebugMode;
                 flowIters = navRuntime.FlowIterationsPerTick;
+                flowActivationRadius = navRuntime.Config.FlowStreaming.ActivationRadiusTiles;
+                flowMaxActiveTiles = navRuntime.Config.FlowStreaming.MaxActiveTilesPerFlow;
+                flowMaxWindowWidth = navRuntime.Config.FlowStreaming.MaxActivationWindowWidthTiles;
+                flowMaxWindowHeight = navRuntime.Config.FlowStreaming.MaxActivationWindowHeightTiles;
+                flowWorldBoundsEnabled = navRuntime.Config.FlowStreaming.WorldBoundsEnabled;
+                for (int flowIndex = 0; flowIndex < navRuntime.FlowCount; flowIndex++)
+                {
+                    var flow = navRuntime.Flows[flowIndex];
+                    flowActiveTiles += flow.ActiveTileCount;
+                    flowLoadedTiles = Math.Max(flowLoadedTiles, flow.LoadedTileCount);
+                    flowWindowWidth = Math.Max(flowWindowWidth, flow.InstrumentedWindowWidthTiles);
+                    flowWindowHeight = Math.Max(flowWindowHeight, flow.InstrumentedWindowHeightTiles);
+                    flowWindowChecks += flow.InstrumentedWindowTileChecksFrame;
+                    flowSelectedTiles += flow.InstrumentedSelectedTilesFrame;
+                    flowRetainedTiles += flow.InstrumentedRetainedTilesFrame;
+                    flowNewTiles += flow.InstrumentedNewTilesActivatedFrame;
+                    flowEvictedTiles += flow.InstrumentedEvictedTilesFrame;
+                    flowIncrementalTiles += flow.InstrumentedIncrementalSeededTilesFrame;
+                    flowGoalSeedCells += flow.InstrumentedGoalSeedCellsFrame;
+                    flowFrontierEnqueues += flow.InstrumentedFrontierEnqueuesFrame;
+                    flowFrontierProcessed += flow.InstrumentedFrontierProcessedFrame;
+                    flowFullRebuilds += flow.InstrumentedFullRebuilds;
+                    flowBudgetClamped |= flow.InstrumentedWindowBudgetClampedFrame;
+                    flowWorldClamped |= flow.InstrumentedWindowWorldClampedFrame;
+                }
+
+                steeringMode = navRuntime.Config.Steering.Mode.ToString();
+                temporalCoherenceEnabled = navRuntime.Config.Steering.TemporalCoherence.Enabled;
+                temporalRequireSteadyState = navRuntime.Config.Steering.TemporalCoherence.RequireSteadyStateWorld;
+                temporalMaxReuseTicks = navRuntime.Config.Steering.TemporalCoherence.MaxReuseTicks;
+                steeringCacheFrameEnabled = navRuntime.AgentSoA.SteeringCacheFrameEnabled;
+                steeringCacheLookupsFrame = navRuntime.AgentSoA.SteeringCacheLookupsFrame;
+                steeringCacheHitsFrame = navRuntime.AgentSoA.SteeringCacheHitsFrame;
+                steeringCacheStoresFrame = navRuntime.AgentSoA.SteeringCacheStoresFrame;
+                steeringCacheHitRate = steeringCacheLookupsFrame > 0 ? (float)steeringCacheHitsFrame / steeringCacheLookupsFrame : 0f;
+                steeringCacheState = !temporalCoherenceEnabled
+                    ? "ConfigOff"
+                    : (steeringCacheFrameEnabled ? "Active" : (temporalRequireSteadyState ? "WaitingSteadyState" : "Ready"));
+                spatialMode = navRuntime.Config.Spatial.UpdateMode.ToString();
+                spatialRebuilds = navRuntime.CellMap.InstrumentedFullRebuilds;
+                spatialIncrementalUpdates = navRuntime.CellMap.InstrumentedIncrementalUpdates;
+                spatialDirtyAgents = navRuntime.CellMap.InstrumentedDirtyAgents;
+                spatialCellMigrations = navRuntime.CellMap.InstrumentedCellMigrations;
             }
 
-            int agentsPerTeam = 0;
-            int liveTotal = 0;
-            int flowDbgLines = 0;
-            agentsPerTeam = _engine.GetService(Navigation2DPlaygroundKeys.AgentsPerTeam);
-            liveTotal = _engine.GetService(Navigation2DPlaygroundKeys.LiveAgentsTotal);
-            flowDbgLines = _engine.GetService(Navigation2DPlaygroundKeys.FlowDebugLines);
-
+            int agentsPerTeam = _engine.GetService(Navigation2DPlaygroundKeys.AgentsPerTeam);
+            int liveTotal = _engine.GetService(Navigation2DPlaygroundKeys.LiveAgentsTotal);
+            int blockerCount = _engine.GetService(Navigation2DPlaygroundKeys.BlockerCount);
+            int scenarioIndex = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioIndex);
+            int scenarioCount = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioCount);
+            int scenarioTeamCount = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioTeamCount);
+            int flowDbgLines = _engine.GetService(Navigation2DPlaygroundKeys.FlowDebugLines);
+            string scenarioId = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioId) ?? "unknown";
+            string scenarioName = _engine.GetService(Navigation2DPlaygroundKeys.ScenarioName) ?? "Unknown";
             int x = 16;
             int y = 180;
-            int w = 500;
-            int h = 150;
+            int w = 860;
+            int h = 286;
             var bg = new Vector4(0.04f, 0.05f, 0.08f, 0.68f);
             var border = new Vector4(0.35f, 0.75f, 1f, 0.5f);
             var title = new Vector4(0.9f, 0.95f, 1f, 1f);
-            var text = new Vector4(0.85f, 0.9f, 0.95f, 1f);
+            var textColor = new Vector4(0.85f, 0.9f, 0.95f, 1f);
             var hint = new Vector4(0.68f, 0.78f, 0.9f, 0.95f);
 
             overlay.AddRect(x, y, w, h, bg, border);
             overlay.AddText(x + 10, y + 8, "Navigation2D Playground", 16, title);
-            overlay.AddText(x + 10, y + 30, $"FlowEnabled={flowEnabled}  FlowDebug={flowDebug}  Mode={flowMode}  Iter={flowIters}", 14, text);
-            overlay.AddText(x + 10, y + 50, $"Agents/team={agentsPerTeam}  Live={liveTotal}  FlowDbgLines={flowDbgLines}", 14, text);
-            overlay.AddText(x + 10, y + 76, "G ToggleFlow | H ToggleDebug | J CycleMode", 13, hint);
-            overlay.AddText(x + 10, y + 94, "U +Iter | Y -Iter | K +500/team | L -500/team", 13, hint);
-            overlay.AddText(x + 10, y + 112, "R ResetScenario", 13, hint);
+            overlay.AddText(x + 10, y + 30, $"Scenario={scenarioIndex + 1}/{scenarioCount}  {scenarioName} [{scenarioId}]", 14, textColor);
+            overlay.AddText(x + 10, y + 50, $"Agents/team={agentsPerTeam}  Teams={scenarioTeamCount}  Live={liveTotal}  Blockers={blockerCount}", 14, textColor);
+            overlay.AddText(x + 10, y + 70, $"Steering={steeringMode}  CacheCfg={temporalCoherenceEnabled}  CacheFrame={steeringCacheFrameEnabled}  MaxReuse={temporalMaxReuseTicks}  RequireSteady={temporalRequireSteadyState}", 14, textColor);
+            overlay.AddText(x + 10, y + 90, $"CacheLookups={steeringCacheLookupsFrame}  Hits={steeringCacheHitsFrame}  Stores={steeringCacheStoresFrame}  HitRate={steeringCacheHitRate:P1}  State={steeringCacheState}", 14, textColor);
+            overlay.AddText(x + 10, y + 110, $"FlowEnabled={flowEnabled}  FlowDebug={flowDebug}  Mode={flowMode}  Iter={flowIters}  ActiveTiles={flowActiveTiles}  LoadedTiles={flowLoadedTiles}", 14, textColor);
+            overlay.AddText(x + 10, y + 130, $"FlowRadius={flowActivationRadius}  FlowMaxActive={flowMaxActiveTiles}  WindowCap={flowMaxWindowWidth}x{flowMaxWindowHeight}  WorldBounds={flowWorldBoundsEnabled}", 14, textColor);
+            overlay.AddText(x + 10, y + 150, $"FlowWindow={flowWindowWidth}x{flowWindowHeight}  Selected={flowSelectedTiles}  Retained={flowRetainedTiles}  Checks={flowWindowChecks}", 14, textColor);
+            overlay.AddText(x + 10, y + 170, $"FlowDelta New={flowNewTiles}  Evict={flowEvictedTiles}  GoalSeeds={flowGoalSeedCells}  Incremental={flowIncrementalTiles}", 14, textColor);
+            overlay.AddText(x + 10, y + 190, $"FlowFrontier Proc={flowFrontierProcessed}  Enq={flowFrontierEnqueues}  Rebuilds={flowFullRebuilds}  BudgetClamp={flowBudgetClamped}  WorldClamp={flowWorldClamped}  DbgLines={flowDbgLines}", 14, textColor);
+            overlay.AddText(x + 10, y + 210, $"Spatial={spatialMode}  Rebuilds={spatialRebuilds}  Incremental={spatialIncrementalUpdates}  DirtyTotal={spatialDirtyAgents}  CellMigrations={spatialCellMigrations}", 14, textColor);
+            overlay.AddText(x + 10, y + 236, "G ToggleFlow | H ToggleDebug | J CycleMode | N Prev | M Next", 13, hint);
+            overlay.AddText(x + 10, y + 254, "U +Iter | Y -Iter | K +Agents/team | L -Agents/team", 13, hint);
+            overlay.AddText(x + 10, y + 272, "R ResetScenario", 13, hint);
         }
     }
 }
+
+
+
+
+
