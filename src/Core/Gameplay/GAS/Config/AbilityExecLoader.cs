@@ -134,6 +134,12 @@ namespace Ludots.Core.Gameplay.GAS.Config
                 def.ActivationBlockTags = blockTags;
             }
 
+            if (obj["activationPrecondition"] is JsonObject preconditionObj)
+            {
+                def.ActivationPrecondition = CompileActivationPrecondition(preconditionObj, id, path);
+                def.HasActivationPrecondition = def.ActivationPrecondition.ValidationGraphId > 0;
+            }
+
             // ── toggleSpec ──
             if (obj["toggleSpec"] is JsonObject toggleObj)
             {
@@ -185,6 +191,28 @@ namespace Ludots.Core.Gameplay.GAS.Config
             }
 
             return spec;
+        }
+
+        private static AbilityActivationPrecondition CompileActivationPrecondition(JsonObject preconditionObj, string id, string path)
+        {
+            string graphName = preconditionObj["validationGraph"]?.GetValue<string>() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(graphName))
+            {
+                throw new InvalidOperationException(
+                    $"Ability '{id}' field 'activationPrecondition.validationGraph' is required in '{path}'.");
+            }
+
+            int graphId = GraphIdRegistry.GetId(graphName);
+            if (graphId <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Ability '{id}' field 'activationPrecondition.validationGraph' references unknown graph '{graphName}'.");
+            }
+
+            return new AbilityActivationPrecondition
+            {
+                ValidationGraphId = graphId
+            };
         }
 
         private static void CompileItem(JsonObject itemObj, ref AbilityExecSpec spec, int idx, string id, string path)

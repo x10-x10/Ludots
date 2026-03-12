@@ -1,212 +1,199 @@
 # Feature: Context-Scored Abilities (N1–N8)
 
-> 清单覆盖: N1 自动选目标, N2 距离决定, N3 自身状态决定, N4 目标状态决定, N5 环境决定, N6 连击仪表决定, N7 摇杆偏移, N8 锁定辅助
+> 本文只描述当前分支的真实 runtime 形态，以及在该形态上仍未闭环的 checklist 项。
+> 分支验证边界以 `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` 为准。
 
-## 交互层
+---
 
-- **InputConfig**: ReactsTo = **Down**
-- **TargetMode**: **Unit** (系统自动选取)
-- **Acquisition**: **ContextScored** ← 这是唯一的新增值
+## 1. 当前状态
 
-## 核心概念: ContextGroup + ScorePipeline
+`ContextGroup` 与 `ContextScored` 已经是 `feat/mod-interaction-showcase` 的 runtime infrastructure，不再是设计提案。
 
-这是当前 Ludots 架构中**唯一需要新增的交互层概念**。
+已实现并有证据的路径：
 
-现有的 4 种 InteractionMode (TargetFirst/SmartCast/AimCast/SmartCastWithIndicator) 全部是 Explicit — 玩家明确选择目标。
+- 注册与配置：`src/Core/Gameplay/GAS/ContextGroupRegistry.cs`、`src/Core/Gameplay/GAS/Config/ContextGroupConfigLoader.cs`
+- 解析与路由：`src/Core/Input/Orders/ContextScoredOrderResolver.cs`、`src/Core/Input/Orders/InputOrderMappingSystem.cs`
+- 接入本地输入：`mods/CoreInputMod/Systems/LocalOrderSourceHelper.cs`
+- 测试与 acceptance：`src/Tests/GasTests/ContextScoredResolverTests.cs`、`src/Tests/GasTests/Production/InteractionShowcasePlayableAcceptanceTests.cs`、`artifacts/acceptance/interaction-showcase/path.mmd`
 
-ContextScored 模式下:
-1. 一个 InputBinding 绑定一个 **ContextGroup** (候选能力集合)
-2. 每个候选有 **Precondition** (准入条件) 和 **ScoreWeight** (评分权重)
-3. 按键时, ScorePipeline 对所有通过 Precondition 的候选评分, 选最高分
-4. 系统自动获取目标, 执行
+---
 
-## 实现方案
+## 2. Checklist 覆盖状态
 
-### 数据结构设计
+| Slice | 当前状态 | 说明 |
+|------|----------|------|
+| N1 自动选目标 | `implemented + verified` | 已由 `ContextScoredOrderResolver` 返回 concrete slot + target，并在 `ContextScoredResolverTests.cs` 验证 |
+| N2 距离决定 | `implemented + verified` | `searchRadiusCm`、`maxDistanceCm`、`distanceWeight` 已进入 runtime candidate 定义 |
+| N3 自身状态决定 | `runtime-ready, not showcase-closed` | 可由 precondition graph / tag 查询表达，但当前 showcase 不是完整闭环 |
+| N4 目标状态决定 | `implemented + verified` | `ContextScoredResolverTests.cs` 已验证 downed target 导向 finisher slot |
+| N5 环境决定 | `design backlog on existing runtime` | 现有 runtime 可扩展，但本分支未给出完整 acceptance |
+| N6 连击仪表决定 | `design backlog on existing runtime` | 应复用 tag gate 或 validation graph primitive，不新增平行系统 |
+| N7 摇杆偏移 | `partial runtime only` | 当前 runtime 内建的是 `HoveredBiasScore`；通用 stick bias 仍属后续 authoring/backlog |
+| N8 锁定辅助 | `design backlog` | 现有分支未把 lock-on override 闭环到 acceptance |
+
+---
+
+## 3. 当前 runtime 形态
+
+### 3.1 输入侧不是 `contextGroupId`，而是 root slot
+
+当前输入映射并没有单独的 `contextGroupId` 字段。
+
+实际做法是：
+
+- `InputOrderMapping.ArgsTemplate.I0` 指向 root ability slot
+- `ContextScoredOrderResolver` 从 slot 解析出 root ability
+- `ContextGroupRegistry.TryGetByRootAbility(...)` 找到候选组
+- 解析出 concrete slot index 与 concrete target
+
+对应实现：
+
+- `src/Core/Input/Orders/InputOrderMappingSystem.cs`
+- `src/Core/Input/Orders/ContextScoredOrderResolver.cs`
+- `src/Core/Gameplay/GAS/ContextGroupRegistry.cs`
+
+### 3.2 ContextGroup 的真实数据形态
+
+当前候选定义已经落地为 runtime struct，而不是文档中的占位设计：
 
 ```csharp
-// 新增: ContextGroup 定义
-public struct ContextCandidate
-{
-    public int AbilityId;            // 候选能力
-    public int TargetModeOverride;   // 该候选的 TargetMode (None/Unit/Point/Direction)
-    public int PreconditionGraphId;  // 准入条件 Graph (B[0]=pass/fail)
-    public int ScoreGraphId;         // 评分 Graph (F[0]=score)
-    public int BasePriority;         // 基础优先级
-}
+ContextGroupCandidate:
+  AbilityId
+  PreconditionGraphId
+  ScoreGraphId
+  BasePriority
+  MaxDistanceCm
+  DistanceWeight
+  MaxAngleDeg
+  AngleWeight
+  HoveredBiasScore
+  RequiresTarget
 
-public struct ContextGroup
-{
-    public const int MAX_CANDIDATES = 16;
-    public int Count;
-    public ContextCandidate[] Candidates;  // 排序 by BasePriority DESC
-}
-
-// 新增: ContextGroupRegistry
-public class ContextGroupRegistry
-{
-    // groupId → ContextGroup
-    public ContextGroup Get(int groupId);
-}
+ContextGroupDefinition:
+  SearchRadiusCm
+  Candidates[]
 ```
 
-### 评分 Graph 约定
+真实代码见：
 
-```
-输入寄存器:
-  E[0] = caster
-  E[1] = candidate_target (由系统遍历)
-  F[0] = (output) score
-  B[0] = (output) valid
+- `src/Core/Gameplay/GAS/ContextGroupRegistry.cs`
+- `src/Core/Gameplay/GAS/Config/ContextGroupConfigLoader.cs`
 
-内置评分因子 (Graph ops 或 builtin):
-  distance_score = 1.0 - (distance / max_range)
-  angle_score = dot(caster_forward, to_target_dir)
-  input_bias = dot(input_direction, to_target_dir)
-  tag_bonus = target HasTag("stunned") ? +50 : 0
-  env_bonus = caster HasTag("near_wall") ? +30 : 0
-```
+### 3.3 解析流程
 
-### N1: 自动选最优近战目标 (Arkham/Spider-Man)
+`ContextScoredOrderResolver` 的当前分支流程：
 
-```
-ContextGroup "melee_attack":
-  candidate[0]: light_attack
-    precondition: NearestEnemy distance < 300cm
-    score: distance_score * 0.5 + angle_score * 0.3 + input_bias * 0.2
+1. 从 `ArgsTemplate.I0` 取 root slot
+2. `TryGetByRootAbility(...)` 找到 `ContextGroupDefinition`
+3. 在 `searchRadiusCm` 内做空间查询
+4. 逐 candidate / target 计算内建距离、角度、hovered bias
+5. 如配置了 `PreconditionGraphId`，调用 `GraphExecutor.ExecuteValidation(...)`
+6. 如配置了 `ScoreGraphId`，叠加 score graph 输出
+7. 返回最终 concrete slot 与 concrete target
 
-  candidate[1]: leap_attack
-    precondition: NearestEnemy distance IN [300, 800cm]
-    score: distance_score * 0.3 + angle_score * 0.3 + input_bias * 0.4
+对应实现：
 
-流程:
-  1. 按下攻击键
-  2. SpatialQuery 收集半径 800cm 内所有 Enemy
-  3. 对每个 enemy, 评分 light_attack 和 leap_attack
-  4. 如果最近敌人 < 300cm → light_attack 得分高
-  5. 如果最近敌人 300-800cm → leap_attack 得分高
-  6. 选取最高分, 自动锁定该 enemy, 执行
-```
+- `src/Core/Input/Orders/ContextScoredOrderResolver.cs`
+- `src/Core/NodeLibraries/GASGraph/GraphExecutor.cs`
 
-### N2: 距离决定技能变体
+### 3.4 与 ability activation 的边界
 
-```
-ContextGroup "attack":
-  candidate: punch       (distance < 150cm, score: proximity)
-  candidate: leap_strike (distance 150-500cm, score: angle)
-  candidate: lunge       (distance 500-800cm, score: input_bias)
-```
+`ContextScored` 只负责把上下文解析成具体 `(ability, target)`，并不负责替代 ability activation。
 
-### N3: 自身状态决定
+实际边界：
 
-```
-ContextGroup "attack":
-  candidate: ground_combo     (precondition: NOT HasTag("airborne"))
-  candidate: air_combo        (precondition: HasTag("airborne"))
-  candidate: wall_combo       (precondition: HasTag("on_wall"))
-```
+- candidate precondition 使用最小 validation graph primitive
+- 具体 ability 真正激活时仍然走 `RequiredAll` / `BlockedAny`
 
-### N4: 目标状态决定
+对应实现：
 
-```
-ContextGroup "attack":
-  candidate: ground_takedown  (precondition: target HasTag("knocked_down"), priority: 100)
-  candidate: disarm           (precondition: target HasTag("armed"), priority: 90)
-  candidate: normal_strike    (precondition: always true, priority: 10)
-```
+- `src/Core/Gameplay/GAS/Systems/AbilitySystem.cs`
+- `src/Core/Gameplay/GAS/Systems/AbilityExecSystem.cs`
+- `src/Core/Gameplay/GAS/Components/AbilityActivationBlockTags.cs`
 
-### N5: 环境决定
+这意味着 ContextScored family 不应引出新的 `AbilityConditionSystem`。
 
-```
-ContextGroup "attack":
-  candidate: wall_slam        (precondition: caster HasTag("near_wall"), priority: 95)
-  candidate: throw_object     (precondition: env HasTag("throwable") in radius 200cm, priority: 90)
-  candidate: ledge_kick       (precondition: target HasTag("near_ledge"), priority: 85)
-  candidate: normal           (precondition: always, priority: 10)
-```
+---
 
-### N6: 连击仪表决定
+## 4. Authoring 方式
 
-```
-ContextGroup "special":
-  candidate: special_takedown (precondition: Attribute(combo_meter) >= 12, priority: 100)
-  candidate: basic_attack     (precondition: always, priority: 10)
-```
+### 4.1 Context group config
 
-### N7: 摇杆偏移影响选取
+当前 loader 读取的是 `GAS/context_groups.json`，而不是 input mapping 内联整组候选。
 
-```
-评分因子中:
-  input_bias = dot(stick_direction, to_target_dir)
-  权重 0.3-0.4 → 推向某个敌人就倾向选他
-```
-
-### N8: 锁定辅助 (Soft Lock-on)
-
-```
-实现:
-  1. Toggle lock-on → AddTag("locked_on") + store locked_entity in Blackboard
-  2. 攻击时:
-     if HasTag("locked_on"):
-       直接使用 locked_entity 作为 target, 跳过 ContextScoring
-     else:
-       正常 ContextScoring
-```
-
-- 锁定辅助不是 ContextScored 的替代, 而是覆盖
-
-## Ludots 集成点
-
-### 在 InputOrderMappingSystem 中新增 ContextScored 路径
-
-```
-现有流程:
-  TargetFirst → HandleTargetFirst()
-  SmartCast → HandleSmartCast()
-  AimCast → HandleAimCast()
-  SmartCastWithIndicator → HandleSmartCastWithIndicator()
-
-新增:
-  ContextScored → HandleContextScored()
-    1. 获取 ContextGroup (from InputOrderMapping.ContextGroupId)
-    2. SpatialQuery 收集候选目标
-    3. 遍历 candidates × targets, 执行 precondition + score graphs
-    4. 选最高分 (candidate, target) 对
-    5. 构建 Order (ability=candidate.AbilityId, target=best_target)
-    6. Submit
-```
-
-### 配置
+示意形态：
 
 ```json
 {
-  "interactionMode": "ContextScored",
-  "mappings": [
+  "id": "commander_attack",
+  "rootAbilityId": "commander_attack_root",
+  "searchRadiusCm": 600,
+  "candidates": [
     {
-      "actionId": "Attack",
-      "trigger": "PressedThisFrame",
-      "contextGroupId": "melee_attack",
-      "isSkillMapping": false
+      "abilityId": "commander_light_attack",
+      "basePriority": 10,
+      "maxDistanceCm": 300,
+      "maxAngleDeg": 120,
+      "requiresTarget": true
+    },
+    {
+      "abilityId": "commander_finisher",
+      "preconditionGraph": "target_downed_only",
+      "scoreGraph": "finisher_bonus",
+      "basePriority": 0,
+      "maxDistanceCm": 300,
+      "requiresTarget": true
     }
   ]
 }
 ```
 
-## 依赖组件
+字段来源见 `src/Core/Gameplay/GAS/Config/ContextGroupConfigLoader.cs`。
 
-| 组件 | 状态 |
-|------|------|
-| SpatialQueryService | ✅ 已有 |
-| GraphExecutor (precondition/score) | ✅ 已有 |
-| Tag/Attribute 查询 | ✅ 已有 |
-| InputOrderMappingSystem | ✅ 已有 (需扩展) |
+### 4.2 Input mapping
 
-## 新增需求
+input mapping 仍然只声明 root cast：
 
-| 需求 | 优先级 | 说明 |
-|------|--------|------|
-| **ContextGroup 数据结构** | **P0** | ContextCandidate, ContextGroup, ContextGroupRegistry |
-| **ContextScored InteractionMode** | **P0** | InputOrderMappingSystem.HandleContextScored() |
-| **ContextGroup JSON 配置 + Loader** | **P0** | 配置驱动 |
-| Score Graph 评分因子 ops | P1 | distance_score, angle_score, input_bias 等便利 ops |
-| Lock-on 集成 (覆盖 ContextScored) | P2 | N8 |
+```json
+{
+  "actionId": "Attack",
+  "trigger": "PressedThisFrame",
+  "orderTypeKey": "castAbility",
+  "argsTemplate": { "i0": 0 },
+  "selectionType": "Entity",
+  "isSkillMapping": true
+}
+```
+
+真正的 ContextScored 解析由 provider 注入，而不是 input config 自带候选数组。
+
+---
+
+## 5. 当前 showcase / runtime 证明了什么
+
+本分支已经证明：
+
+- ContextScored 会把 root slot 解析为具体 candidate slot，而不是停留在设计概念
+- precondition graph 与 score graph 已进入真实 runtime
+- ContextGroup 可以作为后续扩展的共享底座继续长大
+
+集中证据：
+
+- `src/Tests/GasTests/ContextScoredResolverTests.cs`
+- `src/Tests/GasTests/Production/InteractionShowcasePlayableAcceptanceTests.cs`
+- `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+- `artifacts/acceptance/interaction-showcase/path.mmd`
+
+---
+
+## 6. 仍然未闭环的 backlog
+
+以下需求不应被写成“当前分支已实现”：
+
+- 通用 lock-on override
+- 通用 input-direction score factor
+- 大规模环境候选 authoring 套件
+- AI 全面复用 `ContextGroup` 决策
+- 将全部 N1–N8 场景都接入 acceptance
+
+这些后续工作都应复用现有 `ContextGroupRegistry` 与 `ContextScoredOrderResolver`，而不是把路由搬进 `AbilityDefinition`。

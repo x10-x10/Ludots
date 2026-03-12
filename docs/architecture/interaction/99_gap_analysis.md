@@ -1,350 +1,124 @@
-# Gap Analysis & Modification Proposals
+# Interaction Gap Analysis — Branch-Calibrated
 
-> 对照 163 条用户体验清单, 分析 Ludots 现有架构的缺口, 按优先级提出修改建议。
-
----
-
-## 1. 缺口总览
-
-### 1.1 交互层缺口
-
-| 缺口 | 影响清单项 | 严重度 |
-|------|----------|--------|
-| **ContextScored Acquisition 不存在** | N1-N8 (动作游戏核心) | **P0** |
-| ~~AbilityActivationRequireTags 不存在~~ | ~~G1-G10, H6, Q1-Q5~~ | ✅ **已有** — `AbilityActivationBlockTags.RequiredAll` |
-| ~~Ability-level Attribute precondition 不存在~~ | ~~G8, Q1, Q6, Q7, T1-T8~~ | ✅ **Tag 表达** — 见下方说明 |
-
-### 1.2 Ability 结构缺口
-
-| 缺口 | 影响 | 严重度 |
-|------|------|--------|
-| **Form-based ability routing** (slot+tag→ability) | J2-J5 变身/姿态 | **P1** |
-| **ContextGroup → ability dispatch** | N1-N8, G1, G3, H3, H8 | **P0** |
-| ~~AbilityDefinition 缺少 cost/resource check~~ | ~~T1-T8~~ | ✅ **Tag 表达** — 资源足够→AddTag, 不够→RemoveTag, RequiredAll/BlockedAny 门控 |
-
-### 1.3 Effect/Handler 缺口
-
-| 缺口 | 影响 | 严重度 |
-|------|------|--------|
-| Projectile 穿透模式 (hitMode) | E2 | P1 |
-| Projectile 回旋/反转 | E6 | P1 |
-| Projectile unit-seeking (homing) | E7 | P2 |
-| Projectile arc trajectory | E5 | P2 |
-| Teleport handler (instant position set) | B4, I3, I8 | P1 |
-| Displacement 碰撞回调 | I11, U2 | P2 |
-| ResponseType.Modify 支持修改 target | O3 | P1 |
-| Position history ring buffer | B5 | P2 |
-| Batch tag/effect removal Graph op | B7 | P2 |
-| Tether 组件 (距离监测+断裂) | C9, M6 | P1 |
-| Cooldown auto-decrement system | T2 | P1 |
-| Charge refill timer | T3 | P1 |
-
-### 1.4 Input 层缺口
-
-| 缺口 | 影响 | 严重度 |
-|------|------|--------|
-| DoubleTap trigger type | S2 | P2 |
-| Cursor direction continuous write | F1, M2 (蓄力/引导中瞄准) | P1 |
-| Minimap click → world position | D4, S6 | P3 |
-| Input focus routing (切换控制对象) | K7, R1 | P2 |
-
-### 1.5 Performer/UI 缺口
-
-| 缺口 | 影响 | 严重度 |
-|------|------|--------|
-| Beam renderer performer | M5-M7 | P2 |
-| Response chain rich UI (非 debug overlay) | O1-P7 | P2 |
-| GroundOverlay Ring shape | D2 | P2 |
-| AoE indicator during aiming | 所有 AimCast 技能 | P1 |
+> 基线：`feat/mod-interaction-showcase` / `94f5277`
+> 本文只记录在当前分支事实之上仍然成立的 gap，不再把已落地 runtime 写成待实现提案。
 
 ---
 
-## 2. P0 修改方案
+## 1. 已关闭的误判
 
-### 2.1 AbilityDefinition 扩展: ContextGroup (唯一 P0 新增)
+以下项目在当前分支已经不应再视为 gap：
 
-**现有 AbilityDefinition 结构**:
-```csharp
-public struct AbilityDefinition
-{
-    public AbilityExecSpec ExecSpec;
-    public AbilityExecCallerParamsPool CallerParams;
-    public AbilityOnActivateEffects OnActivateEffects;
-    public AbilityActivationBlockTags BlockTags;  // ← 已包含 RequiredAll + BlockedAny
-    public AbilityToggleSpec ToggleSpec;
-    public AbilityIndicatorConfig IndicatorConfig;
-}
-
-// 现有的 AbilityActivationBlockTags 已覆盖全部前置条件:
-public unsafe struct AbilityActivationBlockTags
-{
-    public GameplayTagContainer RequiredAll;   // ✅ 连击/处决/变身前置
-    public GameplayTagContainer BlockedAny;    // ✅ 冷却/沉默/控制阻止
-}
-// 资源门控也通过 Tag 表达:
-//   蓝量: 周期 Effect 检查 mana >= cost → AddTag("mana_ready_Q") → RequiredAll
-//   冷却: OnCast → AddTag("cd_Q", duration=N) → BlockedAny
-//   充能: 检查 charges > 0 → AddTag("has_charge_Q") → RequiredAll
-//   怒气: 检查 rage >= threshold → AddTag("rage_ready") → RequiredAll
-```
-
-> **RequireTags ✅ 已有, CostCheck ✅ Tag 表达, 无需新增 Ability 前置结构。**
-> **唯一需要新增的是 ContextGroup 路由字段。**
-
-**提议新增字段** (仅 ContextGroup 相关):
-```csharp
-public struct AbilityDefinition
-{
-    // ... 全部现有字段不变 ...
-
-    // P0: ContextGroup 路由 (仅动作游戏需要)
-    public int ContextGroupId;                            // 0=none, >0=属于某个 ContextGroup
-    public int ContextPreconditionGraphId;                // 准入条件 Graph
-    public int ContextScoreGraphId;                       // 评分 Graph (F[0]=score)
-}
-```
-
-**AbilityActivationCostCheck**: 不需要。通过 Tag 表达:
-```
-冷却: OnCast → AddTag("cd_Q", duration=600) → BlockedAny 含 "cd_Q"
-蓝量: 周期 Effect → mana >= 80 ? AddTag("mana_ok_Q") : RemoveTag → RequiredAll 含 "mana_ok_Q"
-       OnCast → Effect: ModifyAttribute(mana, -80)
-充能: 检查 charges > 0 → AddTag("has_charge") → RequiredAll
-怒气: 检查 rage >= 50 → AddTag("rage_ready") → RequiredAll
-```
-
-### 2.2 ContextGroup 机制
-
-**拟新增类型**: `ContextGroupRegistry`（GAS/Input 命名空间；当前仓库尚未实现，文件路径待落地时确定）
-
-```csharp
-public struct ContextCandidate
-{
-    public int AbilityId;
-    public int PreconditionGraphId;  // B[0]=valid
-    public int ScoreGraphId;         // F[0]=score
-    public int BasePriority;
-}
-
-public unsafe struct ContextGroup
-{
-    public const int MAX_CANDIDATES = 16;
-    public int Count;
-    // SoA layout:
-    public fixed int AbilityIds[MAX_CANDIDATES];
-    public fixed int PreconditionGraphIds[MAX_CANDIDATES];
-    public fixed int ScoreGraphIds[MAX_CANDIDATES];
-    public fixed int BasePriorities[MAX_CANDIDATES];
-}
-
-public class ContextGroupRegistry
-{
-    private readonly ContextGroup[] _groups = new ContextGroup[256];
-    public ref ContextGroup Get(int groupId) => ref _groups[groupId];
-    public void Register(int groupId, in ContextGroup group) { ... }
-}
-```
-
-**拟新增类型**: `ContextScoredResolver`（Input/Orders 命名空间；当前仓库尚未实现，文件路径待落地时确定）
-
-```csharp
-public static class ContextScoredResolver
-{
-    public static bool TryResolve(
-        in ContextGroup group,
-        Entity caster,
-        GraphExecutor executor,
-        IGraphRuntimeApi api,
-        ISpatialQueryService spatial,
-        float searchRadius,
-        out int bestAbilityId,
-        out Entity bestTarget)
-    {
-        // 1. SpatialQuery 收集候选目标
-        // 2. 遍历 candidates × targets
-        // 3. 执行 precondition graph → filter
-        // 4. 执行 score graph → rank
-        // 5. 返回最高分 (ability, target)
-    }
-}
-```
-
-### 2.3 InteractionModeType 扩展
-
-```csharp
-public enum InteractionModeType
-{
-    TargetFirst = 0,
-    SmartCast = 1,
-    AimCast = 2,
-    SmartCastWithIndicator = 3,
-    ContextScored = 4              // 新增
-}
-```
-
-在 `InputOrderMappingSystem` 新增:
-```csharp
-case InteractionModeType.ContextScored:
-    HandleContextScored(mapping, casterEntity);
-    break;
-```
-
-### 2.4 AbilityExecSystem: 无需修改
-
-现有 Phase 1 (Order → Ability Activation) 已检查 `RequiredAll` + `BlockedAny`:
-```csharp
-// ✅ 已有: RequiredAll — combo_stage, posture_broken, form, mana_ready, has_charge 等
-// ✅ 已有: BlockedAny — cooldown, stunned, silenced 等
-// 资源扣除 → OnActivate Effect (ModifyAttribute)
-// 无需新增检查逻辑
-```
-
-唯一新增: ContextScored 路由在 `InputOrderMappingSystem` 层处理,
-`AbilityExecSystem` 收到的 Order 已经是确定的 (ability, target) 对。
+| 项目 | 当前结论 | 证据 |
+|------|----------|------|
+| `ContextScored Acquisition 不存在` | 已关闭。`ContextScored` 已进入 `InteractionModeType` 与 `InputOrderMappingSystem` | `src/Core/Input/Orders/InputOrderMapping.cs`、`src/Core/Input/Orders/InputOrderMappingSystem.cs` |
+| `ContextGroup -> ability dispatch` | 已关闭。真实运行时为 registry + loader + resolver 链路 | `src/Core/Gameplay/GAS/ContextGroupRegistry.cs`、`src/Core/Gameplay/GAS/Config/ContextGroupConfigLoader.cs`、`src/Core/Input/Orders/ContextScoredOrderResolver.cs` |
+| `AbilityActivationRequireTags 不存在` | 已关闭。当前仓库使用 `AbilityActivationBlockTags.RequiredAll` / `BlockedAny` | `src/Core/Gameplay/GAS/Components/AbilityActivationBlockTags.cs`、`src/Core/Gameplay/GAS/Systems/AbilitySystem.cs`、`src/Core/Gameplay/GAS/Systems/AbilityExecSystem.cs` |
+| `CooldownTickSystem 是前置` | 已关闭。当前分支不需要通用 cooldown tick baseline | `src/Tests/GasTests/InputOrderAbilityAuditTests.cs`、`artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` |
 
 ---
 
-## 3. P1 修改方案
+## 2. 已固定的架构边界
 
-### 3.1 Projectile 扩展
+### 2.1 ContextGroup 不进入 AbilityDefinition
 
-**ProjectileConfig 新增字段**:
-```csharp
-public struct ProjectileConfig
-{
-    // ... 现有 ...
-    public ProjectileHitMode HitMode;  // FirstEnemy, Penetrate, Homing
-    public ProjectileTrajectory Trajectory;  // Linear, Arc, Seeking
-    public int MaxBounces;  // 弹射次数
-    public int OnMaxRangeEffect;  // 到达最大距离时的效果 (reverse, split, explode)
-    public float ArcHeight;  // 弧线高度
-    public Entity SeekTarget;  // homing 目标
-}
+当前分支的 `ContextGroup` 不走 “往 `AbilityDefinition` 增加 `ContextGroupId` / `ScoreGraphId` 字段” 方案。
 
-public enum ProjectileHitMode { FirstEnemy, Penetrate, PenetrateN }
-public enum ProjectileTrajectory { Linear, Arc, Seeking }
-public enum ProjectileEndBehavior { Destroy, Reverse, Split }
-```
+真实实现是：
 
-### 3.2 Teleport Handler
+- `ContextGroupRegistry` 保存 `groupId -> ContextGroupDefinition` 与 `rootAbilityId -> groupId`
+- `ContextGroupConfigLoader` 从 `GAS/context_groups.json` 编译候选
+- `ContextScoredOrderResolver` 解析 concrete slot + concrete target
+- `InputOrderMappingSystem` 在 `InteractionModeType.ContextScored` 分支提交最终 order
 
-**新增 BuiltinHandlerId**: `Teleport = 50`
+这让 ContextScored 保持在输入解析层闭环，而不把评分路由硬编码进 `AbilityDefinition`。
 
-```csharp
-BuiltinHandlers.HandleTeleport:
-  读取 EffectContext.Target position (或 ConfigParams position)
-  直接设置 entity position = target position
-  无 displacement, 即时生效
-```
+### 2.2 ability activation 继续以 tag gate 为主
 
-### 3.3 Tether Effect 支持
+当前分支的 ability 激活仍然只有离散 tag gate：
 
-通过 PeriodicSearch effect + distance check Graph 实现, 不需新增 preset:
-```
-PeriodicSearch (period=3 ticks):
-  Phase Graph:
-    distance = CalcDistance(E[0], stored_target)
-    if distance > break_range → SendEvent("tether_break") → remove effect
-```
+- `RequiredAll`
+- `BlockedAny`
 
-### 3.4 Cooldown System
+执行点：
 
-**选项 A** (推荐): 在 `AttributeAggregatorSystem` 后新增 `CooldownTickSystem`:
-```csharp
-public class CooldownTickSystem : BaseSystem
-{
-    // 每 tick: 对所有有 cooldown attribute 的 entity
-    // cooldown[slot] = max(0, cooldown[slot] - 1)
-}
-```
+- `src/Core/Gameplay/GAS/Systems/AbilitySystem.cs`
+- `src/Core/Gameplay/GAS/Systems/AbilityExecSystem.cs`
+- `src/Core/Gameplay/GAS/Config/AbilityExecLoader.cs`
 
-**选项 B**: 用现有 Periodic effect tick (但每个技能需一个 effect, 开销大)
+结论：
 
-### 3.5 Form-Based Ability Routing
+- 离散阻塞继续用 tag gate
+- 数值/上下文条件不新增平行 `AbilityConditionSystem`
+- 如果需要更复杂的 numeric/context 判定，复用现有 minimal validation graph primitive
 
-在 `AbilityStateBuffer` 中:
-```csharp
-// 现有: slot → abilityId 固定映射
-// 新增: slot + formTagId → abilityId
+### 2.3 minimal validation graph primitive 已存在
 
-public struct FormAbilityMapping
-{
-    public int FormTagId;    // 0=default
-    public int AbilityId;
-}
+当前仓库已经有统一的 validation primitive：`src/Core/NodeLibraries/GASGraph/GraphExecutor.cs`
 
-// AbilityStateBuffer 查找时:
-// 1. 检查 entity 当前 form tag
-// 2. 查找 (slot, formTag) → abilityId
-// 3. fallback 到 (slot, 0) → default abilityId
-```
+现有复用点：
 
-### 3.6 Cursor Direction Continuous Write
+- `src/Core/Input/Orders/ContextScoredOrderResolver.cs`
+- `src/Core/Gameplay/GAS/Systems/OrderBufferSystem.cs`
+- `src/Tests/GasTests/InputOrderAbilityAuditTests.cs`
 
-在 `InputOrderMappingSystem.Update()` 中, 当 `IsAiming` 或 `HasTag("charging")`:
-```csharp
-// 每帧写入 cursor direction 到 caster 的 Blackboard
-var cursorDir = CalculateDirection(casterPos, cursorWorldPos);
-blackboard.WriteFloat(CURSOR_DIR_X, cursorDir.X);
-blackboard.WriteFloat(CURSOR_DIR_Y, cursorDir.Y);
-```
+因此未来如果某个 family 真的需要 ability-side numeric gate，应沿用这条 primitive，而不是新起一套 condition runtime。
+
+### 2.4 cooldown / charges 不是本分支的强制 baseline
+
+当前分支没有“所有技能都必须有 cooldown attribute 并每 tick 递减”的架构前提。
+
+本分支已经证明的 only baseline 是：
+
+- cooldown 可以由 tag-duration / block-tag 组合表达
+- toggle deactivate 可以在 reactivation cooldown tag 存在时正常关闭
+
+对应证据：
+
+- `src/Tests/GasTests/InputOrderAbilityAuditTests.cs`
+- `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+- `artifacts/acceptance/interaction-showcase/path.mmd`
+
+charges / refill timer 也不应被写成“本分支必须具备的统一底座”；只有具体玩法切片真的需要时才立项。
+
+### 2.5 GasConditionRegistry 不承担 ability activation
+
+`GasConditionRegistry` 的职责仍然是 effect 生命周期条件，而不是 ability activation runtime：
+
+- `src/Core/Gameplay/GAS/GasConditionRegistry.cs`
+- `src/Core/Gameplay/GAS/Systems/EffectLifetimeSystem.cs`
 
 ---
 
-## 4. P2/P3 修改方案 (低优先级)
+## 3. 当前仍然成立的 backlog
 
-| 方案 | 优先级 | 说明 |
-|------|--------|------|
-| Projectile arc trajectory | P2 | 抛物线公式加入 ProjectileRuntimeSystem |
-| Projectile wall-reflect | P3 | 碰撞检测 + 反射角 |
-| Displacement 碰撞回调 | P2 | DisplacementRuntimeSystem OnCollision |
-| Position history component | P2 | Ring buffer, B5 回溯用 |
-| Batch tag removal op | P2 | Graph op: RemoveTagsMatching |
-| DoubleTap trigger | P2 | 或用 Tag 模拟 |
-| Minimap click | P3 | Adapter 层 |
-| Input focus routing | P2 | 控制对象切换 |
-| Beam performer | P2 | 新 PerformerVisualKind |
-| Ring GroundOverlay | P2 | PerformerEmitSystem 扩展 |
-| Rich response chain UI | P2 | ReactivePage 组件 |
+以下项目在当前分支上仍然是 backlog，但都应建立在已存在的运行时之上扩展：
+
+| 项目 | 优先级 | 原因 | 应复用的现有基础 |
+|------|--------|------|------------------|
+| Form-based ability routing | P1 | 缺少通用 slot + form 映射闭环 | `AbilityStateBuffer`、现有 tag gate |
+| Response target mutability / richer response-window UI | P1-P2 | 当前 showcase 只证明基础路径 | `ResponseChain`、presentation pipeline |
+| Companion focus / actor routing 细化 | P2 | shared selection fan-out 已有，但 companion 专用工作流未闭环 | `InputOrderMappingSystem`、`EntityClickSelectSystem`、现有 order pipeline |
+| Generic environment scan / displacement collision / nav blocker | P2 | showcase 未证明整族场景 | `ContextGroup`、`RuntimeEntitySpawnQueue`、effect / handler pipeline |
+| Minimap click adapter | P3 | 需要 adapter 侧世界坐标转换 | 现有 `OrderArgs.Spatial` |
 
 ---
 
-## 5. 实施优先级汇总
+## 4. 推荐 follow-up 顺序
 
-### Phase 1 (P0 — 解锁动作游戏核心, 仅需 ContextGroup)
+以 `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` 为 stage boundary，建议按以下顺序继续：
 
-```
-1. ContextGroup + Registry          → 新文件
-2. ContextScoredResolver            → 新文件
-3. InteractionModeType.ContextScored → InputOrderMappingSystem
-   (RequireTags ✅ 已有, CostCheck ✅ Tag 表达, 均无需新增)
-```
-
-### Phase 2 (P1 — 解锁完整技能多样性)
-
-```
-6. Projectile hitMode/trajectory    → ProjectileRuntimeSystem
-7. Teleport handler                 → BuiltinHandlers
-8. Tether distance check            → Graph pattern (无新代码)
-9. Cooldown tick system             → 新 system
-10. Form-based ability routing      → AbilityStateBuffer
-11. Cursor direction continuous     → InputOrderMappingSystem
-12. ResponseType.Modify target      → EffectProposalProcessingSystem
-13. AoE indicator during aiming     → Performer + InputOrderMappingSystem
-```
-
-### Phase 3 (P2/P3 — 完善边缘场景)
-
-```
-14-25. 各种低优先级扩展 (见 P2/P3 表)
-```
+1. 在现有 `ContextGroupRegistry` / `ContextScoredOrderResolver` 上增加候选和 acceptance，不把路由挪进 `AbilityDefinition`
+2. 在现有 aim / indicator / queued-order 路径上继续补更多交互切片，而不是新建第二套 preview 或 input stack
+3. 仅当某个 feature 确实需要 numeric/context activation gate 时，再在现有 `GraphExecutor.ExecuteValidation(...)` primitive 上增量扩展
+4. 环境结构变更类玩法统一复用 `RuntimeEntitySpawnQueue` / builtin handler，不在 Graph 中写结构变更伪代码
 
 ---
 
-## 6. 关键约束
+## 5. 使用方式
 
-1. **零 GC**: 所有新增结构必须是 `unsafe struct` + 固定数组, 遵循现有 SoA 模式
-2. **配置驱动**: ContextGroup, RequireTags, CostCheck 全部通过 JSON 配置, 不硬编码
-3. **Graph 可扩展**: 复杂 precondition/scoring 通过 Graph program 表达, 不增加枚举
-4. **向后兼容**: 新增字段默认值 = 0/empty, 现有 ability 不受影响
-5. **Presenter 分离**: 交互层/GAS 层不依赖 Performer/UI, 只通过 PresentationEvent 通信
+读本文时请遵循以下边界：
+
+- “已实现 / 已验证” 以 `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` 为准
+- “可表达 / 可扩展” 不等于 “本分支已闭环”
+- 对 feature 文档做设计时，优先引用当前分支已有的 runtime 路径，而不是重新提出 `ContextGroup`、`AbilityConditionSystem`、`CooldownTickSystem` 一类平行底座

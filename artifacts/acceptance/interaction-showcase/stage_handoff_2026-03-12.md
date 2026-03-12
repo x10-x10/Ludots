@@ -29,12 +29,17 @@ dotnet test src\Tests\GasTests\GasTests.csproj -c Release /m:1 --filter "FullyQu
 - `src/Core/Engine/GameEngine.cs`
 - `src/Core/Input/Orders/InputOrderMappingSystem.cs`
 - `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+- `artifacts/acceptance/interaction-showcase/battle-report.md`
+- `artifacts/acceptance/interaction-showcase/trace.jsonl`
+- `artifacts/acceptance/interaction-showcase/path.mmd`
 
 ## Next acceptance frontier
 
-- Continue feature-by-feature implementation against the 170+ interaction cases from `docs/architecture/interaction/`.
-- Reuse the now-stabilized base for:
-  - unit selection variants
-  - indicator/aim-cast/toggle/channel flows
-  - vector and multi-stage skills
-  - high-volume stress scenarios on the showcase stress map
+Use `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` as the stage boundary. It distinguishes branch-proven slices from design-only interaction documents.
+
+Recommended execution order for the next stage:
+
+1. Reuse the shared selection + `moveTo` + `stop` baseline to close more unit-selection variants on the hub map.
+2. Reuse the presentation-time aim overlay path for indicator / aim-cast / hold-release / channel flows instead of adding a second preview stack.
+3. Extend vector and multi-stage abilities on top of the preserved caller-param path and current `ContextGroup` runtime.
+4. Only after each new slice has deterministic hub-map coverage, expand the stress-map scenarios.

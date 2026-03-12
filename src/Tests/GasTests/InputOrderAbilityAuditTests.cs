@@ -11,10 +11,12 @@ using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Systems;
+using Ludots.Core.Gameplay.GAS.Presentation;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.GraphRuntime;
 using Ludots.Core.Mathematics;
 using Ludots.Core.NodeLibraries.GASGraph;
+using Ludots.Core.NodeLibraries.GASGraph.Host;
 using Ludots.Core.Navigation2D.Components;
 using GasGraphExecutor = Ludots.Core.NodeLibraries.GASGraph.GraphExecutor;
 using NUnit.Framework;
@@ -322,6 +324,50 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
+        public void AbilityExecLoader_CompileAbility_ParsesActivationPrecondition()
+        {
+            GraphIdRegistry.Clear();
+            int validationGraphId = GraphIdRegistry.Register("Graph.Ability.ManaEnough");
+
+            var obj = JsonNode.Parse(
+                """
+                {
+                  "exec": {
+                    "clockId": "FixedFrame",
+                    "items": [
+                      { "kind": "End", "tick": 0 }
+                    ]
+                  },
+                  "activationPrecondition": {
+                    "validationGraph": "Graph.Ability.ManaEnough"
+                  }
+                }
+                """)!.AsObject();
+
+            var def = Ludots.Core.Gameplay.GAS.Config.AbilityExecLoader.CompileAbility(obj, "Ability.Test.ManaCheck", "GAS/abilities.json");
+
+            That(def.HasActivationPrecondition, Is.True);
+            That(def.ActivationPrecondition.ValidationGraphId, Is.EqualTo(validationGraphId));
+        }
+
+        [Test]
+        public void AbilityDefinitionRegistry_RegisterFromEntity_CopiesActivationPrecondition()
+        {
+            using var world = World.Create();
+            var template = world.Create(
+                new AbilityTemplate(),
+                new AbilityExecSpec(),
+                new AbilityActivationPrecondition { ValidationGraphId = 77 });
+
+            var defs = new AbilityDefinitionRegistry();
+            defs.RegisterFromEntity(world, template, abilityId: 6010);
+
+            That(defs.TryGet(6010, out var def), Is.True);
+            That(def.HasActivationPrecondition, Is.True);
+            That(def.ActivationPrecondition.ValidationGraphId, Is.EqualTo(77));
+        }
+
+        [Test]
         public void OrderBufferSystem_PromoteQueued_WritesBlackboard()
         {
             using var world = World.Create();
@@ -509,6 +555,182 @@ namespace Ludots.Tests.GAS
             That(world.Get<GameplayTagContainer>(actor).HasTag(cooldownTagId), Is.True, "Turning off a toggle should not remove the reactivation cooldown tag.");
             That(world.Get<TagCountContainer>(actor).GetCount(cooldownTagId), Is.EqualTo(1));
         }
+
+        [Test]
+        public void AbilityExecSystem_ActivationPreconditionGraphRejectsCast_AndCancelsOrder()
+        {
+            using var world = World.Create();
+            const int castAbilityOrderTypeId = 100;
+            const int abilityId = 9101;
+            const int validationGraphId = 301;
+
+            var actor = world.Create(
+                OrderBuffer.CreateEmpty(),
+                new BlackboardIntBuffer(),
+                new BlackboardEntityBuffer(),
+                new AbilityStateBuffer());
+
+            ref var abilities = ref world.Get<AbilityStateBuffer>(actor);
+            abilities.AddAbility(abilityId);
+
+            ref var orderBuffer = ref world.Get<OrderBuffer>(actor);
+            var order = new Order
+            {
+                OrderId = 9,
+                Actor = actor,
+                OrderTypeId = castAbilityOrderTypeId,
+                Args = new OrderArgs { I0 = 0 }
+            };
+            orderBuffer.SetActiveDirect(in order, priority: 100);
+
+            ref var bbI = ref world.Get<BlackboardIntBuffer>(actor);
+            bbI.Set(OrderBlackboardKeys.Cast_SlotIndex, 0);
+
+            var defs = new AbilityDefinitionRegistry();
+            var def = new AbilityDefinition
+            {
+                HasActivationPrecondition = true,
+                ActivationPrecondition = new AbilityActivationPrecondition
+                {
+                    ValidationGraphId = validationGraphId
+                }
+            };
+            defs.Register(abilityId, in def);
+
+            var graphPrograms = new GraphProgramRegistry();
+            graphPrograms.Register(validationGraphId, new[]
+            {
+                new GraphInstruction
+                {
+                    Op = (ushort)GraphNodeOp.ConstBool,
+                    Dst = 0,
+                    Imm = 0
+                }
+            });
+
+            var orderTypes = new OrderTypeRegistry();
+            orderTypes.Register(new OrderTypeConfig
+            {
+                OrderTypeId = castAbilityOrderTypeId,
+                AllowQueuedMode = false,
+                ClearQueueOnActivate = true,
+                IntArg0BlackboardKey = OrderBlackboardKeys.Cast_SlotIndex
+            });
+
+            var presentationEvents = new GasPresentationEventBuffer();
+            var graphApi = new GasGraphRuntimeApi(world, spatialQueries: null, coords: null, eventBus: null);
+            var system = new AbilityExecSystem(
+                world,
+                new DiscreteClock(),
+                new InputRequestQueue(),
+                new InputResponseBuffer(),
+                new SelectionRequestQueue(),
+                new SelectionResponseBuffer(),
+                new EffectRequestQueue(),
+                defs,
+                castAbilityOrderTypeId: castAbilityOrderTypeId,
+                presentationEvents: presentationEvents,
+                graphPrograms: graphPrograms,
+                graphApi: graphApi,
+                orderTypeRegistry: orderTypes);
+
+            bool completed = system.UpdateSlice(0f, int.MaxValue);
+
+            That(completed, Is.True);
+            That(world.Has<AbilityExecInstance>(actor), Is.False);
+            That(world.Get<OrderBuffer>(actor).HasActive, Is.False, "Rejected casts must cancel the active order so queued orders can promote.");
+            That(presentationEvents.Count, Is.EqualTo(1));
+            That(presentationEvents.Events[0].Kind, Is.EqualTo(GasPresentationEventKind.CastFailed));
+            That(presentationEvents.Events[0].FailReason, Is.EqualTo(AbilityCastFailReason.PreconditionFailed));
+        }
+
+        [Test]
+        public void AbilitySystem_RegistryAbility_ActivationPreconditionGraphRejectsActivation()
+        {
+            using var world = World.Create();
+            const int abilityId = 9201;
+            const int validationGraphId = 302;
+
+            var actor = world.Create(new AbilityStateBuffer());
+            ref var abilities = ref world.Get<AbilityStateBuffer>(actor);
+            abilities.AddAbility(abilityId);
+
+            var effects = new AbilityOnActivateEffects();
+            effects.Add(4001);
+
+            var defs = new AbilityDefinitionRegistry();
+            var def = new AbilityDefinition
+            {
+                HasOnActivateEffects = true,
+                OnActivateEffects = effects,
+                HasActivationPrecondition = true,
+                ActivationPrecondition = new AbilityActivationPrecondition
+                {
+                    ValidationGraphId = validationGraphId
+                }
+            };
+            defs.Register(abilityId, in def);
+
+            var graphPrograms = new GraphProgramRegistry();
+            graphPrograms.Register(validationGraphId, new[]
+            {
+                new GraphInstruction
+                {
+                    Op = (ushort)GraphNodeOp.ConstBool,
+                    Dst = 0,
+                    Imm = 0
+                }
+            });
+
+            var effectRequests = new EffectRequestQueue();
+            var graphApi = new GasGraphRuntimeApi(world, spatialQueries: null, coords: null, eventBus: null, effectRequests: effectRequests);
+            var system = new AbilitySystem(world, effectRequests, defs, graphPrograms: graphPrograms, graphApi: graphApi);
+
+            bool activated = system.TryActivateAbility(actor, 0);
+
+            That(activated, Is.False);
+            That(effectRequests.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void AbilitySystem_TemplateAbility_ActivationPreconditionGraphRejectsActivation()
+        {
+            using var world = World.Create();
+            const int validationGraphId = 303;
+
+            var templateEffects = new AbilityOnActivateEffects();
+            templateEffects.Add(4002);
+
+            var template = world.Create(
+                new AbilityTemplate(),
+                templateEffects,
+                new AbilityActivationPrecondition { ValidationGraphId = validationGraphId });
+
+            var actor = world.Create(new AbilityStateBuffer());
+            ref var abilities = ref world.Get<AbilityStateBuffer>(actor);
+            abilities.AddAbility(template);
+
+            var graphPrograms = new GraphProgramRegistry();
+            graphPrograms.Register(validationGraphId, new[]
+            {
+                new GraphInstruction
+                {
+                    Op = (ushort)GraphNodeOp.ConstBool,
+                    Dst = 0,
+                    Imm = 0
+                }
+            });
+
+            var effectRequests = new EffectRequestQueue();
+            var graphApi = new GasGraphRuntimeApi(world, spatialQueries: null, coords: null, eventBus: null, effectRequests: effectRequests);
+            var system = new AbilitySystem(world, effectRequests, graphPrograms: graphPrograms, graphApi: graphApi);
+
+            bool activated = system.TryActivateAbility(actor, 0);
+
+            That(activated, Is.False);
+            That(effectRequests.Count, Is.EqualTo(0));
+        }
+
         // Region: GraphExecutor.ExecuteValidation
         // ════════════════════════════════════════════════════════════════════
 
@@ -770,6 +992,19 @@ namespace Ludots.Tests.GAS
             var finalPos = world.Get<WorldPositionCm>(actor).ToWorldCmInt2();
             That(finalPos.X, Is.EqualTo(60).Within(1));
             That(world.Get<OrderBuffer>(actor).HasActive, Is.False);
+        }
+
+        private static GraphInstruction[] RejectValidationProgram()
+        {
+            return new[]
+            {
+                new GraphInstruction
+                {
+                    Op = (ushort)GraphNodeOp.ConstBool,
+                    Dst = 0,
+                    Imm = 0
+                }
+            };
         }
 
     }

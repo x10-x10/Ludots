@@ -57,6 +57,8 @@ namespace Ludots.Core.Gameplay.GAS
         public bool HasOnActivateEffects;
         public AbilityActivationBlockTags ActivationBlockTags;
         public bool HasActivationBlockTags;
+        public AbilityActivationPrecondition ActivationPrecondition;
+        public bool HasActivationPrecondition;
 
         // 鈹€鈹€ Toggle mode 鈹€鈹€
         public bool HasToggleSpec;
@@ -125,6 +127,7 @@ namespace Ludots.Core.Gameplay.GAS
             {
                 HasOnActivateEffects = world.Has<AbilityOnActivateEffects>(templateEntity),
                 HasActivationBlockTags = world.Has<AbilityActivationBlockTags>(templateEntity),
+                HasActivationPrecondition = world.Has<AbilityActivationPrecondition>(templateEntity),
                 ExecSpec = world.Get<AbilityExecSpec>(templateEntity)
             };
 
@@ -141,6 +144,10 @@ namespace Ludots.Core.Gameplay.GAS
             if (def.HasActivationBlockTags)
             {
                 def.ActivationBlockTags = world.Get<AbilityActivationBlockTags>(templateEntity);
+            }
+            if (def.HasActivationPrecondition)
+            {
+                def.ActivationPrecondition = world.Get<AbilityActivationPrecondition>(templateEntity);
             }
             Register(abilityId, in def);
         }

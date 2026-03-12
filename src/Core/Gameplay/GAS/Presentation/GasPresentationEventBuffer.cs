@@ -33,6 +33,7 @@ namespace Ludots.Core.Gameplay.GAS.Presentation
         NoTarget    = 3,
         InvalidSlot = 4,
         NotAlive    = 5,
+        PreconditionFailed = 6,
     }
 
     /// <summary>

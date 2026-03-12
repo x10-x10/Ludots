@@ -8,6 +8,7 @@ using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Presentation;
+using Ludots.Core.GraphRuntime;
 using Ludots.Core.NodeLibraries.GASGraph;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Mathematics.FixedPoint;
@@ -31,6 +32,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly EffectRequestQueue _effectRequests;
         private readonly GasPresentationEventBuffer _presentationEvents;
         private readonly EffectPhaseExecutor _phaseExecutor;
+        private readonly GraphProgramRegistry _graphPrograms;
         private readonly IGraphRuntimeApi _graphApi;
         private readonly TagOps _tagOps;
 
@@ -64,6 +66,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             int castAbilityOrderTypeId = 0,
             GasPresentationEventBuffer presentationEvents = null,
             EffectPhaseExecutor phaseExecutor = null,
+            GraphProgramRegistry graphPrograms = null,
             IGraphRuntimeApi graphApi = null,
             TagOps tagOps = null,
             OrderTypeRegistry orderTypeRegistry = null)
@@ -80,6 +83,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _castAbilityOrderTypeId = castAbilityOrderTypeId;
             _presentationEvents = presentationEvents;
             _phaseExecutor = phaseExecutor;
+            _graphPrograms = graphPrograms;
             _graphApi = graphApi;
             _tagOps = tagOps ?? new TagOps();
             _orderTypeRegistry = orderTypeRegistry;
@@ -165,6 +169,13 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     bool hasAbilityDef = slot.AbilityId > 0 &&
                         _abilityDefinitions != null &&
                         _abilityDefinitions.TryGet(slot.AbilityId, out abilityDef);
+                    Entity templateEntity = default;
+                    bool hasTemplateEntity = false;
+                    if (slot.TemplateEntityId > 0)
+                    {
+                        templateEntity = EntityUtil.Reconstruct(slot.TemplateEntityId, slot.TemplateEntityWorldId, slot.TemplateEntityVersion);
+                        hasTemplateEntity = World.IsAlive(templateEntity);
+                    }
 
                     // Toggle check comes before activation block tags so a toggled-on ability
                     // can always be turned off, even while its reactivate cooldown is present.
@@ -186,12 +197,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         blockTags = abilityDef.ActivationBlockTags;
                         hasBlockTags = true;
                     }
-                    else if (slot.TemplateEntityId > 0)
+                    else if (hasTemplateEntity)
                     {
-                        Entity template = EntityUtil.Reconstruct(slot.TemplateEntityId, slot.TemplateEntityWorldId, slot.TemplateEntityVersion);
-                        if (World.IsAlive(template) && World.Has<AbilityActivationBlockTags>(template))
+                        if (World.Has<AbilityActivationBlockTags>(templateEntity))
                         {
-                            blockTags = World.Get<AbilityActivationBlockTags>(template);
+                            blockTags = World.Get<AbilityActivationBlockTags>(templateEntity);
                             hasBlockTags = true;
                         }
                     }
@@ -233,6 +243,79 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         }
                     }
 
+                    AbilityActivationPrecondition activationPrecondition = default;
+                    bool hasActivationPrecondition = false;
+                    if (hasAbilityDef && abilityDef.HasActivationPrecondition)
+                    {
+                        activationPrecondition = abilityDef.ActivationPrecondition;
+                        hasActivationPrecondition = true;
+                    }
+                    else if (hasTemplateEntity && World.Has<AbilityActivationPrecondition>(templateEntity))
+                    {
+                        activationPrecondition = World.Get<AbilityActivationPrecondition>(templateEntity);
+                        hasActivationPrecondition = true;
+                    }
+
+                    Fix64Vec2 targetOriginPosCm = default;
+                    bool hasTargetOriginPos = false;
+                    Fix64Vec2 targetPosCm = default;
+                    bool hasTargetPos = false;
+                    if (World.Has<BlackboardSpatialBuffer>(actor))
+                    {
+                        ref var bbSpatial = ref World.Get<BlackboardSpatialBuffer>(actor);
+                        int pointCount = bbSpatial.GetPointCount(OrderBlackboardKeys.Cast_TargetPosition);
+                        if (pointCount > 1 &&
+                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, 0, out var originPos))
+                        {
+                            targetOriginPosCm = Fix64Vec2.FromFloat(originPos.X, originPos.Z);
+                            hasTargetOriginPos = true;
+                        }
+
+                        int targetPointIndex = pointCount > 1 ? pointCount - 1 : 0;
+                        if (pointCount > 0 &&
+                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, targetPointIndex, out var targetPos))
+                        {
+                            targetPosCm = Fix64Vec2.FromFloat(targetPos.X, targetPos.Z);
+                            hasTargetPos = true;
+                        }
+                    }
+
+                    if (hasActivationPrecondition)
+                    {
+                        IntVector2 validationTargetPos = default;
+                        if (hasTargetPos)
+                        {
+                            var roundedTargetPos = targetPosCm.RoundToInt();
+                            validationTargetPos = new IntVector2(roundedTargetPos.x, roundedTargetPos.y);
+                        }
+
+                        if (!AbilityActivationPreconditionEvaluator.Evaluate(
+                                World,
+                                actor,
+                                targetEntity,
+                                validationTargetPos,
+                                slot.AbilityId,
+                                in activationPrecondition,
+                                _graphPrograms,
+                                _graphApi))
+                        {
+                            if (_orderTypeRegistry != null)
+                            {
+                                OrderSubmitter.CancelCurrent(World, actor, _orderTypeRegistry);
+                            }
+                            _presentationEvents?.Publish(new GasPresentationEvent
+                            {
+                                Kind = GasPresentationEventKind.CastFailed,
+                                Actor = actor,
+                                Target = targetEntity,
+                                AbilitySlot = slotIndex,
+                                AbilityId = slot.AbilityId,
+                                FailReason = AbilityCastFailReason.PreconditionFailed
+                            });
+                            continue;
+                        }
+                    }
+
                     if (!World.Has<AbilityExecInstance>(actor))
                     {
                         World.Add(actor, new AbilityExecInstance());
@@ -257,10 +340,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     exec.AbilityId = slot.AbilityId;
                     exec.Target = targetEntity;
                     exec.TargetContext = default;
-                    exec.TargetPosCm = default;
-                    exec.HasTargetPos = 0;
-                    exec.TargetOriginPosCm = default;
-                    exec.HasTargetOriginPos = 0;
+                    exec.TargetPosCm = targetPosCm;
+                    exec.HasTargetPos = (byte)(hasTargetPos ? 1 : 0);
+                    exec.TargetOriginPosCm = targetOriginPosCm;
+                    exec.HasTargetOriginPos = (byte)(hasTargetOriginPos ? 1 : 0);
                     exec.MultiTargetCount = 0;
                     exec.State = AbilityExecRunState.Running;
                     exec.CurrentTick = 0;
@@ -270,26 +353,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     exec.WaitTagId = 0;
                     exec.WaitRequestId = 0;
                     exec.ActiveClockId = defaultClockId;
-
-                    if (World.Has<BlackboardSpatialBuffer>(actor))
-                    {
-                        ref var bbSpatial = ref World.Get<BlackboardSpatialBuffer>(actor);
-                        int pointCount = bbSpatial.GetPointCount(OrderBlackboardKeys.Cast_TargetPosition);
-                        if (pointCount > 1 &&
-                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, 0, out var originPos))
-                        {
-                            exec.TargetOriginPosCm = Fix64Vec2.FromFloat(originPos.X, originPos.Z);
-                            exec.HasTargetOriginPos = 1;
-                        }
-
-                        int targetPointIndex = pointCount > 1 ? pointCount - 1 : 0;
-                        if (pointCount > 0 &&
-                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, targetPointIndex, out var targetPos))
-                        {
-                            exec.TargetPosCm = Fix64Vec2.FromFloat(targetPos.X, targetPos.Z);
-                            exec.HasTargetPos = 1;
-                        }
-                    }
 
                     _presentationEvents?.Publish(new GasPresentationEvent
                     {

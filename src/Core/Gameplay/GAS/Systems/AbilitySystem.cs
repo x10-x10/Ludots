@@ -1,7 +1,9 @@
+using System.Runtime.CompilerServices;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Ludots.Core.Gameplay.GAS.Components;
-using System.Runtime.CompilerServices;
+using Ludots.Core.GraphRuntime;
+using Ludots.Core.NodeLibraries.GASGraph;
 
 namespace Ludots.Core.Gameplay.GAS.Systems
 {
@@ -10,12 +12,22 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly EffectRequestQueue _effectRequests;
         private readonly AbilityDefinitionRegistry _abilityDefinitions;
         private readonly TagOps _tagOps;
+        private readonly GraphProgramRegistry _graphPrograms;
+        private readonly IGraphRuntimeApi _graphApi;
 
-        public AbilitySystem(World world, EffectRequestQueue effectRequests = null, AbilityDefinitionRegistry abilityDefinitions = null, TagOps tagOps = null) : base(world) 
+        public AbilitySystem(
+            World world,
+            EffectRequestQueue effectRequests = null,
+            AbilityDefinitionRegistry abilityDefinitions = null,
+            TagOps tagOps = null,
+            GraphProgramRegistry graphPrograms = null,
+            IGraphRuntimeApi graphApi = null) : base(world)
         {
             _effectRequests = effectRequests;
             _abilityDefinitions = abilityDefinitions;
             _tagOps = tagOps ?? new TagOps();
+            _graphPrograms = graphPrograms;
+            _graphApi = graphApi;
         }
 
         public override void Update(in float dt) { }
@@ -78,6 +90,23 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     }
                 }
 
+                if (def.HasActivationPrecondition)
+                {
+                    var validationTarget = ResolveValidationTarget(in args);
+                    if (!AbilityActivationPreconditionEvaluator.Evaluate(
+                            World,
+                            caster,
+                            validationTarget,
+                            default,
+                            slot.AbilityId,
+                            in def.ActivationPrecondition,
+                            _graphPrograms,
+                            _graphApi))
+                    {
+                        return false;
+                    }
+                }
+
                 if (_effectRequests == null) return true;
                 if (!def.HasOnActivateEffects || def.OnActivateEffects.Count <= 0) return true;
 
@@ -122,6 +151,25 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 {
                     if (_tagOps.Intersects(ref casterTags, in blockTagsEntity.BlockedAny, TagSense.Effective)) return false;
                     if (!_tagOps.ContainsAll(ref casterTags, in blockTagsEntity.RequiredAll, TagSense.Effective)) return false;
+                }
+            }
+
+            ref var activationPreconditionEntity = ref World.TryGetRef<AbilityActivationPrecondition>(templateEntity, out bool hasActivationPreconditionEntity);
+            if (hasActivationPreconditionEntity)
+            {
+                var validationTarget = ResolveValidationTarget(in args);
+                int activationId = slot.AbilityId > 0 ? slot.AbilityId : slot.TemplateEntityId;
+                if (!AbilityActivationPreconditionEvaluator.Evaluate(
+                        World,
+                        caster,
+                        validationTarget,
+                        default,
+                        activationId,
+                        in activationPreconditionEntity,
+                        _graphPrograms,
+                        _graphApi))
+                {
+                    return false;
                 }
             }
 
@@ -173,6 +221,26 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
         }
 
+        private Entity ResolveValidationTarget(in AbilityActivationArgs args)
+        {
+            if (World.IsAlive(args.ExplicitTarget))
+            {
+                return args.ExplicitTarget;
+            }
+
+            for (int i = 0; i < args.TargetEntities.Length; i++)
+            {
+                var target = args.TargetEntities[i];
+                if (World.IsAlive(target))
+                {
+                    return target;
+                }
+            }
+
+            return default;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Entity ReconstructEntity(int id, int worldId, int version)
             => EntityUtil.Reconstruct(id, worldId, version);
     }
