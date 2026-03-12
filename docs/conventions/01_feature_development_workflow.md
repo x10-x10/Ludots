@@ -100,7 +100,7 @@ AI Agent 专项规则见 [02_ai_assisted_development.md](02_ai_assisted_developm
 | Core 新增 System | 单元测试覆盖核心逻辑 + 边界条件 |
 | Core 新增 Registry | 注册/查询/冲突/容量边界测试 |
 | GAS 相关变更 | GasTests 全量通过 |
-| Mod 新增/修改 | ModLauncher CLI build 通过 + 功能冒烟测试 |
+| Mod 新增/修改 | Launcher CLI `resolve`/`launch` 冒烟通过 + 功能冒烟测试 |
 | 架构边界变更 | ArchitectureTests 通过 |
 | 导航相关变更 | Navigation2DTests 全量通过 |
 
@@ -116,7 +116,7 @@ AI Agent 专项规则见 [02_ai_assisted_development.md](02_ai_assisted_developm
 | 功能 | `feat/<scope>-<short-desc>` | `feat/gas-shield-system` |
 | 修复 | `fix/<scope>-<short-desc>` | `fix/physics2d-collision-leak` |
 | 重构 | `refactor/<scope>-<short-desc>` | `refactor/config-pipeline-merge` |
-| 文档 | `docs/<short-desc>` | `docs/trigger-guide-update` |
+| 文档 | `docs/<short-desc>` | `docs/<topic>` |
 
 ### 5.2 PR 要求
 
