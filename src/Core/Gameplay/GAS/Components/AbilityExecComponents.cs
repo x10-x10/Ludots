@@ -180,6 +180,8 @@ namespace Ludots.Core.Gameplay.GAS.Components
         public Entity TargetContext;
         public Fix64Vec2 TargetPosCm;
         public byte HasTargetPos;
+        public Fix64Vec2 TargetOriginPosCm;
+        public byte HasTargetOriginPos;
 
         /// <summary>Multi-target storage for SelectionGate results.</summary>
         public int MultiTargetCount;

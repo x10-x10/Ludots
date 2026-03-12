@@ -4,6 +4,7 @@ using System.Numerics;
 using Arch.Core;
 using Ludots.Core.Config;
 using Ludots.Core.Gameplay.Components;
+using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Input.Interaction;
 using Ludots.Core.Input.Orders;
@@ -11,6 +12,8 @@ using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Modding;
+using Ludots.Core.NodeLibraries.GASGraph.Host;
+using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Presentation.Utils;
 using Ludots.Core.Scripting;
 using Ludots.Platform.Abstractions;
@@ -19,13 +22,13 @@ namespace CoreInputMod.Systems
 {
     public sealed class LocalOrderSourceHelper
     {
-        public const string ActiveMappingKey = "CoreInputMod.ActiveInputOrderMapping";
-
         private readonly World _world;
         private readonly Dictionary<string, object> _globals;
         private readonly OrderQueue _orders;
+        private readonly InputInteractionContextAccessor _context;
 
         public int CastAbilityOrderTypeId { get; }
+        public int MoveToOrderTypeId { get; }
         public int StopOrderTypeId { get; }
 
         public LocalOrderSourceHelper(World world, Dictionary<string, object> globals, OrderQueue orders)
@@ -33,9 +36,11 @@ namespace CoreInputMod.Systems
             _world = world;
             _globals = globals;
             _orders = orders;
+            _context = new InputInteractionContextAccessor(world, globals);
             if (globals.TryGetValue(CoreServiceKeys.GameConfig.Name, out var configObj) && configObj is GameConfig config)
             {
                 CastAbilityOrderTypeId = config.Constants.OrderTypeIds["castAbility"];
+                MoveToOrderTypeId = config.Constants.OrderTypeIds["moveTo"];
                 StopOrderTypeId = config.Constants.OrderTypeIds["stop"];
             }
         }
@@ -61,13 +66,14 @@ namespace CoreInputMod.Systems
             mapping.SetOrderTypeKeyResolver(key => key switch
             {
                 "castAbility" => CastAbilityOrderTypeId,
+                "moveTo" => MoveToOrderTypeId,
                 "stop" => StopOrderTypeId,
                 _ => 0
             });
             mapping.SetGroundPositionProvider((out Vector3 worldCm) =>
             {
                 worldCm = default;
-                if (!TryGetGroundWorldCm(out var point))
+                if (!_context.TryGetGroundWorldCm(out var point))
                 {
                     return false;
                 }
@@ -75,13 +81,13 @@ namespace CoreInputMod.Systems
                 worldCm = new Vector3(point.X, 0f, point.Y);
                 return true;
             });
-            mapping.SetSelectedEntityProvider((out Entity entity) => TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out entity));
+            mapping.SetSelectedEntityProvider((out Entity entity) => _context.TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out entity));
             mapping.SetSelectedEntitiesProvider((ref OrderEntitySelection entities) =>
             {
                 entities = default;
-                if (!TryGetSelectionOwner(out var owner) || !_world.Has<SelectionBuffer>(owner))
+                if (!_context.TryGetSelectionOwner(out var owner) || !_world.Has<SelectionBuffer>(owner))
                 {
-                    if (!TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out var primary)) return false;
+                    if (!_context.TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out var primary)) return false;
                     entities.Add(primary);
                     return true;
                 }
@@ -107,7 +113,7 @@ namespace CoreInputMod.Systems
 
                 return added > 0;
             });
-            mapping.SetHoveredEntityProvider((out Entity entity) => TryGetEntity(CoreServiceKeys.HoveredEntity.Name, out entity));
+            mapping.SetHoveredEntityProvider((out Entity entity) => _context.TryGetEntity(CoreServiceKeys.HoveredEntity.Name, out entity));
             if (_globals.TryGetValue(CoreServiceKeys.InteractionActionBindings.Name, out var bindingsObj) && bindingsObj is InteractionActionBindings bindings)
             {
                 mapping.ConfirmActionId = bindings.ConfirmActionId;
@@ -115,66 +121,39 @@ namespace CoreInputMod.Systems
                 mapping.CommandActionId = bindings.CommandActionId;
             }
             mapping.SetOrderSubmitHandler((in Order order) => _orders.TryEnqueue(order));
+            if (TryCreateContextScoredResolver(out var contextResolver))
+            {
+                mapping.SetContextScoredProvider(contextResolver.TryResolve);
+            }
 
-            _globals[ActiveMappingKey] = mapping;
+            _globals[CoreServiceKeys.ActiveInputOrderMapping.Name] = mapping;
             return mapping;
-        }
-
-        public bool TryGetEntity(string key, out Entity entity)
-        {
-            entity = default;
-            if (!_globals.TryGetValue(key, out var value) || value is not Entity candidate || !_world.IsAlive(candidate))
-            {
-                return false;
-            }
-
-            entity = candidate;
-            return true;
-        }
-
-        private bool TryGetSelectionOwner(out Entity owner)
-        {
-            owner = default;
-            return _globals.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localObj) &&
-                   localObj is Entity local &&
-                   _world.IsAlive(local) &&
-                   (owner = local) != Entity.Null;
-        }
-
-        public bool TryGetGroundWorldCm(out WorldCmInt2 worldCm)
-        {
-            worldCm = default;
-            if (!_globals.TryGetValue(CoreServiceKeys.ScreenRayProvider.Name, out var rayProviderObj) || rayProviderObj is not IScreenRayProvider rayProvider)
-            {
-                return false;
-            }
-
-            if (!_globals.TryGetValue(CoreServiceKeys.AuthoritativeInput.Name, out var inputObj) || inputObj is not IInputActionReader input)
-            {
-                return false;
-            }
-
-            var ray = rayProvider.GetRay(input.ReadAction<Vector2>("PointerPos"));
-            return GroundRaycastUtil.TryGetGroundWorldCm(in ray, out worldCm);
         }
 
         public Entity GetControlledActor(int playerId = 1)
         {
-            if (_globals.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var selectedObj) &&
-                selectedObj is Entity selected &&
-                _world.IsAlive(selected) &&
-                _world.TryGet(selected, out PlayerOwner owner) &&
-                owner.PlayerId == playerId)
-            {
-                return selected;
-            }
-
-            if (_globals.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localObj) && localObj is Entity local)
-            {
-                return local;
-            }
-
-            return default;
+            return _context.GetControlledActor(playerId);
         }
+
+        private bool TryCreateContextScoredResolver(out ContextScoredOrderResolver resolver)
+        {
+            resolver = default!;
+            if (!_globals.TryGetValue(CoreServiceKeys.ContextGroupRegistry.Name, out var groupsObj) ||
+                groupsObj is not ContextGroupRegistry contextGroups ||
+                !_globals.TryGetValue(CoreServiceKeys.GraphProgramRegistry.Name, out var graphsObj) ||
+                graphsObj is not Ludots.Core.GraphRuntime.GraphProgramRegistry graphPrograms ||
+                !_globals.TryGetValue(CoreServiceKeys.SpatialQueryService.Name, out var spatialObj) ||
+                spatialObj is not Ludots.Core.Spatial.ISpatialQueryService spatialQueries ||
+                !_globals.TryGetValue(CoreServiceKeys.SpatialCoordinateConverter.Name, out var coordsObj) ||
+                coordsObj is not Ludots.Core.Spatial.ISpatialCoordinateConverter spatialCoords)
+            {
+                return false;
+            }
+
+            var graphApi = new GasGraphRuntimeApi(_world, spatialQueries, spatialCoords, eventBus: null, effectRequests: null);
+            resolver = new ContextScoredOrderResolver(_world, contextGroups, graphPrograms, spatialQueries, graphApi);
+            return true;
+        }
+
     }
 }

@@ -75,7 +75,7 @@ namespace MobaDemoMod.Systems
             // Load input-order mappings from mod assets via VFS
             var config = LoadInputOrderMappings();
             _inputOrderMapping = new InputOrderMappingSystem(input, config);
-            _globals[CoreInputMod.Systems.LocalOrderSourceHelper.ActiveMappingKey] = _inputOrderMapping;
+            _globals[CoreServiceKeys.ActiveInputOrderMapping.Name] = _inputOrderMapping;
             _globals[CoreInputMod.Systems.SkillBarOverlaySystem.SkillBarKeyLabelsKey] = new[] { "Q", "W", "E", "R" };
             
             // Order type key resolver

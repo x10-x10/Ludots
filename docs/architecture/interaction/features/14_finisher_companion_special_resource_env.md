@@ -1,219 +1,150 @@
-# Feature: Finisher / Execution (Q1–Q8), Companion (R1–R6), Special Input (S1–S7), Resource (T1–T8), Environment (U1–U7)
+# Feature: Finisher / Companion / Special Input / Resource / Environment
 
-> 合并五个较小 feature 类别
-
----
-
-## Q: Finisher / Execution (Q1–Q8)
-
-### 交互层
-全部是 **Down + (None 或 Unit) + (Explicit 或 ContextScored)**
-差异全在 **Precondition** (Tag/Attribute 门控)。
-
-### 实现要点
-
-| 场景 | Precondition | 交互 |
-|------|-------------|------|
-| Q1 血量阈值 | target.health_ratio < threshold | Unit + Explicit |
-| Q2 Posture破满 | target HasTag("posture_broken") | Unit + Context |
-| Q3 背后位置 | angle_to_target_back < 30° | Unit + Context |
-| Q4 居高临下 | self.height > target.height + threshold | Unit + Context |
-| Q5 弹反后 | self HasTag("parry_success") | Unit + Context |
-| Q6 大招仪表 | self.ultimate_charge >= 100 | None + Explicit |
-| Q7 连击数 | self.combo_meter >= threshold | None + Explicit |
-| Q8 QTE | InputGate sequence | None + Explicit |
-
-**Q8 QTE 实现**:
-```
-AbilityExecSpec:
-  Item[0]: Animation + UI prompt "Press X"
-  Item[1]: InputGate (wait for correct key, deadline=30 ticks)
-  Item[2]: if correct → heavy_damage, if timeout → reduced_damage
-  Item[3]: InputGate "Press O"  (second QTE prompt)
-  ...
-```
-
-### Q 新增需求
-| 需求 | 优先级 |
-|------|--------|
-| ~~AbilityActivationBlockTags.RequiredAll~~ + Attribute precondition | ~~P0~~ (RequiredAll ✅ 已有；Attribute precondition 仍为 P0) | 复用 G 需求 |
-| Angle/Height precondition (Graph ops 或 builtin) | P2 |
+> 本文合并记录 Q / R / S / T / U 五组 checklist，但所有“已实现”判断只以当前分支 runtime 与 acceptance 证据为准。
 
 ---
 
-## R: Companion / Multi-Unit (R1–R6)
+## 1. 统一架构边界
 
-### 交互层
+这五组 feature 都必须遵守同一套边界：
 
-| 场景 | 交互 |
-|------|------|
-| R1 指挥攻击 | Down + Unit (目标) → Order 发给 companion entity |
-| R2 指挥特定技能 | Down + None → 切换 companion 行为模式 |
-| R3 多单位微操 | SC2 式: 选中 → 下指令 (已有 Entities selection) |
-| R4 装载 | Down + Unit (transport → target) |
-| R5 合并 | SelectionGate → 选 2 单位 → merge |
-| R6 集结点 | Down + Point → 设 rally Blackboard |
-
-### R1 实现
-```
-InputOrderMapping:
-  actionId: "CompanionAttack"
-  selectionType: Entity
-  orderTypeKey: "commandCompanion"
-
-OrderSubmitter:
-  Order.Actor = companion_entity (不是 local player)
-  Order.Target = selected_enemy
-```
-
-- **需要**: Order 可以指定 Actor 为非 local player 的 entity (已有: Order.Actor 字段)
-
-### R3 多单位微操
-```
-已有:
-  OrderSelectionType.Entities → SelectionGroupBuffer → 框选多单位
-  Order 对每个选中单位发送副本
-```
-
-### R5 合并 (Archon)
-```
-SelectionGate → 选 2 个 High Templar
-Phase Graph:
-  1. 销毁两个 HT entity
-  2. CreateUnit("archon", position=midpoint)
-```
-
-### R 新增需求
-| 需求 | 优先级 |
-|------|--------|
-| Input focus / actor routing | P2 (K7 复用) |
+- ability activation 的离散阻塞继续用 `RequiredAll` / `BlockedAny`
+- numeric / context 检查复用最小 validation graph primitive：`src/Core/NodeLibraries/GASGraph/GraphExecutor.cs`
+- 不引入并行 `AbilityConditionSystem`
+- cooldown / charges 不写成“本分支强制 baseline 的 attribute tick 系统”
+- 环境结构变更不在 Graph 里直接伪造 `CreateUnit` / `DestroyEntity`，而是复用 `RuntimeEntitySpawnQueue` / builtin handler：`src/Core/Gameplay/Spawning/RuntimeEntitySpawnQueue.cs`、`src/Core/Gameplay/GAS/BuiltinHandlers.cs`
 
 ---
 
-## S: Special Input (S1–S7)
+## 2. Q: Finisher / Execution (Q1–Q8)
 
-### 实现要点
+### 当前分支可复用的基础
 
-**S1: 组合键 (L1+R1)**
-```
-InputOrderMapping:
-  actionId: "RunicAttackLight"  // 已在 InputBackend 配为 L1+R1 组合
-  trigger: PressedThisFrame
-```
-- 组合键由 `PlayerInputHandler` 的 Binding 配置处理 (CompositeBinding)
+- discrete gate：`src/Core/Gameplay/GAS/Components/AbilityActivationBlockTags.cs`
+- ability activation：`src/Core/Gameplay/GAS/Systems/AbilitySystem.cs`、`src/Core/Gameplay/GAS/Systems/AbilityExecSystem.cs`
+- context-scored finisher style candidate：`src/Core/Input/Orders/ContextScoredOrderResolver.cs`
+- finisher-like candidate resolution 验证：`src/Tests/GasTests/ContextScoredResolverTests.cs`
 
-**S2: 双击**
-```
-InputOrderMapping:
-  trigger: DoubleTap  // 需新增 trigger type
-  或: 用 Tag 模拟 — 第一次按 AddTag("first_tap", duration=15 ticks)
-      第二次按 precondition HasTag("first_tap") → 执行
-```
+### 当前结论
 
-**S3: 方向+按键**
-```
-InputOrderMapping:
-  selectionType: Direction
-  InputDirection + ActionId → 不同 argsTemplate.i0
-  或: ContextGroup 根据 direction dot 评分
-```
+| Slice | 当前状态 | 说明 |
+|------|----------|------|
+| Q1/Q2 离散处决前置 | `runtime-ready` | 直接用 `RequiredAll` / `BlockedAny` 或由上游投影出的 ready tag |
+| Q3/Q4 空间/角度/高度 | `runtime-ready, not showcase-closed` | 应走 validation graph 或 ContextScored precondition，不新增 condition system |
+| Q5 反击后处决 | `runtime-ready` | 仍应表现为 tag gate 或 validation graph 结果 |
+| Q6/Q7 资源 / combo 处决 | `runtime-ready, not universal baseline` | 数值条件可投影为 tag，或在相邻边界复用 validation graph |
+| Q8 QTE | `design backlog on existing InputGate path` | InputGate 是现有机制，但本分支未把 finisher QTE 全链路收口进 showcase |
 
-**S4: Alt+技能 → 自我施放**
-```
-已有: InputOrderMappingSystem 在 SmartCast 模式下,
-  如果 selectionType=Entity 但无可用目标 → fallback self-cast
-  或: Alt modifier → force target = self
-```
+### 对本文的修正
 
-**S5: Quick Cast**
-```
-已有: InteractionModeType.SmartCast = Quick Cast
-  全局设置或 per-ability CastModeOverride
-```
+不再写：
 
-**S6: 小地图施放**
-```
-需要: Minimap click → world position 转换 (Adapter 层)
-OrderArgs.Spatial 接收转换后的世界坐标
-```
+- “AbilityActivationRequireTags + Attribute precondition 是新的 P0”
 
-**S7: Shift+Queue**
-```
-已有: InputOrderMapping.ModifierBehavior
-  Shift held → Order.SubmitMode = Queued
-  OrderBuffer 的 QueuedOrder 队列接收
-```
+改为：
 
-### S 新增需求
-| 需求 | 优先级 |
-|------|--------|
-| DoubleTap trigger type | P2 |
-| Minimap click adapter | P3 |
+- tag gate 已存在
+- numeric/context 条件复用 validation graph primitive 或先投影为 ready tag
 
 ---
 
-## T: Resource / Gating (T1–T8)
+## 3. R: Companion / Multi-Unit (R1–R6)
 
-### 实现要点
+### 当前分支已证明
 
-全部通过 **Attribute + Precondition** 实现, 不影响交互层。
+- shared selection fan-out：`artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+- 现有输入与 order pipeline：`src/Core/Input/Orders/InputOrderMappingSystem.cs`、`src/Core/Input/Selection/EntityClickSelectSystem.cs`
 
-**T1 蓝量**: `Precondition: mana >= cost` → Execute → `ModifyAttribute(mana, -cost)`
-**T2 冷却**: `Attribute: cooldown_remaining` → Precondition: == 0 → Execute → set to max
-**T3 充能**: `Attribute: charges` → Precondition: > 0 → Execute → charges -= 1; timer refills
-**T4 怒气**: `Attribute: rage` → Precondition: >= threshold
-**T5 血量**: `Execute → ModifyAttribute(health, -cost)`
-**T6 弹药**: `Attribute: ammo` → Precondition: > 0 → Execute → ammo -= 1
-**T7 连击条**: `Attribute: combo_meter` → 被打时 reset to 0
-**T8 消耗品**: `Attribute: item_count` → Precondition: > 0 → Execute → count -= 1
+### 当前结论
 
-### T 新增需求
-| 需求 | 优先级 |
-|------|--------|
-| Ability-level Attribute precondition (cost check) | P0 (复用 G8 需求) |
-| Cooldown system (auto-decrement attribute per tick) | P1 |
-| Charge refill timer | P1 |
+| Slice | 当前状态 | 说明 |
+|------|----------|------|
+| R1/R3 多单位共享下指令 | `implemented + verified baseline` | 当前 showcase 已证明 shared selection fan-out，不等于完整 companion feature family |
+| R2 companion 模式切换 | `design backlog` | 需要更具体的 actor routing / behavior authoring |
+| R4 装载 / R6 集结点 | `design backlog on existing order pipeline` | 可复用现有 order / blackboard，但未 branch-closed |
+| R5 合并 / sacrifice / spawn | `design backlog with structural-change guardrail` | 必须经 handler / spawn queue，不能在 Graph 中写结构变更伪代码 |
 
 ---
 
-## U: Environmental Interaction (U1–U7)
+## 4. S: Special Input (S1–S7)
 
-### 交互层
+### 当前分支已实现并验证
 
-全部 **Down + (None/Unit/Point) + ContextScored** — 环境交互是典型的上下文自动。
+- Quick Cast / SmartCast：`artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+- vector cast + chord input：`artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+- double-tap skill activation：`src/Core/Input/Orders/InputOrderMapping.cs`、`src/Core/Input/Orders/InputOrderMappingSystem.cs`、`src/Tests/GasTests/InputOrderContractTests.cs`、`src/Tests/GasTests/Production/InteractionShowcasePlayableAcceptanceTests.cs`
+- queued orders：`src/Core/Input/Orders/InputOrderMappingSystem.cs`、`src/Core/Gameplay/GAS/Orders/OrderSubmitter.cs`
 
-### 实现要点
+### 当前结论
 
-**U1 投掷物体**:
-```
-ContextGroup:
-  candidate: throw_object
-    precondition: env entity HasTag("throwable") in radius 200cm
-    执行: 拾取 (attach to caster) → InputGate (选方向) → 投掷 (LaunchProjectile)
-```
+| Slice | 当前状态 | 说明 |
+|------|----------|------|
+| S1 组合键 | `runtime-ready` | 依赖现有 input binding / chord authoring |
+| S2 双击 | `implemented + verified` | 不再是“需新增 trigger type”；`InputTriggerType.DoubleTap` 已存在 |
+| S3 方向 + 按键 | `runtime-ready` | `Direction` / `Vector` 已有，细分玩法仍看具体 authoring |
+| S4 modifier 自我施放 | `runtime-ready` | 仍在现有 input mapping / modifier 路径上扩展 |
+| S5 Quick Cast | `implemented + verified` | showcase 已覆盖 |
+| S6 小地图施放 | `backlog` | 仍缺 adapter 侧 world-position 转换 |
+| S7 Shift queue | `implemented + verified baseline` | 现有 queued-order runtime 已闭环 |
 
-**U2 撞墙/推下悬崖**:
-```
-Displacement effect OnCollision:
-  if hit wall → stun + bonus_damage
-  if hit ledge → fall_damage / instant_kill
-```
-- **需要**: Displacement 碰撞回调
+---
 
-**U3 可破坏物**:
-```
-Phase Graph: QueryRadius + QueryFilterLayer(Destructible) → FanOutApplyEffect(destroy)
-```
+## 5. T: Resource / Gating (T1–T8)
 
-**U7 地形创造**:
-```
-EffectSignal → CreateUnit(wall_segment, position)
-  wall entity 有 Navigation blocker 组件 → 影响寻路
-```
+### 当前分支基线
 
-### U 新增需求
-| 需求 | 优先级 |
-|------|--------|
-| Displacement 碰撞回调 (wall hit, ledge) | P2 |
-| Environment tag scanning (nearby throwable/interactable) | P1 |
-| Navigation blocker for spawned walls | P2 |
+资源家族当前的基线不是“统一 attribute precondition system”，而是：
+
+- 离散 ability gate：`RequiredAll` / `BlockedAny`
+- 最小 validation primitive：`GraphExecutor.ExecuteValidation(...)`
+- 具体资源玩法按 feature authoring 选择 tag projection、validation graph、或两者组合
+
+### 当前结论
+
+| Slice | 当前状态 | 说明 |
+|------|----------|------|
+| T1/T4/T6/T7/T8 资源门控 | `runtime-ready` | 应优先走 ready tag 或 validation graph，不新增平行 runtime |
+| T2 冷却 | `implemented + verified branch baseline` | 当前分支已证明 tag-duration / blocked-tag 足够；不把 cooldown tick system 当 baseline |
+| T3 充能 | `design backlog on existing primitives` | 如果玩法需要 refill timer，再单独立项；不是本分支强制底座 |
+| generalized ability-side numeric precondition framework | `not shipped on this branch` | 如果后续需要，也应复用现有 validation graph primitive |
+
+### 关键证据
+
+- `src/Core/Gameplay/GAS/Systems/AbilitySystem.cs`
+- `src/Core/Gameplay/GAS/Systems/AbilityExecSystem.cs`
+- `src/Tests/GasTests/InputOrderAbilityAuditTests.cs`
+- `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+- `artifacts/acceptance/interaction-showcase/path.mmd`
+
+特别是 `src/Tests/GasTests/InputOrderAbilityAuditTests.cs` 已验证：toggle deactivate 可以在 reactivation cooldown tag 存在时正常关闭。
+
+---
+
+## 6. U: Environmental Interaction (U1–U7)
+
+### 当前分支可复用的基础
+
+- 上下文自动选取：`src/Core/Input/Orders/ContextScoredOrderResolver.cs`
+- runtime structural change pipeline：`src/Core/Gameplay/Spawning/RuntimeEntitySpawnQueue.cs`、`src/Core/Gameplay/GAS/BuiltinHandlers.cs`
+- effect processing pipeline：`src/Core/Gameplay/GAS/Systems/EffectProcessingLoopSystem.cs`
+
+### 当前结论
+
+| Slice | 当前状态 | 说明 |
+|------|----------|------|
+| U1/U5 环境驱动候选选择 | `design backlog on ContextGroup runtime` | 可复用 ContextScored，但本分支未做完整 acceptance 闭环 |
+| U2 撞墙 / 悬崖碰撞反馈 | `backlog` | 需要 displacement collision 回调 |
+| U3 可破坏物 / U7 地形创造 | `backlog with spawn-queue guardrail` | 必须走 handler / spawn queue，不能在 Graph 文档里直接写结构变更 |
+| generic environment scan | `backlog` | 仍缺统一环境 authoring 与验证 |
+
+---
+
+## 7. 结论
+
+这五组 feature 的文档边界应这样理解：
+
+- **已实现 showcase/runtime**：special input 的若干核心路径、shared selection fan-out、ContextScored baseline、tag-gated ability activation、tag-duration cooldown baseline
+- **已有 primitive 但未闭环**：finisher 的空间/数值判定、companion 专用 actor routing、environment family、resource refill timer
+- **明确不该再提的平行底座**：`AbilityConditionSystem`、通用 `CooldownTickSystem`
+
+后续若继续扩展，请以 `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` 作为 stage boundary，而不是把 design catalog 直接当作 shipped feature list。

@@ -290,6 +290,111 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
+        public void InputOrderMapping_PositionCommand_FansOutAcrossAmbientSelection()
+        {
+            var input = new PlayerInputHandler(new NullInputBackend(), CreateInputConfig());
+            var cfg = new InputOrderMappingConfig
+            {
+                InteractionMode = InteractionModeType.TargetFirst,
+                Mappings = new List<InputOrderMapping>
+                {
+                    new()
+                    {
+                        ActionId = "Command",
+                        Trigger = InputTriggerType.PressedThisFrame,
+                        OrderTypeKey = "moveTo",
+                        RequireSelection = true,
+                        SelectionType = OrderSelectionType.Position,
+                        IsSkillMapping = false,
+                    },
+                },
+            };
+
+            using var world = World.Create();
+            var local = world.Create();
+            var first = world.Create();
+            var second = world.Create();
+            var mapping = new InputOrderMappingSystem(input, cfg);
+            mapping.SetLocalPlayer(local, 1);
+            mapping.SetOrderTypeKeyResolver(key => key == "moveTo" ? 1002 : 0);
+            mapping.SetGroundPositionProvider((out Vector3 worldCm) =>
+            {
+                worldCm = new Vector3(320f, 0f, 640f);
+                return true;
+            });
+            mapping.SetSelectedEntitiesProvider((ref OrderEntitySelection entities) =>
+            {
+                entities = default;
+                entities.Add(first);
+                entities.Add(second);
+                return true;
+            });
+
+            var orders = new List<Order>();
+            mapping.SetOrderSubmitHandler((in Order order) => orders.Add(order));
+
+            input.InjectButtonPress("Command");
+            input.Update();
+            mapping.Update(0f);
+
+            That(orders.Count, Is.EqualTo(2));
+            That(orders[0].Actor, Is.EqualTo(first));
+            That(orders[1].Actor, Is.EqualTo(second));
+            That(orders[0].Args.Spatial.WorldCm, Is.EqualTo(new Vector3(320f, 0f, 640f)));
+            That(orders[1].Args.Spatial.WorldCm, Is.EqualTo(new Vector3(320f, 0f, 640f)));
+        }
+
+        [Test]
+        public void InputOrderMapping_StopCommand_FansOutAcrossAmbientSelection()
+        {
+            var input = new PlayerInputHandler(new NullInputBackend(), CreateInputConfig());
+            var cfg = new InputOrderMappingConfig
+            {
+                InteractionMode = InteractionModeType.TargetFirst,
+                Mappings = new List<InputOrderMapping>
+                {
+                    new()
+                    {
+                        ActionId = "Stop",
+                        Trigger = InputTriggerType.PressedThisFrame,
+                        OrderTypeKey = "stop",
+                        RequireSelection = false,
+                        SelectionType = OrderSelectionType.None,
+                        IsSkillMapping = false,
+                    },
+                },
+            };
+
+            using var world = World.Create();
+            var local = world.Create();
+            var first = world.Create();
+            var second = world.Create();
+            var mapping = new InputOrderMappingSystem(input, cfg);
+            mapping.SetLocalPlayer(local, 1);
+            mapping.SetOrderTypeKeyResolver(key => key == "stop" ? 1003 : 0);
+            mapping.SetSelectedEntitiesProvider((ref OrderEntitySelection entities) =>
+            {
+                entities = default;
+                entities.Add(first);
+                entities.Add(second);
+                return true;
+            });
+
+            var orders = new List<Order>();
+            mapping.SetOrderSubmitHandler((in Order order) => orders.Add(order));
+
+            input.InjectButtonPress("Stop");
+            input.Update();
+            mapping.Update(0f);
+
+            That(orders.Count, Is.EqualTo(2));
+            That(orders[0].Actor, Is.EqualTo(first));
+            That(orders[1].Actor, Is.EqualTo(second));
+            That(orders[0].OrderTypeId, Is.EqualTo(1003));
+            That(orders[1].OrderTypeId, Is.EqualTo(1003));
+        }
+
+        [Test]
         public void EntityClickSelectSystem_ClickAndScreenDrag_UpdateSelectionBuffer_SelectedTag_AndPrimaryEntity()
         {
             using var world = World.Create();
@@ -361,6 +466,91 @@ namespace Ludots.Tests.GAS
             That(globals.ContainsKey(CoreServiceKeys.SelectedEntity.Name), Is.False);
         }
 
+        [Test]
+        public void EntityClickSelectSystem_AimConfirmRelease_DoesNotStealSelection()
+        {
+            using var world = World.Create();
+
+            var input = new PlayerInputHandler(new NullInputBackend(), CreateInputConfig());
+            var local = world.Create(new SelectionBuffer());
+            var actor = world.Create(WorldPositionCm.FromCm(1600, 1200), new CullState { IsVisible = true });
+            var enemy = world.Create(WorldPositionCm.FromCm(2600, 1600), new CullState { IsVisible = true });
+
+            world.Add<SelectedTag>(actor);
+            ref var seededSelection = ref world.Get<SelectionBuffer>(local);
+            seededSelection.Add(actor);
+            world.Set(local, seededSelection);
+
+            var globals = new Dictionary<string, object>
+            {
+                [CoreServiceKeys.AuthoritativeInput.Name] = input,
+                [CoreServiceKeys.ScreenRayProvider.Name] = new WorldMappedScreenRayProvider(),
+                [CoreServiceKeys.ScreenProjector.Name] = new WorldMappedScreenProjector(),
+                [CoreServiceKeys.LocalPlayerEntity.Name] = local,
+                [CoreServiceKeys.SelectedEntity.Name] = actor,
+            };
+
+            var selectionSystem = new EntityClickSelectSystem(world, globals);
+            var mapping = new InputOrderMappingSystem(input, new InputOrderMappingConfig
+            {
+                InteractionMode = InteractionModeType.AimCast,
+                Mappings = new List<InputOrderMapping>
+                {
+                    new()
+                    {
+                        ActionId = "SkillQ",
+                        Trigger = InputTriggerType.PressedThisFrame,
+                        OrderTypeKey = "castAbility",
+                        RequireSelection = false,
+                        SelectionType = OrderSelectionType.Entity,
+                        IsSkillMapping = true,
+                    },
+                },
+            });
+
+            mapping.SetLocalPlayer(actor, 1);
+            mapping.SetOrderTypeKeyResolver(key => key == "castAbility" ? 1001 : 0);
+            mapping.SetSelectedEntityProvider((out Entity entity) =>
+            {
+                entity = actor;
+                return true;
+            });
+            mapping.SetHoveredEntityProvider((out Entity entity) =>
+            {
+                entity = enemy;
+                return true;
+            });
+
+            var orders = new List<Order>();
+            mapping.SetOrderSubmitHandler((in Order order) => orders.Add(order));
+            globals[CoreServiceKeys.ActiveInputOrderMapping.Name] = mapping;
+
+            input.InjectButtonPress("SkillQ");
+            input.Update();
+            selectionSystem.Update(0f);
+            mapping.Update(0f);
+            That(mapping.IsAiming, Is.True);
+
+            input.InjectAction("PointerPos", new Vector3(2600f, 1600f, 0f));
+            input.InjectButtonPress("Select");
+            input.Update();
+            selectionSystem.Update(0f);
+            mapping.Update(0f);
+
+            input.InjectAction("PointerPos", new Vector3(2600f, 1600f, 0f));
+            input.Update();
+            selectionSystem.Update(0f);
+            mapping.Update(0f);
+
+            AssertSelection(world, local, actor);
+            That(globals[CoreServiceKeys.SelectedEntity.Name], Is.EqualTo(actor));
+            That(world.Has<SelectedTag>(actor), Is.True);
+            That(world.Has<SelectedTag>(enemy), Is.False);
+            That(orders.Count, Is.EqualTo(1));
+            That(orders[0].Actor, Is.EqualTo(actor));
+            That(orders[0].Target, Is.EqualTo(enemy));
+        }
+
         private static InputConfigRoot CreateInputConfig()
         {
             return new InputConfigRoot
@@ -368,6 +558,8 @@ namespace Ludots.Tests.GAS
                 Actions = new List<InputActionDef>
                 {
                     new() { Id = "SkillQ", Name = "SkillQ", Type = InputActionType.Button },
+                    new() { Id = "Command", Name = "Command", Type = InputActionType.Button },
+                    new() { Id = "Stop", Name = "Stop", Type = InputActionType.Button },
                     new() { Id = "Confirm", Name = "Confirm", Type = InputActionType.Button },
                     new() { Id = "Select", Name = "Select", Type = InputActionType.Button },
                     new() { Id = "PointerPos", Name = "PointerPos", Type = InputActionType.Axis2D },

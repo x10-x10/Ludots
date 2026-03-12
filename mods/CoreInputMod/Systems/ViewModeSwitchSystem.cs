@@ -48,8 +48,13 @@ namespace CoreInputMod.Systems
             }
             else
             {
-                foreach (var mode in manager.Modes)
+                // Later-registered modes are typically more specialized showcase/mod overrides.
+                // When multiple actions are driven by the same physical key in active contexts,
+                // prefer the most recently registered mode instead of letting base capabilities
+                // steal the switch.
+                for (int i = manager.Modes.Count - 1; i >= 0; i--)
                 {
+                    var mode = manager.Modes[i];
                     if (!string.IsNullOrEmpty(mode.SwitchActionId) && input.PressedThisFrame(mode.SwitchActionId))
                     {
                         manager.SwitchTo(mode.Id);

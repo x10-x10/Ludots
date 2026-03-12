@@ -114,6 +114,52 @@ namespace Ludots.Tests.GAS
             Assert.That(look.Y, Is.EqualTo(24f).Within(0.01f));
         }
 
+        [Test]
+        public void PlayerInputHandler_ButtonChordComposite_RequiresAllParts()
+        {
+            var backend = new StubInputBackend();
+            var config = new InputConfigRoot
+            {
+                Actions = new List<InputActionDef>
+                {
+                    new() { Id = "RunicAttack", Type = InputActionType.Button },
+                },
+                Contexts = new List<InputContextDef>
+                {
+                    new()
+                    {
+                        Id = "Gameplay",
+                        Priority = 10,
+                        Bindings = new List<InputBindingDef>
+                        {
+                            new()
+                            {
+                                ActionId = "RunicAttack",
+                                CompositeType = "ButtonChord",
+                                CompositeParts = new List<InputBindingDef>
+                                {
+                                    new() { Path = "<Keyboard>/q" },
+                                    new() { Path = "<Keyboard>/e" },
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            var handler = new PlayerInputHandler(backend, config);
+            handler.PushContext("Gameplay");
+
+            backend.Buttons["<Keyboard>/q"] = true;
+            handler.Update();
+            Assert.That(handler.IsDown("RunicAttack"), Is.False);
+
+            backend.Buttons["<Keyboard>/e"] = true;
+            handler.Update();
+            Assert.That(handler.IsDown("RunicAttack"), Is.True);
+            Assert.That(handler.PressedThisFrame("RunicAttack"), Is.True);
+        }
+
         private sealed class StubInputBackend : IInputBackend
         {
             public Dictionary<string, bool> Buttons { get; } = new();

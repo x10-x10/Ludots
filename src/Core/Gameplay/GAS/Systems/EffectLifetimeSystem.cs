@@ -342,6 +342,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     tpl.PresetType,
                     tpl.TagId,
                     entry.TemplateId,
+                    in mergedConfig,
                     builtinRuntime);
 
                 if (builtinRuntime != null)

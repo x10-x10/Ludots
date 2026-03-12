@@ -43,7 +43,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly ResponseChainOrderTypes _responseChainOrderTypes;
         private readonly GasPresentationEventBuffer _presentationEvents;
 
-        // ── Phase Graph execution (optional) ──
+        // 鈹€鈹€ Phase Graph execution (optional) 鈹€鈹€
         private readonly EffectPhaseExecutor _phaseExecutor;
         private readonly Ludots.Core.NodeLibraries.GASGraph.IGraphRuntimeApi _graphApi;
         private readonly Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi _graphApiHost;
@@ -370,7 +370,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         });
                     }
 
-                    // ── Execute OnPropose Phase Graphs (before ResponseChain) ──
+                    // 鈹€鈹€ Execute OnPropose Phase Graphs (before ResponseChain) 鈹€鈹€
                     ExecuteOnProposePhase(in root, in rootTpl);
 
                     if (rootTpl.ParticipatesInResponse)
@@ -794,7 +794,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         }
                         ref readonly var tpl = ref _templates.GetRef(tplIdx);
 
-                        // ── Execute OnCalculate Phase Graphs (after ResponseChain resolves) ──
+                        // 鈹€鈹€ Execute OnCalculate Phase Graphs (after ResponseChain resolves) 鈹€鈹€
                         ExecuteOnCalculatePhase(in e, in tpl);
 
                         if (IsPureInstantTemplate(in tpl))
@@ -825,7 +825,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
                             // Dispatch OnApply Phase Listeners even for pure-instant effects.
                             // Modifiers are applied inline above (equivalent to Main handler),
-                            // but Listeners must still fire for observability �?e.g. "whenever
+                            // but Listeners must still fire for observability 鈥?e.g. "whenever
                             // damage is dealt, draw a card" or "thorns: reflect damage on hit".
                             if (_phaseExecutor != null && _graphApi != null)
                             {
@@ -917,7 +917,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             int consumed = _rootCursor;
             if (_phase == WindowPhase.Collect || _phase == WindowPhase.WaitInput)
             {
-                // Current root hasn't been resolved yet �?safe to re-process it.
+                // Current root hasn't been resolved yet 鈥?safe to re-process it.
                 consumed = _rootCursor > 0 ? _rootCursor - 1 : 0;
             }
             if (consumed > 0 && _queue != null)
@@ -1023,15 +1023,21 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             if (tpl.ListenerSetup.Count > 0) return false;
             // Templates with TargetResolver need entity-based processing for fan-out
             if (tpl.HasTargetResolver) return false;
-            // Presets that perform non-modifier side effects require entity-based phase execution.
-            if (tpl.PresetType == EffectPresetType.LaunchProjectile) return false;
-            if (tpl.PresetType == EffectPresetType.CreateUnit) return false;
-            return true;
+            // Only modifier-driven instant presets can remain on the inline path.
+            // Behavior presets must stay entity-backed so OnApply builtins execute.
+            return tpl.PresetType switch
+            {
+                EffectPresetType.None => true,
+                EffectPresetType.InstantDamage => true,
+                EffectPresetType.Heal => true,
+                EffectPresetType.ApplyForce2D => true,
+                _ => false,
+            };
         }
 
         private void CreateEntityEffect(in EffectProposal proposal, in EffectTemplateData tpl)
         {
-            // ── Stack merge: if template has stack policy and an existing effect exists on target, merge ──
+            // 鈹€鈹€ Stack merge: if template has stack policy and an existing effect exists on target, merge 鈹€鈹€
             if (tpl.HasStackPolicy && tpl.LifetimeKind != EffectLifetimeKind.Instant
                 && World.IsAlive(proposal.Target) && World.Has<ActiveEffectContainer>(proposal.Target))
             {
@@ -1058,7 +1064,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             // KeepDuration: do nothing
                         }
 
-                        // Update tag contributions (delta from oldCount �?newCount)
+                        // Update tag contributions (delta from oldCount 鈫?newCount)
                         if (World.Has<EffectGrantedTags>(existing) && World.Has<TagCountContainer>(proposal.Target))
                         {
                             ref readonly var grantedTags = ref World.Get<EffectGrantedTags>(existing);
@@ -1141,7 +1147,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         {
             if (_phaseExecutor == null || _graphApi == null) return;
 
-            SetMergedConfigContext(in tpl, in proposal);
+            var mergedConfig = BuildMergedConfig(in tpl, in proposal);
+            if (_graphApiHost != null && mergedConfig.Count > 0)
+            {
+                _graphApiHost.SetConfigContext(in mergedConfig);
+            }
             _phaseExecutor.ExecutePhase(
                 World, _graphApi,
                 proposal.Source, proposal.Target, proposal.TargetContext,
@@ -1150,7 +1160,8 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 in tpl.PhaseGraphBindings,
                 tpl.PresetType,
                 proposal.TagId,
-                proposal.TemplateId);
+                proposal.TemplateId,
+                in mergedConfig);
             ClearConfigContext();
         }
 
@@ -1162,7 +1173,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         {
             if (_phaseExecutor == null || _graphApi == null) return;
 
-            SetMergedConfigContext(in tpl, in proposal);
+            var mergedConfig = BuildMergedConfig(in tpl, in proposal);
+            if (_graphApiHost != null && mergedConfig.Count > 0)
+            {
+                _graphApiHost.SetConfigContext(in mergedConfig);
+            }
             _phaseExecutor.ExecutePhase(
                 World, _graphApi,
                 proposal.Source, proposal.Target, proposal.TargetContext,
@@ -1171,11 +1186,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 in tpl.PhaseGraphBindings,
                 tpl.PresetType,
                 proposal.TagId,
-                proposal.TemplateId);
+                proposal.TemplateId,
+                in mergedConfig);
             ClearConfigContext();
         }
-
-        private EffectConfigParams _mergedConfigTemp; // reusable to avoid repeated stack allocation
 
         private void SetConfigContext(in EffectTemplateData tpl)
         {
@@ -1185,24 +1199,30 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
         }
 
-        /// <summary>
-        /// Set merged config context: template params + proposal-level CallerParams.
-        /// </summary>
         private void SetMergedConfigContext(in EffectTemplateData tpl, in EffectProposal proposal)
         {
-            if (_graphApiHost == null) return;
+            if (_graphApiHost == null)
+            {
+                return;
+            }
 
+            var merged = BuildMergedConfig(in tpl, in proposal);
+            if (merged.Count > 0)
+            {
+                _graphApiHost.SetConfigContext(in merged);
+            }
+        }
+
+        private EffectConfigParams BuildMergedConfig(in EffectTemplateData tpl, in EffectProposal proposal)
+        {
             if (proposal.HasCallerParams)
             {
-                _mergedConfigTemp = tpl.ConfigParams;
-                _mergedConfigTemp.MergeFrom(in proposal.CallerParams);
-                if (_mergedConfigTemp.Count > 0)
-                    _graphApiHost.SetConfigContext(in _mergedConfigTemp);
+                var merged = tpl.ConfigParams;
+                merged.MergeFrom(in proposal.CallerParams);
+                return merged;
             }
-            else if (tpl.ConfigParams.Count > 0)
-            {
-                _graphApiHost.SetConfigContext(in tpl.ConfigParams);
-            }
+
+            return tpl.ConfigParams;
         }
 
         private void ClearConfigContext()

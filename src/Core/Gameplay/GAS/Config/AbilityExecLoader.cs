@@ -134,6 +134,26 @@ namespace Ludots.Core.Gameplay.GAS.Config
                 def.ActivationBlockTags = blockTags;
             }
 
+            if (obj["activationPrecondition"] is JsonObject preconditionObj)
+            {
+                def.ActivationPrecondition = CompileActivationPrecondition(preconditionObj, id, path);
+                def.HasActivationPrecondition = def.ActivationPrecondition.ValidationGraphId > 0;
+            }
+
+            // ── toggleSpec ──
+            if (obj["toggleSpec"] is JsonObject toggleObj)
+            {
+                def.ToggleSpec = CompileToggleSpec(toggleObj, id, path);
+                def.HasToggleSpec = def.ToggleSpec.ToggleTagId > 0;
+            }
+
+            // ── indicator ──
+            if (obj["indicator"] is JsonObject indicatorObj)
+            {
+                def.Indicator = CompileIndicator(indicatorObj, id, path);
+                def.HasIndicator = true;
+            }
+
             return def;
         }
 
@@ -171,6 +191,28 @@ namespace Ludots.Core.Gameplay.GAS.Config
             }
 
             return spec;
+        }
+
+        private static AbilityActivationPrecondition CompileActivationPrecondition(JsonObject preconditionObj, string id, string path)
+        {
+            string graphName = preconditionObj["validationGraph"]?.GetValue<string>() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(graphName))
+            {
+                throw new InvalidOperationException(
+                    $"Ability '{id}' field 'activationPrecondition.validationGraph' is required in '{path}'.");
+            }
+
+            int graphId = GraphIdRegistry.GetId(graphName);
+            if (graphId <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Ability '{id}' field 'activationPrecondition.validationGraph' references unknown graph '{graphName}'.");
+            }
+
+            return new AbilityActivationPrecondition
+            {
+                ValidationGraphId = graphId
+            };
         }
 
         private static void CompileItem(JsonObject itemObj, ref AbilityExecSpec spec, int idx, string id, string path)
@@ -262,6 +304,147 @@ namespace Ludots.Core.Gameplay.GAS.Config
                 }
                 hasPool = true;
             }
+        }
+
+        // ──────────────── Toggle / Indicator ────────────────
+
+        private static AbilityToggleSpec CompileToggleSpec(JsonObject toggleObj, string id, string path)
+        {
+            string toggleTag = toggleObj["toggleTag"]?.GetValue<string>()
+                ?? toggleObj["tag"]?.GetValue<string>()
+                ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(toggleTag))
+            {
+                throw new InvalidOperationException($"Ability '{id}' in '{path}' toggleSpec requires 'toggleTag'.");
+            }
+
+            var toggleSpec = new AbilityToggleSpec
+            {
+                ToggleTagId = TagRegistry.Register(toggleTag)
+            };
+
+            if (toggleObj["activeEffects"] is JsonArray activeEffects)
+            {
+                int activeCount = 0;
+                foreach (var effectNode in activeEffects)
+                {
+                    if (activeCount >= 4)
+                    {
+                        break;
+                    }
+
+                    string effectId = effectNode?.GetValue<string>() ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(effectId))
+                    {
+                        continue;
+                    }
+
+                    int templateId = EffectTemplateIdRegistry.GetId(effectId);
+                    if (templateId <= 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"Ability '{id}' in '{path}' toggleSpec references unknown effect template '{effectId}'.");
+                    }
+
+                    unsafe
+                    {
+                        toggleSpec.ActiveEffectTemplateIds[activeCount] = templateId;
+                    }
+
+                    activeCount++;
+                }
+
+                toggleSpec.ActiveEffectCount = activeCount;
+            }
+
+            if (toggleObj["deactivateExec"] is JsonObject deactivateExec)
+            {
+                toggleSpec.DeactivateExecSpec = CompileExecSpec(deactivateExec, id, path);
+            }
+
+            return toggleSpec;
+        }
+
+        private static AbilityIndicatorConfig CompileIndicator(JsonObject indicatorObj, string id, string path)
+        {
+            string shapeValue = indicatorObj["shape"]?.GetValue<string>() ?? "Circle";
+            var indicator = new AbilityIndicatorConfig
+            {
+                Shape = ParseTargetShape(shapeValue, id, path),
+                Range = indicatorObj["range"]?.GetValue<float>() ?? 0f,
+                Radius = indicatorObj["radius"]?.GetValue<float>() ?? 0f,
+                InnerRadius = indicatorObj["innerRadius"]?.GetValue<float>() ?? 0f,
+                Angle = indicatorObj["angle"]?.GetValue<float>() ?? 0f,
+                ValidColor = ParseColor(indicatorObj["validColor"], new System.Numerics.Vector4(0.20f, 0.85f, 0.45f, 0.35f)),
+                InvalidColor = ParseColor(indicatorObj["invalidColor"], new System.Numerics.Vector4(0.95f, 0.30f, 0.25f, 0.35f)),
+                RangeCircleColor = ParseColor(indicatorObj["rangeCircleColor"], new System.Numerics.Vector4(0.25f, 0.55f, 0.95f, 0.18f)),
+                ShowRangeCircle = indicatorObj["showRangeCircle"]?.GetValue<bool>() ?? false
+            };
+
+            if (indicatorObj["angleDeg"] is JsonNode angleDegNode)
+            {
+                indicator.Angle = MathF.PI * angleDegNode.GetValue<float>() / 180f;
+            }
+
+            return indicator;
+        }
+
+        private static TargetShape ParseTargetShape(string value, string id, string path)
+        {
+            return value switch
+            {
+                "Self" => TargetShape.Self,
+                "Single" => TargetShape.Single,
+                "Circle" => TargetShape.Circle,
+                "Cone" => TargetShape.Cone,
+                "Line" => TargetShape.Line,
+                "Ring" => TargetShape.Ring,
+                "Rectangle" => TargetShape.Rectangle,
+                _ => throw new InvalidOperationException(
+                    $"Ability '{id}' in '{path}' indicator uses unsupported shape '{value}'.")
+            };
+        }
+
+        private static System.Numerics.Vector4 ParseColor(JsonNode? node, System.Numerics.Vector4 fallback)
+        {
+            if (node is JsonArray arr)
+            {
+                float r = arr.Count > 0 ? arr[0]?.GetValue<float>() ?? fallback.X : fallback.X;
+                float g = arr.Count > 1 ? arr[1]?.GetValue<float>() ?? fallback.Y : fallback.Y;
+                float b = arr.Count > 2 ? arr[2]?.GetValue<float>() ?? fallback.Z : fallback.Z;
+                float a = arr.Count > 3 ? arr[3]?.GetValue<float>() ?? fallback.W : fallback.W;
+                return new System.Numerics.Vector4(r, g, b, a);
+            }
+
+            string? hex = node?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(hex))
+            {
+                return fallback;
+            }
+
+            hex = hex.Trim();
+            if (hex.StartsWith('#'))
+            {
+                hex = hex[1..];
+            }
+
+            if (hex.Length != 6 && hex.Length != 8)
+            {
+                return fallback;
+            }
+
+            byte rByte = byte.Parse(hex.Substring(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            byte gByte = byte.Parse(hex.Substring(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            byte bByte = byte.Parse(hex.Substring(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+            byte aByte = hex.Length == 8
+                ? byte.Parse(hex.Substring(6, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture)
+                : (byte)255;
+
+            return new System.Numerics.Vector4(
+                rByte / 255f,
+                gByte / 255f,
+                bByte / 255f,
+                aByte / 255f);
         }
 
         // ──────────────── Parsing helpers ────────────────

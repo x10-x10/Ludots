@@ -427,11 +427,17 @@ namespace Ludots.Core.Engine
             var clock = new DiscreteClock();
             var gasClocks = new GasClocks(clock);
             var abilityDefinitions = new AbilityDefinitionRegistry();
+            var abilityFormSets = new AbilityFormSetRegistry();
+            var contextGroups = new ContextGroupRegistry();
             abilityDefinitions.SetConflictReport(ConflictReport);
             EffectParamKeys.Initialize();
+            AbilityFormSetIdRegistry.Clear();
+            ContextGroupIdRegistry.Clear();
             _effectTemplateLoader.Load();
             new AbilityExecLoader(ConfigPipeline, abilityDefinitions).Load(ConfigCatalog, ConfigConflictReport);
+            new AbilityFormSetConfigLoader(ConfigPipeline, abilityFormSets).Load(ConfigCatalog, ConfigConflictReport);
             graphConfigLoader.PatchAndRegister(graphPackages);
+            new ContextGroupConfigLoader(ConfigPipeline, contextGroups).Load(ConfigCatalog, ConfigConflictReport);
             var gasGraphApi = new GasGraphRuntimeApi(World, SpatialQueries, SpatialCoords, EventBus, effectRequestQueue, tagOps);
             var phaseExecutor = new EffectPhaseExecutor(graphProgramRegistry, presetTypes, builtinHandlers, GasGraphOpHandlerTable.Instance, effectTemplateRegistry, eventBus: EventBus, budget: gasBudget);
             var tagRules = new TagRuleSetLoader(ConfigPipeline).Load();
@@ -494,7 +500,7 @@ namespace Ludots.Core.Engine
             var worldHudStrings = new WorldHudStringTable();
             new AttributeConstraintsLoader(ConfigPipeline).Load();
 
-            var abilitySystem = new AbilitySystem(World, effectRequestQueue, abilityDefinitions, tagOps);
+            var abilitySystem = new AbilitySystem(World, effectRequestQueue, abilityDefinitions, tagOps, graphProgramRegistry, gasGraphApi);
             var reactionSystem = new ReactionSystem(World, abilitySystem, EventBus);
             var attributeSinks = new AttributeSinkRegistry();
             GasAttributeSinks.RegisterBuiltins(attributeSinks);
@@ -518,13 +524,16 @@ namespace Ludots.Core.Engine
             
             // Get order tags from config — fail-fast if missing (SSOT: game.json + OrderStateTags.cs)
             if (!orderTypeIds.ContainsKey("castAbility") ||
-                !orderTypeIds.ContainsKey("attackTarget") || !orderTypeIds.ContainsKey("stop"))
+                !orderTypeIds.ContainsKey("moveTo") ||
+                !orderTypeIds.ContainsKey("attackTarget") ||
+                !orderTypeIds.ContainsKey("stop"))
             {
                 throw new InvalidOperationException(
-                    "game.json constants.orderTypeIds must define all required keys: castAbility, attackTarget, stop. " +
+                    "game.json constants.orderTypeIds must define all required keys: castAbility, moveTo, attackTarget, stop. " +
                     "These are the single source of truth for order type ids.");
             }
             int cfgCastAbility = orderTypeIds["castAbility"];
+            int cfgMoveTo = orderTypeIds["moveTo"];
             int cfgAttackTarget = orderTypeIds["attackTarget"];
             int cfgStop = orderTypeIds["stop"];
             
@@ -542,6 +551,7 @@ namespace Ludots.Core.Engine
             int cfgChainNegate = responseChainOrderTypeIds.GetValueOrDefault("chainNegate", 2);
             int cfgChainActivateEffect = responseChainOrderTypeIds.GetValueOrDefault("chainActivateEffect", 3);
             if (!orderTypeRegistry.IsRegistered(cfgCastAbility) ||
+                !orderTypeRegistry.IsRegistered(cfgMoveTo) ||
                 !orderTypeRegistry.IsRegistered(cfgAttackTarget) ||
                 !orderTypeRegistry.IsRegistered(cfgStop) ||
                 !orderTypeRegistry.IsRegistered(cfgChainPass) ||
@@ -549,7 +559,7 @@ namespace Ludots.Core.Engine
                 !orderTypeRegistry.IsRegistered(cfgChainActivateEffect))
             {
                 throw new InvalidOperationException(
-                    "GAS/order_types.json must define castAbility, attackTarget, stop, chainPass, chainNegate, and chainActivateEffect order types. " +
+                    "GAS/order_types.json must define castAbility, moveTo, attackTarget, stop, chainPass, chainNegate, and chainActivateEffect order types. " +
                     "Order runtime is configured from merged config and does not provide code defaults.");
             }
             int stepRateHz = engineClockConfig.FixedHz / Math.Max(1, gasClockConfig.StepEveryFixedTicks);
@@ -557,7 +567,9 @@ namespace Ludots.Core.Engine
                 World, clock, orderTypeRegistry, orderRuleRegistry,
                 orderQueue, stepRateHz,
                 graphProgramRegistry, gasGraphApi);
-            var abilityExecSystem = new AbilityExecSystem(World, clock, abilityInputRequestQueue, inputResponseBuffer, selectionRequestQueue, selectionResponseBuffer, effectRequestQueue, abilityDefinitions, EventBus, cfgCastAbility, gasPresentationEvents, phaseExecutor: phaseExecutor, graphApi: gasGraphApi, tagOps: tagOps, orderTypeRegistry: orderTypeRegistry);
+            var abilityExecSystem = new AbilityExecSystem(World, clock, abilityInputRequestQueue, inputResponseBuffer, selectionRequestQueue, selectionResponseBuffer, effectRequestQueue, abilityDefinitions, EventBus, cfgCastAbility, gasPresentationEvents, phaseExecutor: phaseExecutor, graphPrograms: graphProgramRegistry, graphApi: gasGraphApi, tagOps: tagOps, orderTypeRegistry: orderTypeRegistry);
+            var stopOrderSystem = new StopOrderSystem(World, orderTypeRegistry, cfgStop);
+            var moveToOrderSystem = new MoveToWorldCmOrderSystem(World, orderTypeRegistry, cfgMoveTo);
 
             // Register systems in Phase order according to GAS design document
             // Phase 0: SchemaUpdate
@@ -578,6 +590,8 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.GasConditionRegistry, gasConditions);
             SetService(CoreServiceKeys.TagOps, tagOps);
             SetService(CoreServiceKeys.AbilityDefinitionRegistry, abilityDefinitions);
+            SetService(CoreServiceKeys.AbilityFormSetRegistry, abilityFormSets);
+            SetService(CoreServiceKeys.ContextGroupRegistry, contextGroups);
             SetService(CoreServiceKeys.InputRequestQueue, inputRequestQueue);
             SetService(CoreServiceKeys.AbilityInputRequestQueue, abilityInputRequestQueue);
             SetService(CoreServiceKeys.InputResponseBuffer, inputResponseBuffer);
@@ -635,6 +649,7 @@ namespace Ludots.Core.Engine
             RegisterSystem(cameraRuntimeSystem, SystemGroup.InputCollection);
             RegisterSystem(clockSystem, SystemGroup.InputCollection);
             RegisterSystem(timedTagSystem, SystemGroup.InputCollection);
+            RegisterSystem(new AbilityFormRoutingSystem(World, abilityFormSets, tagOps), SystemGroup.InputCollection);
             _worldToGridSyncSystem = new WorldToGridSyncSystem(World, SpatialCoords);
             _spatialPartitionUpdateSystem = new SpatialPartitionUpdateSystem(World, _spatialPartition, WorldSizeSpec);
             RegisterSystem(_worldToGridSyncSystem, SystemGroup.PostMovement);
@@ -670,9 +685,11 @@ namespace Ludots.Core.Engine
             
             // Phase 2: AbilityActivation
             RegisterSystem(orderBufferSystem, SystemGroup.AbilityActivation);
+            RegisterSystem(stopOrderSystem, SystemGroup.AbilityActivation);
             RegisterSystem(reactionSystem, SystemGroup.AbilityActivation);
             RegisterSystem(abilitySystem, SystemGroup.AbilityActivation);
             RegisterSystem(abilityExecSystem, SystemGroup.AbilityActivation);
+            RegisterSystem(moveToOrderSystem, SystemGroup.AbilityActivation);
             
             // Phase 3: EffectProcessing (含响应链)
             var responseChainOrderTypes = new ResponseChainOrderTypes
@@ -1541,6 +1558,7 @@ namespace Ludots.Core.Engine
             GameTask.Update(dt);
             SyncContext.ProcessQueue();
             EnsureCameraRuntimeConfigured();
+            _inputRuntimeSystem?.Update(dt);
 
             // 1. Simulation Loop (GAS, Physics, AI) - Controlled by Pacemaker
             if (!_simulationBudgetFused)
@@ -1581,8 +1599,6 @@ namespace Ludots.Core.Engine
 
         private void Update(float dt)
         {
-            _inputRuntimeSystem?.Update(dt);
-
             _primitiveDrawBuffer?.Clear();
             _groundOverlayBuffer?.Clear();
             _worldHudBuffer?.Clear();

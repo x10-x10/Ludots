@@ -1,250 +1,255 @@
 # Ability Interaction Model — Architecture Overview
 
-> **SSOT**: 施法交互模型的唯一权威文档。
-> 定义交互层的最小原语集、正交配置、以及 Tag/Effect/Attribute 职责边界。
+> **SSOT**: 交互层架构总览。
+> 本文只定义当前分支已经确认的交互原语、运行时边界与 backlog 边界，不把 design catalog 自动等同于 shipped runtime。
 
 ---
 
-## 1. 核心原则
+## 1. 当前分支事实边界
 
-**交互层的唯一职责**: 将玩家的物理输入事件转换为 GAS 能理解的 `(能力, 目标)` 对。
-交互层不关心效果如何执行、伤害如何计算、状态如何流转——那些全部是 Effect + Tag + Attribute 的事。
+截至 `feat/mod-interaction-showcase` / `94f5277`，以下能力已经是分支内的真实 runtime，而不是待实现提案：
+
+- `ContextGroup` 运行时基础设施：`src/Core/Gameplay/GAS/ContextGroupRegistry.cs`、`src/Core/Gameplay/GAS/Config/ContextGroupConfigLoader.cs`
+- `ContextScored` 输入路由：`src/Core/Input/Orders/ContextScoredOrderResolver.cs`、`src/Core/Input/Orders/InputOrderMappingSystem.cs`
+- form-based ability routing：`src/Core/Gameplay/GAS/AbilityFormSetRegistry.cs`、`src/Core/Gameplay/GAS/Config/AbilityFormSetConfigLoader.cs`、`src/Core/Gameplay/GAS/Systems/AbilityFormRoutingSystem.cs`
+- ability 激活 tag gate：`src/Core/Gameplay/GAS/Components/AbilityActivationBlockTags.cs`、`src/Core/Gameplay/GAS/Systems/AbilitySystem.cs`、`src/Core/Gameplay/GAS/Systems/AbilityExecSystem.cs`
+- 最小 validation graph primitive：`src/Core/NodeLibraries/GASGraph/GraphExecutor.cs`
+- 分支验证边界：`src/Tests/GasTests/ContextScoredResolverTests.cs`、`src/Tests/GasTests/InputOrderAbilityAuditTests.cs`、`src/Tests/GasTests/Production/InteractionShowcasePlayableAcceptanceTests.cs`、`artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+
+本文不把下列内容描述成已闭环：
+
+- 并行的 `AbilityConditionSystem`
+- 通用的 cooldown / charges attribute-tick baseline
+- 覆盖全部 `docs/architecture/interaction/features/` 目录的 runtime 实现
 
 ---
 
-## 2. 三轴模型
+## 2. 核心原则
 
-### Axis 1: InputConfig (输入事件配置)
+**交互层的职责只有一件事**：把玩家输入转换成 GAS 可执行的具体 `(ability, target)`。
 
-不再是枚举, 而是**三个槽位的组合配置**:
+交互层不负责：
 
-```
+- 伤害计算
+- 状态生命周期
+- 资源扣减
+- 冷却递减
+- effect 过期条件
+
+这些都属于 Tag / Effect / Attribute / Graph / Handler 组合层。
+
+---
+
+## 3. 三轴模型
+
+### Axis 1: InputConfig
+
+```yaml
 InputConfig:
   ReactsTo: Down | Up | DownAndUp
 ```
 
-- **Down only** = 瞬发型 (按下即触发)
-- **DownAndUp** = 蓄力型 (按下开始, 松开结束)
-- **Up only** = 极少, 特殊释放触发
+- `Down`: 瞬发、toggle、channel start、recast
+- `DownAndUp`: hold-release、charge、indicator release
+- `Up`: 少数特殊释放
 
-> **关键洞察**: `HoldRelease` 不是独立原语。按住期间的蓄力积累是 Effect tick 写 Attribute, 不在交互层。
+`HoldRelease` 不是单独原语。按住期间的积累仍然由 Effect tick 写 Attribute。
 
-所有原来看似不同的"激活方式", 分解如下:
-
-| 原概念 | InputConfig | 实际行为 |
-|--------|------------|---------|
-| Press (瞬发) | ReactsTo: Down | Down → Execute |
-| HoldRelease (蓄力) | ReactsTo: DownAndUp | Down → Start Effect(charge), Up → Execute(read charge) |
-| Toggle (切换) | ReactsTo: Down | Down → Execute(if HasTag: remove, else: add) |
-| Channel (引导) | ReactsTo: Down | Down → Execute(add Channeling tag, start tick effect) |
-| Recast (多段) | ReactsTo: Down | Down → Execute(check stage tag precondition) |
-| AutoCast | ReactsTo: (system) | 系统自动触发, 无玩家输入 |
-| Hold-to-Sustain | ReactsTo: DownAndUp | Down → Start Effect, Up → Stop Effect |
-
-### Axis 2: TargetMode (目标选取模式)
+### Axis 2: TargetMode
 
 ```csharp
 enum TargetMode
 {
-    None,       // 无目标 (自身/全局/周围)
-    Unit,       // 选取一个单位
-    Point,      // 选取一个地面点
-    Direction,  // 选取一个方向 (施法者→光标)
-    Vector      // 选取两个点 (起点+终点/方向)
+    None,
+    Unit,
+    Point,
+    Direction,
+    Vector
 }
 ```
 
-### Axis 3: Acquisition (目标获取方式)
+### Axis 3: Acquisition
 
 ```csharp
 enum Acquisition
 {
-    Explicit,       // 玩家手动选取 (LoL/Dota/SC2/OW/DS)
-    ContextScored   // 系统评分选取 (Arkham/Spider-Man/GoW)
+    Explicit,
+    ContextScored
 }
 ```
 
----
-
-## 3. 有效组合矩阵
-
-```
-              None   Unit   Point   Direction   Vector
-Down+Explicit   ✓      ✓      ✓        ✓          ✓
-Down+Context    ✓      ✓      ✓        ✓          -
-DnUp+Explicit   ✓      -      -        ✓          -
-DnUp+Context    ✓      -      -        ✓          -
-```
-
-**约 13 个有效组合**, 覆盖全部游戏:
-
-| 组合 | 含义 | 典型 |
-|------|------|------|
-| Down + None + Explicit | 按键自我/全局 | Dota BKB, LoL Flash |
-| Down + Unit + Explicit | 按键→选单位 | Dota Hex, LoL Annie Q |
-| Down + Point + Explicit | 按键→选地面 | Dota Chrono, SC2 Storm |
-| Down + Dir + Explicit | 按键→方向 | Dota Hook, LoL Ezreal Q |
-| Down + Vector + Explicit | 按键→两点 | LoL Viktor E |
-| Down + None + Context | 按键, 系统选 | Arkham反击, DS弹反 |
-| Down + Unit + Context | 按键, 系统选目标+技能 | Arkham攻击, Spider-Man攻击 |
-| Down + Point + Context | 按键, 系统选锚点 | Spider-Man蛛丝摆荡 |
-| Down + Dir + Context | 按键, 系统辅助瞄准 | GoW斧投掷(轻度锁定) |
-| DnUp + None + Explicit | 蓄力自身 | DS R2蓄力 |
-| DnUp + Dir + Explicit | 蓄力+方向 | LoL Varus Q, OW Widow |
-| DnUp + None + Context | 蓄力, 系统选 | DS蓄力+lock-on |
-| DnUp + Dir + Context | 蓄力+辅助瞄准 | Spider-Man蓄力蛛丝 |
+- `Explicit`: 玩家直接给目标或位置
+- `ContextScored`: 系统根据候选、空间关系、graph 与权重自动解析出具体 `(ability, target)`
 
 ---
 
-## 4. 正交配置 (不构成独立模式)
+## 4. Ludots 映射
 
-| 配置 | 可选值 | 说明 |
-|------|--------|------|
-| **TargetFilter** | Self, Ally, Enemy, Any, Terrain, Corpse, Structure | 对 Unit/Point 的合法目标过滤 |
-| **AreaShape** | Circle, Cone, Line, Rectangle, Ring, Wall, Custom | Point/Direction 的区域形状指示器 |
-| **Range** | value (cm) 或 Global | 射程约束 |
-| **CastBehavior** | Instant, Windup(duration) | 按下到生效的前摇时间 |
+### InteractionModeType → Acquisition
 
----
+| Ludots | Acquisition | 当前状态 |
+|--------|-------------|----------|
+| `TargetFirst` | `Explicit` | 已有 |
+| `SmartCast` | `Explicit` | 已有 |
+| `AimCast` | `Explicit` | 已有 |
+| `SmartCastWithIndicator` | `Explicit` | 已有 |
+| `ContextScored` | `ContextScored` | 已落地，见 `src/Core/Input/Orders/InputOrderMapping.cs`、`src/Core/Input/Orders/InputOrderMappingSystem.cs` |
 
-## 5. Ludots 现有映射
+### OrderSelectionType → TargetMode
 
-### InteractionModeType → 本模型的 Acquisition
-
-| Ludots InteractionModeType | Acquisition | 说明 |
-|---------------------------|-------------|------|
-| TargetFirst (WoW) | Explicit | 先选单位, 再按键 |
-| SmartCast (LoL) | Explicit | 按键时自动取光标下目标 |
-| AimCast (DotA/SC2) | Explicit | 按键→进入瞄准→确认 |
-| SmartCastWithIndicator | Explicit | 按住→显示指示器→松开 |
-| *(新增需要)* | **ContextScored** | 系统评分选目标+技能 |
-
-### OrderSelectionType → 本模型的 TargetMode
-
-| Ludots OrderSelectionType | TargetMode |
-|--------------------------|-----------|
-| None | None |
-| Entity | Unit |
-| Position | Point |
-| Direction | Direction |
-| Vector | Vector |
-| Entities | Unit (multi, via SelectionGate) |
-
-### AbilityExecSpec Gates → Response Window / Insertable Context
-
-| Gate | 用途 |
-|------|------|
-| InputGate | P5 确认窗口, P2 效果变体选择 |
-| SelectionGate | P1 选额外目标, P6 多目标选取 |
-| EventGate | O1-O8 响应窗口(等待事件) |
-
-### Response Chain → 响应窗口
-
-| ResponseType | 清单映射 |
-|-------------|---------|
-| Hook | O5 取消/无效化 |
-| Modify | O6 修改数值 |
-| Chain | O7 追加效果, O2 连锁 |
-| PromptInput | O1/O3/O4 交互式响应 |
-
----
-
-## 6. Tag/Effect/Attribute 职责分界
-
-**铁律: 以下概念不允许进入交互层枚举:**
-
-| 概念 | 归属层 | 实现方式 |
-|------|--------|---------|
-| 蓄力积累 | Effect | BeginCharge Effect tick → charge_amount Attribute |
-| 连击段数 | Tag | combo_stage Tag 递增 |
-| 连击计时 | Attribute | last_hit_time Attribute, 下段读 delta |
-| 命中确认 | Tag | OnHit Effect → hit_confirmed Tag |
-| Toggle | Tag | HasTag(active) ? Remove : Add |
-| Channel中断 | Tag | channeling Tag + CC Effect 移除 |
-| Recast门控 | Tag | stage_complete Tag 做 precondition |
-| 变身/形态 | Tag | form Tag 切换 ability set |
-| 标记引爆 | Tag | marked Tag + 引爆技能 precondition |
-| Posture/架势 | Attribute | posture Attribute 累积, 满值加 Tag |
-| 连击仪表 | Attribute | combo_meter Attribute, 阈值加 Tag |
-| 资源消耗 | Attribute | Precondition 检查 mana/energy Attribute |
-| 冷却 | Attribute | cooldown Attribute + 系统 tick 递减 |
-| 充能 | Attribute | charge_count Attribute + 恢复 timer |
-| 上下文选取 | ContextGroup | ScorePipeline (读 Tag + Attribute + 距离 + 角度) |
-| 响应窗口 | ResponseChain | WindowPhase + PromptInput + OrderRequest |
-| 插入上下文 | Gate | InputGate / SelectionGate / EventGate |
-
----
-
-## 7. ContextScored 扩展: ContextGroup 机制
-
-ContextScored 需要一个额外的 **ContextGroup + ScorePipeline** 机制:
-
-```
-InputBinding "Attack"
-  → ContextGroup: [飞扑攻击, 普通拳击, 地面终结, 撞墙击, 空中连击, ...]
-    → ScorePipeline 对每个候选评分
-      → 选出最高分的候选
-        → 该候选自带 TargetMode + 效果定义
-          → 系统自动获取目标
-            → 执行
-```
-
-### 评分因子 (全部可用 Tag + Attribute + Spatial 查询):
-
-| Factor | Data Source |
+| Ludots | TargetMode |
 |--------|------------|
-| Distance | SpatialQueryService: 施法者与候选目标距离 |
-| Angle | 施法者朝向与目标方向夹角 |
-| InputDirection | 摇杆/移动输入方向 (soft bias) |
-| TargetTags | 目标 Tag: Knockdown, Stunned, Attacking, Armed |
-| SelfTags | 自身 Tag: Airborne, Grounded, NearWall, ComboStage |
-| EnvironmentTags | 环境实体 Tag: Throwable, Interactable, Ledge |
-| Priority | 设计师配置权重 |
-
-### 候选定义:
-
-```json
-{
-  "id": "wall_slam",
-  "preconditions": [
-    { "kind": "SelfTag", "tag": "NearWall" },
-    { "kind": "Distance", "max": 200 }
-  ],
-  "score_weights": {
-    "distance": 0.3,
-    "angle": 0.3,
-    "env_bonus_NearWall": 50
-  },
-  "target_mode": "Unit",
-  "ability_id": "wall_slam_ability"
-}
-```
+| `None` | `None` |
+| `Entity` | `Unit` |
+| `Position` | `Point` |
+| `Direction` | `Direction` |
+| `Vector` | `Vector` |
+| `Entities` | `Unit` multi-select |
 
 ---
 
-## 8. 163 条清单的完全覆盖论证
+## 5. Activation Boundary
 
-全部 163 条用户体验场景 (见 `user_experience_checklist.md`) 可被以下结构表达:
+当前分支的 activation boundary 已经固定为两层，不再扩成第三套平行系统。
 
-```
-InteractionConfig : ReactsTo (Down | Up | DownAndUp)
-TargetMode        : None | Unit | Point | Direction | Vector
-Acquisition       : Explicit | ContextScored
-+ 正交配置         : TargetFilter, AreaShape, Range, CastBehavior
-+ Tag/Effect/Attr  : 见第 6 节映射表
-+ ResponseChain    : Hook/Modify/Chain/PromptInput
-+ Gates            : InputGate/SelectionGate/EventGate
-```
+### 5.1 离散阻塞：tag gate
 
-**没有一条场景逃出此模型。**
+ability 激活阶段只读两类 gate：
+
+- `RequiredAll`
+- `BlockedAny`
+
+实际执行点：
+
+- `src/Core/Gameplay/GAS/Systems/AbilitySystem.cs`
+- `src/Core/Gameplay/GAS/Systems/AbilityExecSystem.cs`
+- `src/Core/Gameplay/GAS/Config/AbilityExecLoader.cs`
+
+这层适合表达：
+
+- silenced / stunned / rooted 之类的离散阻塞
+- combo stage、form、finisher-ready 之类的离散前置
+- cooldown ready / charge ready / mana ready 这类已经被投影成 tag 的结果
+
+### 5.2 数值 / 上下文检查：最小 validation graph primitive
+
+当前分支已经有最小 validation primitive：`src/Core/NodeLibraries/GASGraph/GraphExecutor.cs`
+
+它当前已被复用在相邻边界，而不是再造 `AbilityConditionSystem`：
+
+- `src/Core/Input/Orders/ContextScoredOrderResolver.cs`：候选 precondition graph
+- `src/Core/Gameplay/GAS/Systems/OrderBufferSystem.cs`：order validation graph
+
+因此本仓库的架构结论是：
+
+- discrete blocking 继续走 `RequiredAll` / `BlockedAny`
+- numeric / spatial / context 检查复用现有 validation graph primitive
+- 如未来确实需要 ability-side numeric gate，也应扩展这一 primitive，而不是创建平行 `AbilityConditionSystem`
+
+### 5.3 明确不属于 activation boundary 的机制
+
+- `GasConditionRegistry` 只服务 effect 生命周期与 expire condition：`src/Core/Gameplay/GAS/GasConditionRegistry.cs`、`src/Core/Gameplay/GAS/Systems/EffectLifetimeSystem.cs`
+- cooldown / charges 不要求统一落成 attribute-tick baseline
+- `ContextGroup` 不写回 `AbilityDefinition`，而是独立注册与解析
 
 ---
 
-## 9. 文件清单
+## 6. Tag / Effect / Attribute / ContextGroup 职责分界
 
-| 文件 | 内容 |
-|------|------|
-| `README.md` | 本文档 (架构总览) |
-| `user_experience_checklist.md` | 163 条用户体验清单 |
-| `features/` | 各 feature 独立实现方案 |
-| `gap_analysis.md` | 缺口分析与修改建议 |
+| 概念 | 所属层 | 当前分支表达 |
+|------|--------|--------------|
+| 蓄力积累 | Effect + Attribute | tick 写 `charge_amount` 等属性 |
+| 连击段数 | Tag | `combo_stage` 等 tag |
+| 变身/姿态 | Tag + Form Routing | form tag 经 `AbilityFormRoutingSystem` 解析为 form slot override，再由 `AbilitySlotResolver` 统一转成实际 ability |
+| 资源数值 | Attribute | mana / rage / charges / hp 等原始数值 |
+| ability 离散门控 | Tag gate | `RequiredAll` / `BlockedAny` |
+| 数值准入 | validation graph 或 tag bridge | graph 直接判定，或先投影为 ready tag |
+| 冷却 | tag duration 优先 | 见 `src/Tests/GasTests/InputOrderAbilityAuditTests.cs` 与 `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` |
+| ContextScored 路由 | ContextGroup | 候选集合、距离/角度/hovered bias、precondition graph、score graph |
+| effect 生命周期条件 | GasCondition | 非 ability activation |
+
+---
+
+## 7. ContextGroup Runtime Flow
+
+当前分支没有把 `ContextGroupId` 塞进 `AbilityDefinition`。真实路径是：
+
+```text
+Input mapping root slot (ArgsTemplate.I0)
+  -> resolve root ability
+  -> ContextGroupRegistry.TryGetByRootAbility(...)
+  -> spatial query in search radius
+  -> per-candidate distance / angle / hovered bias
+  -> optional precondition graph
+  -> optional score graph
+  -> concrete slot index + concrete target
+  -> normal ability execution
+```
+
+关键实现路径：
+
+- `src/Core/Gameplay/GAS/ContextGroupRegistry.cs`
+- `src/Core/Gameplay/GAS/Config/ContextGroupConfigLoader.cs`
+- `src/Core/Input/Orders/ContextScoredOrderResolver.cs`
+- `src/Core/Input/Orders/InputOrderMappingSystem.cs`
+- `mods/CoreInputMod/Systems/LocalOrderSourceHelper.cs`
+
+分支验证路径：
+
+- `src/Tests/GasTests/ContextScoredResolverTests.cs`
+- `src/Tests/GasTests/Production/InteractionShowcasePlayableAcceptanceTests.cs`
+- `artifacts/acceptance/interaction-showcase/path.mmd`
+- `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`
+
+---
+
+## 8. Form Routing Runtime Flow
+
+当前分支的 form/stance 路由不占用新的 activation runtime，而是挂在已有 slot 解析链路上：
+
+```text
+entity AbilityFormSetRef
+  -> AbilityFormRoutingSystem (InputCollection)
+  -> match route by effective tags + priority
+  -> write AbilityFormSlotBuffer
+  -> AbilitySlotResolver (Granted > Form > Base)
+  -> AbilitySystem / AbilityExecSystem / ContextScored / Indicator
+```
+
+Template boundary:
+- `AbilityStateBuffer` and `AbilityFormSetRef` belong to the unit template baseline.
+- `PlayerOwner`, `WorldPositionCm`, and other scene ownership facts belong to map entity overrides or runtime spawn requests.
+
+关键实现路径：
+
+- `src/Core/Gameplay/GAS/AbilityFormSetRegistry.cs`
+- `src/Core/Gameplay/GAS/Config/AbilityFormSetConfigLoader.cs`
+- `src/Core/Gameplay/GAS/Systems/AbilityFormRoutingSystem.cs`
+- `src/Core/Gameplay/GAS/Components/AbilityStateBuffer.cs`
+
+---
+
+## 9. Showcase Runtime 与 Design Backlog 的边界
+
+已由当前分支证明的切片，以 `artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md` 为准。
+
+这意味着：
+
+- 可以把 `ContextGroup` 当成真实基础设施继续扩展
+- 可以把 tag gate 当成真实 activation baseline
+- 可以把 `GraphExecutor.ExecuteValidation(...)` 当成现有最小 validation primitive
+
+但不应自动推导：
+
+- 所有 finisher / companion / environment / response-window 家族都已实现
+- cooldown / charges 必须走统一 attribute tick 系统
+- 应该把数值门控从现有 graph primitive 拆成新的 condition runtime
+
+---
+
+## 10. 相关文档
+
+- 交互 backlog 与分支校准差异：`docs/architecture/interaction/gap_analysis.md`
+- ContextScored 专项：`docs/architecture/interaction/features/09_context_scored.md`
+- Finisher / Companion / Special Input / Resource / Environment：`docs/architecture/interaction/features/14_finisher_companion_special_resource_env.md`
+- 分支验证边界：`artifacts/acceptance/interaction-showcase/feature_coverage_matrix.md`

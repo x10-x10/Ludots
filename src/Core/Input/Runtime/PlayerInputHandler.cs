@@ -217,9 +217,15 @@ namespace Ludots.Core.Input.Runtime
                     compiled.CompositeParts[i] = CompileBinding(parts[i]);
                 }
 
-                compiled.SourceKind = string.Equals(binding.CompositeType, "Vector2", StringComparison.OrdinalIgnoreCase)
-                    ? BindingSourceKind.CompositeVector2
-                    : BindingSourceKind.Unsupported;
+                compiled.SourceKind = binding.CompositeType switch
+                {
+                    string type when string.Equals(type, "Vector2", StringComparison.OrdinalIgnoreCase) =>
+                        BindingSourceKind.CompositeVector2,
+                    string type when string.Equals(type, "ButtonChord", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(type, "Chord", StringComparison.OrdinalIgnoreCase) =>
+                        BindingSourceKind.CompositeButtonChord,
+                    _ => BindingSourceKind.Unsupported
+                };
                 return compiled;
             }
 
@@ -355,6 +361,23 @@ namespace Ludots.Core.Input.Runtime
                     float right = ReadCompositeScalar(binding.CompositeParts, 3);
                     return new Vector3(right - left, up - down, 0f);
                 }
+                case BindingSourceKind.CompositeButtonChord:
+                {
+                    if (binding.CompositeParts.Length == 0)
+                    {
+                        return Vector3.Zero;
+                    }
+
+                    for (int index = 0; index < binding.CompositeParts.Length; index++)
+                    {
+                        if (ResolveBindingValue(in binding.CompositeParts[index]).LengthSquared() <= 0.25f)
+                        {
+                            return Vector3.Zero;
+                        }
+                    }
+
+                    return Vector3.One;
+                }
                 default:
                     return Vector3.Zero;
             }
@@ -439,6 +462,7 @@ namespace Ludots.Core.Input.Runtime
             MouseScroll = 3,
             Button = 4,
             CompositeVector2 = 5,
+            CompositeButtonChord = 6,
         }
 
         private enum ProcessorKind : byte

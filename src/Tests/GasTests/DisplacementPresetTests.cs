@@ -16,6 +16,13 @@ namespace Ludots.Tests.GAS
     public class DisplacementPresetTests
     {
         private static readonly QueryDescription DisplacementQuery = new QueryDescription().WithAll<DisplacementState>();
+        private static readonly QueryDescription EffectTemplateQuery = new QueryDescription().WithAll<GameplayEffect, EffectTemplateRef>();
+
+        [OneTimeSetUp]
+        public void OneTimeSetUp()
+        {
+            EffectParamKeys.Initialize();
+        }
 
         [Test]
         public void Displacement_AwayFromSource_MovesTarget()
@@ -190,6 +197,89 @@ namespace Ludots.Tests.GAS
             });
 
             That(count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BuiltinHandler_ApplyDisplacement_UsesPreservedCallerTargetPoint_WhenExecIsMissing()
+        {
+            using var world = World.Create();
+
+            var source = world.Create(new WorldPositionCm { Value = Fix64Vec2.Zero });
+            var target = world.Create(new WorldPositionCm { Value = Fix64Vec2.Zero });
+            var context = new EffectContext { Source = source, Target = target, TargetContext = default };
+            var template = new EffectTemplateData
+            {
+                Displacement = new DisplacementDescriptor
+                {
+                    DirectionMode = DisplacementDirectionMode.ToTarget,
+                    TotalDistanceCm = 500,
+                    TotalDurationTicks = 10,
+                    OverrideNavigation = false,
+                }
+            };
+
+            var mergedParams = default(EffectConfigParams);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosX, 420f);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosY, 180f);
+
+            BuiltinHandlers.HandleApplyDisplacement(world, default, ref context, in mergedParams, in template);
+
+            int count = 0;
+            world.Query(in DisplacementQuery, (Entity _, ref DisplacementState state) =>
+            {
+                count++;
+                That(state.DirectionMode, Is.EqualTo(DisplacementDirectionMode.ToTarget));
+                That(state.HasTargetPoint, Is.True);
+                That(state.TargetPointCm.X.ToFloat(), Is.EqualTo(420f).Within(0.01f));
+                That(state.TargetPointCm.Y.ToFloat(), Is.EqualTo(180f).Within(0.01f));
+            });
+
+            That(count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EffectProposalProcessing_DisplacementInstant_RemainsEntityBacked()
+        {
+            using var world = World.Create();
+
+            var templates = new EffectTemplateRegistry();
+            int templateId = EffectTemplateIdRegistry.Register("Effect.Test.DisplacementEntityBacked");
+            templates.Register(templateId, new EffectTemplateData
+            {
+                PresetType = EffectPresetType.Displacement,
+                LifetimeKind = EffectLifetimeKind.Instant,
+                Displacement = new DisplacementDescriptor
+                {
+                    DirectionMode = DisplacementDirectionMode.ToTarget,
+                    TotalDistanceCm = 480,
+                    TotalDurationTicks = 6,
+                    OverrideNavigation = true,
+                }
+            });
+
+            var source = world.Create();
+            var target = world.Create();
+            var requests = new EffectRequestQueue();
+            requests.Publish(new EffectRequest
+            {
+                Source = source,
+                Target = target,
+                TemplateId = templateId
+            });
+
+            var proposal = new EffectProposalProcessingSystem(world, requests, budget: null, templates: templates);
+            proposal.Update(0f);
+
+            int effectCount = 0;
+            world.Query(in EffectTemplateQuery, (Entity _, ref GameplayEffect _, ref EffectTemplateRef templateRef) =>
+            {
+                if (templateRef.TemplateId == templateId)
+                {
+                    effectCount++;
+                }
+            });
+
+            That(effectCount, Is.EqualTo(1), "Displacement presets must stay entity-backed so OnApply builtins can execute.");
         }
 
         [Test]

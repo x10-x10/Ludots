@@ -8,6 +8,7 @@ using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Presentation;
+using Ludots.Core.GraphRuntime;
 using Ludots.Core.NodeLibraries.GASGraph;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Mathematics.FixedPoint;
@@ -31,6 +32,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly EffectRequestQueue _effectRequests;
         private readonly GasPresentationEventBuffer _presentationEvents;
         private readonly EffectPhaseExecutor _phaseExecutor;
+        private readonly GraphProgramRegistry _graphPrograms;
         private readonly IGraphRuntimeApi _graphApi;
         private readonly TagOps _tagOps;
 
@@ -64,6 +66,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             int castAbilityOrderTypeId = 0,
             GasPresentationEventBuffer presentationEvents = null,
             EffectPhaseExecutor phaseExecutor = null,
+            GraphProgramRegistry graphPrograms = null,
             IGraphRuntimeApi graphApi = null,
             TagOps tagOps = null,
             OrderTypeRegistry orderTypeRegistry = null)
@@ -80,6 +83,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _castAbilityOrderTypeId = castAbilityOrderTypeId;
             _presentationEvents = presentationEvents;
             _phaseExecutor = phaseExecutor;
+            _graphPrograms = graphPrograms;
             _graphApi = graphApi;
             _tagOps = tagOps ?? new TagOps();
             _orderTypeRegistry = orderTypeRegistry;
@@ -149,9 +153,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     }
 
                     // Resolve effective ability: granted override > base slot
+                    bool hasForm = World.Has<AbilityFormSlotBuffer>(actor);
+                    AbilityFormSlotBuffer formSlots = hasForm ? World.Get<AbilityFormSlotBuffer>(actor) : default;
                     bool hasGranted = World.Has<GrantedSlotBuffer>(actor);
                     GrantedSlotBuffer grantedSlots = hasGranted ? World.Get<GrantedSlotBuffer>(actor) : default;
-                    var slot = AbilitySlotResolver.Resolve(in abilities, in grantedSlots, hasGranted, slotIndex);
+                    var slot = AbilitySlotResolver.Resolve(in abilities, in formSlots, hasForm, in grantedSlots, hasGranted, slotIndex);
                     
                     // Read target from Blackboard (Cast_TargetEntity = 111)
                     Entity targetEntity = default;
@@ -161,20 +167,43 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         bbEntities.TryGet(OrderBlackboardKeys.Cast_TargetEntity, out targetEntity);
                     }
 
+                    AbilityDefinition abilityDef = default;
+                    bool hasAbilityDef = slot.AbilityId > 0 &&
+                        _abilityDefinitions != null &&
+                        _abilityDefinitions.TryGet(slot.AbilityId, out abilityDef);
+                    Entity templateEntity = default;
+                    bool hasTemplateEntity = false;
+                    if (slot.TemplateEntityId > 0)
+                    {
+                        templateEntity = EntityUtil.Reconstruct(slot.TemplateEntityId, slot.TemplateEntityWorldId, slot.TemplateEntityVersion);
+                        hasTemplateEntity = World.IsAlive(templateEntity);
+                    }
+
+                    // Toggle check comes before activation block tags so a toggled-on ability
+                    // can always be turned off, even while its reactivate cooldown is present.
+                    if (hasAbilityDef &&
+                        abilityDef.HasToggleSpec &&
+                        abilityDef.ToggleSpec.ToggleTagId > 0 &&
+                        hasActorTags &&
+                        actorTags.HasTag(abilityDef.ToggleSpec.ToggleTagId))
+                    {
+                        DeactivateToggle(actor, in abilityDef.ToggleSpec, slotIndex, slot.AbilityId, targetEntity);
+                        continue;
+                    }
+
                     // Block-tag check
                     AbilityActivationBlockTags blockTags = default;
                     bool hasBlockTags = false;
-                    if (slot.AbilityId > 0 && _abilityDefinitions != null && _abilityDefinitions.TryGet(slot.AbilityId, out var def) && def.HasActivationBlockTags)
+                    if (hasAbilityDef && abilityDef.HasActivationBlockTags)
                     {
-                        blockTags = def.ActivationBlockTags;
+                        blockTags = abilityDef.ActivationBlockTags;
                         hasBlockTags = true;
                     }
-                    else if (slot.TemplateEntityId > 0)
+                    else if (hasTemplateEntity)
                     {
-                        Entity template = EntityUtil.Reconstruct(slot.TemplateEntityId, slot.TemplateEntityWorldId, slot.TemplateEntityVersion);
-                        if (World.IsAlive(template) && World.Has<AbilityActivationBlockTags>(template))
+                        if (World.Has<AbilityActivationBlockTags>(templateEntity))
                         {
-                            blockTags = World.Get<AbilityActivationBlockTags>(template);
+                            blockTags = World.Get<AbilityActivationBlockTags>(templateEntity);
                             hasBlockTags = true;
                         }
                     }
@@ -216,15 +245,77 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         }
                     }
 
-                    // 鈹€鈹€ Toggle check: if ability has toggle spec and toggle tag is ON, deactivate instead 鈹€鈹€
-                    if (slot.AbilityId > 0 && _abilityDefinitions != null &&
-                        _abilityDefinitions.TryGet(slot.AbilityId, out var toggleDef) &&
-                        toggleDef.HasToggleSpec && toggleDef.ToggleSpec.ToggleTagId > 0 &&
-                        hasActorTags &&
-                        actorTags.HasTag(toggleDef.ToggleSpec.ToggleTagId))
+                    AbilityActivationPrecondition activationPrecondition = default;
+                    bool hasActivationPrecondition = false;
+                    if (hasAbilityDef && abilityDef.HasActivationPrecondition)
                     {
-                        DeactivateToggle(actor, ref actorTags, in toggleDef.ToggleSpec, slotIndex, slot.AbilityId, targetEntity);
-                        continue;
+                        activationPrecondition = abilityDef.ActivationPrecondition;
+                        hasActivationPrecondition = true;
+                    }
+                    else if (hasTemplateEntity && World.Has<AbilityActivationPrecondition>(templateEntity))
+                    {
+                        activationPrecondition = World.Get<AbilityActivationPrecondition>(templateEntity);
+                        hasActivationPrecondition = true;
+                    }
+
+                    Fix64Vec2 targetOriginPosCm = default;
+                    bool hasTargetOriginPos = false;
+                    Fix64Vec2 targetPosCm = default;
+                    bool hasTargetPos = false;
+                    if (World.Has<BlackboardSpatialBuffer>(actor))
+                    {
+                        ref var bbSpatial = ref World.Get<BlackboardSpatialBuffer>(actor);
+                        int pointCount = bbSpatial.GetPointCount(OrderBlackboardKeys.Cast_TargetPosition);
+                        if (pointCount > 1 &&
+                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, 0, out var originPos))
+                        {
+                            targetOriginPosCm = Fix64Vec2.FromFloat(originPos.X, originPos.Z);
+                            hasTargetOriginPos = true;
+                        }
+
+                        int targetPointIndex = pointCount > 1 ? pointCount - 1 : 0;
+                        if (pointCount > 0 &&
+                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, targetPointIndex, out var targetPos))
+                        {
+                            targetPosCm = Fix64Vec2.FromFloat(targetPos.X, targetPos.Z);
+                            hasTargetPos = true;
+                        }
+                    }
+
+                    if (hasActivationPrecondition)
+                    {
+                        IntVector2 validationTargetPos = default;
+                        if (hasTargetPos)
+                        {
+                            var roundedTargetPos = targetPosCm.RoundToInt();
+                            validationTargetPos = new IntVector2(roundedTargetPos.x, roundedTargetPos.y);
+                        }
+
+                        if (!AbilityActivationPreconditionEvaluator.Evaluate(
+                                World,
+                                actor,
+                                targetEntity,
+                                validationTargetPos,
+                                slot.AbilityId,
+                                in activationPrecondition,
+                                _graphPrograms,
+                                _graphApi))
+                        {
+                            if (_orderTypeRegistry != null)
+                            {
+                                OrderSubmitter.CancelCurrent(World, actor, _orderTypeRegistry);
+                            }
+                            _presentationEvents?.Publish(new GasPresentationEvent
+                            {
+                                Kind = GasPresentationEventKind.CastFailed,
+                                Actor = actor,
+                                Target = targetEntity,
+                                AbilitySlot = slotIndex,
+                                AbilityId = slot.AbilityId,
+                                FailReason = AbilityCastFailReason.PreconditionFailed
+                            });
+                            continue;
+                        }
                     }
 
                     if (!World.Has<AbilityExecInstance>(actor))
@@ -232,11 +323,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         World.Add(actor, new AbilityExecInstance());
                     }
 
-                    GasClockId defaultClockId = GasClockId.Step;
-                    if (slot.AbilityId > 0 && _abilityDefinitions != null && _abilityDefinitions.TryGet(slot.AbilityId, out var aDef))
-                    {
-                        defaultClockId = aDef.ExecSpec.ClockId;
-                    }
+                    GasClockId defaultClockId = hasAbilityDef ? abilityDef.ExecSpec.ClockId : GasClockId.Step;
 
                     // Read OrderId from active OrderBuffer entry
                     int orderId = 0;
@@ -255,8 +342,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     exec.AbilityId = slot.AbilityId;
                     exec.Target = targetEntity;
                     exec.TargetContext = default;
-                    exec.TargetPosCm = default;
-                    exec.HasTargetPos = 0;
+                    exec.TargetPosCm = targetPosCm;
+                    exec.HasTargetPos = (byte)(hasTargetPos ? 1 : 0);
+                    exec.TargetOriginPosCm = targetOriginPosCm;
+                    exec.HasTargetOriginPos = (byte)(hasTargetOriginPos ? 1 : 0);
                     exec.MultiTargetCount = 0;
                     exec.State = AbilityExecRunState.Running;
                     exec.CurrentTick = 0;
@@ -266,16 +355,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     exec.WaitTagId = 0;
                     exec.WaitRequestId = 0;
                     exec.ActiveClockId = defaultClockId;
-
-                    if (World.Has<BlackboardSpatialBuffer>(actor))
-                    {
-                        ref var bbSpatial = ref World.Get<BlackboardSpatialBuffer>(actor);
-                        if (bbSpatial.TryGetPoint(OrderBlackboardKeys.Cast_TargetPosition, out var targetPos))
-                        {
-                            exec.TargetPosCm = Fix64Vec2.FromFloat(targetPos.X, targetPos.Z);
-                            exec.HasTargetPos = 1;
-                        }
-                    }
 
                     _presentationEvents?.Publish(new GasPresentationEvent
                     {
@@ -322,9 +401,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 }
 
                 // Resolve effective ability: granted override > base slot
+                bool hasFormP2 = World.Has<AbilityFormSlotBuffer>(actor);
+                AbilityFormSlotBuffer formSlotsP2 = hasFormP2 ? World.Get<AbilityFormSlotBuffer>(actor) : default;
                 bool hasGrantedP2 = World.Has<GrantedSlotBuffer>(actor);
                 GrantedSlotBuffer grantedSlotsP2 = hasGrantedP2 ? World.Get<GrantedSlotBuffer>(actor) : default;
-                var slot = AbilitySlotResolver.Resolve(in abilities, in grantedSlotsP2, hasGrantedP2, instance.AbilitySlot);
+                var slot = AbilitySlotResolver.Resolve(in abilities, in formSlotsP2, hasFormP2, in grantedSlotsP2, hasGrantedP2, instance.AbilitySlot);
 
                 AbilityExecSpec spec;
                 AbilityExecCallerParamsPool callerPool = default;
@@ -551,7 +632,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             var t = EntityUtil.Reconstruct(ids[i], wids[i], vers[i]);
                             if (!World.IsAlive(t)) continue;
                             PublishEffectRequest(actor, t, inst.TargetContext, templateId,
-                                hasCp ? callerPool.Get(cpIdx) : default, hasCp);
+                                hasCp ? callerPool.Get(cpIdx) : default, hasCp, in inst);
                         }
                     }
                 }
@@ -559,23 +640,49 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             else
             {
                 PublishEffectRequest(actor, target, inst.TargetContext, templateId,
-                    hasCp ? callerPool.Get(cpIdx) : default, hasCp);
+                    hasCp ? callerPool.Get(cpIdx) : default, hasCp, in inst);
             }
         }
 
         private void PublishEffectRequest(Entity source, Entity target, Entity targetContext,
-            int templateId, in EffectConfigParams callerParams, bool hasCallerParams)
+            int templateId, in EffectConfigParams callerParams, bool hasCallerParams, in AbilityExecInstance inst)
         {
+            var resolvedCallerParams = callerParams;
+            bool resolvedHasCallerParams = hasCallerParams;
+            resolvedHasCallerParams |= TryAppendSpatialCallerParams(ref resolvedCallerParams, in inst);
+
             var req = new EffectRequest
             {
                 Source = source,
                 Target = target,
                 TargetContext = targetContext,
                 TemplateId = templateId,
-                HasCallerParams = hasCallerParams,
+                HasCallerParams = resolvedHasCallerParams,
             };
-            if (hasCallerParams) req.CallerParams = callerParams;
+            if (resolvedHasCallerParams)
+            {
+                req.CallerParams = resolvedCallerParams;
+            }
+
             _effectRequests.Publish(req);
+        }
+
+        private static bool TryAppendSpatialCallerParams(ref EffectConfigParams callerParams, in AbilityExecInstance inst)
+        {
+            bool added = false;
+            if (inst.HasTargetPos != 0)
+            {
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetPosX, inst.TargetPosCm.X.ToFloat());
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetPosY, inst.TargetPosCm.Y.ToFloat());
+            }
+
+            if (inst.HasTargetOriginPos != 0)
+            {
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetOriginX, inst.TargetOriginPosCm.X.ToFloat());
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetOriginY, inst.TargetOriginPosCm.Y.ToFloat());
+            }
+
+            return added;
         }
 
         // 鈹€鈹€ Tag Clip (add at start, auto-remove via TimedTag) 鈹€鈹€
@@ -826,10 +933,15 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private void ActivateToggle(Entity actor, in AbilityToggleSpec toggleSpec)
         {
             if (!World.IsAlive(actor)) return;
-            if (!World.Has<GameplayTagContainer>(actor)) return;
-            
+            EnsureTagComponents(actor);
+            if (!World.Has<DirtyFlags>(actor)) World.Add(actor, new DirtyFlags());
+
             ref var tags = ref World.Get<GameplayTagContainer>(actor);
-            tags.AddTag(toggleSpec.ToggleTagId);
+            if (tags.HasTag(toggleSpec.ToggleTagId)) return;
+
+            ref var counts = ref World.Get<TagCountContainer>(actor);
+            ref var dirty = ref World.Get<DirtyFlags>(actor);
+            _tagOps.AddTag(ref tags, ref counts, toggleSpec.ToggleTagId, ref dirty);
             
             // Apply active effects as infinite-duration effects
             unsafe
@@ -855,11 +967,16 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         /// Deactivate toggle: remove toggle tag and active effects, then optionally
         /// run the deactivate timeline. If no deactivate timeline, completes instantly.
         /// </summary>
-        private void DeactivateToggle(Entity actor, ref GameplayTagContainer actorTags,
+        private void DeactivateToggle(Entity actor,
             in AbilityToggleSpec toggleSpec, int slotIndex, int abilityId, Entity targetEntity)
         {
-            // Remove toggle tag
-            actorTags.RemoveTag(toggleSpec.ToggleTagId);
+            EnsureTagComponents(actor);
+            if (!World.Has<DirtyFlags>(actor)) World.Add(actor, new DirtyFlags());
+
+            ref var tags = ref World.Get<GameplayTagContainer>(actor);
+            ref var counts = ref World.Get<TagCountContainer>(actor);
+            ref var dirty = ref World.Get<DirtyFlags>(actor);
+            _tagOps.RemoveTag(ref tags, ref counts, toggleSpec.ToggleTagId, ref dirty);
             
             // Remove active effects by tag (the effects are tagged with the toggle tag,
             // so removing the tag will cause EffectLifetimeSystem to clean them up via ExpireCondition)

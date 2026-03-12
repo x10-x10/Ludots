@@ -32,6 +32,7 @@ namespace Ludots.Core.Input.Selection
         private readonly World _world;
         private readonly Dictionary<string, object> _globals;
         private readonly Entity[] _boxSelectionScratch = new Entity[SelectionBuffer.CAPACITY];
+        private bool _suppressConfirmRelease;
 
         public int PickRadiusCm { get; set; } = 120;
         public Action<WorldCmInt2, Entity>? OnEntitySelected { get; set; }
@@ -61,6 +62,12 @@ namespace Ludots.Core.Input.Selection
             bool confirmDown = input.IsDown(bindings.ConfirmActionId);
             bool confirmPressed = input.PressedThisFrame(bindings.ConfirmActionId);
             bool confirmReleased = input.ReleasedThisFrame(bindings.ConfirmActionId);
+            bool selectionSuppressed = IsSelectionSuppressed();
+
+            if (selectionSuppressed && confirmPressed)
+            {
+                _suppressConfirmRelease = true;
+            }
 
             bool hasGroundPoint = TryResolveGroundPointer(pointer, out var groundWorldCm, out var hovered);
             UpdateHoveredEntity(hovered);
@@ -68,7 +75,16 @@ namespace Ludots.Core.Input.Selection
             bool hasOwner = TryGetSelectionOwner(out var owner);
             if (!hasOwner)
             {
-                HandleLegacyClickWithoutSelectionOwner(confirmReleased, hasGroundPoint, groundWorldCm, hovered);
+                if (_suppressConfirmRelease && confirmReleased)
+                {
+                    _suppressConfirmRelease = false;
+                    return;
+                }
+
+                if (!selectionSuppressed)
+                {
+                    HandleLegacyClickWithoutSelectionOwner(confirmReleased, hasGroundPoint, groundWorldCm, hovered);
+                }
                 return;
             }
 
@@ -78,6 +94,22 @@ namespace Ludots.Core.Input.Selection
             ref var selection = ref _world.Get<SelectionBuffer>(owner);
 
             PruneInvalidSelection(owner, ref selection);
+
+            if (selectionSuppressed || _suppressConfirmRelease)
+            {
+                if (drag.Active)
+                {
+                    drag.Clear();
+                }
+
+                if (_suppressConfirmRelease && confirmReleased)
+                {
+                    _suppressConfirmRelease = false;
+                }
+
+                SyncPrimarySelectedEntity(in selection);
+                return;
+            }
 
             if (confirmPressed)
             {
@@ -147,6 +179,13 @@ namespace Ludots.Core.Input.Selection
                    localObj is Entity local &&
                    _world.IsAlive(local) &&
                    (owner = local) != Entity.Null;
+        }
+
+        private bool IsSelectionSuppressed()
+        {
+            return _globals.TryGetValue(CoreServiceKeys.ActiveInputOrderMapping.Name, out var mappingObj) &&
+                   mappingObj is Ludots.Core.Input.Orders.InputOrderMappingSystem mapping &&
+                   mapping.IsAiming;
         }
 
         private void EnsureSelectionComponents(Entity owner)
