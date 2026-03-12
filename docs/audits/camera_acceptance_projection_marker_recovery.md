@@ -41,7 +41,7 @@
   * UI 样式调用收缩到当前运行时稳定可用的字符串样式接口，避免 `Ludots.UI` 运行时 API 不匹配阻断验收
 * `mods/showcases/camera/CameraShowcaseMod/UI/CameraShowcasePanelController.cs`
   * 同步应用相同的 UI root 边界修复，避免 showcase 重复吞掉 world click
-* `src/Tests/GasTests/Production/CameraAcceptanceModTests.cs`
+* `src/Tests/ThreeCTests/CameraAcceptanceModTests.cs`
   * 增加 panel 不应捕获卡片外 world click 的回归测试
 
 ## 4 验证
@@ -53,14 +53,12 @@
 
 真实运行验证：
 
-1. `scripts/run-mod-launcher.cmd cli mods build --mods CameraAcceptanceMod`
-2. `scripts/run-mod-launcher.cmd cli app build`
-3. `scripts/run-mod-launcher.cmd cli gamejson write --mods CameraAcceptanceMod`
-4. `scripts/run-mod-launcher.cmd cli run`
+1. `scripts/run-mod-launcher.cmd cli resolve camera_acceptance --adapter raylib`
+2. `scripts/run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib`
 
 运行结果：
 
-* `game.json` 仅加载 `LudotsCoreMod`、`CoreInputMod`、`CameraAcceptanceMod`
+* `resolve` 会显示 `rootMods=CameraAcceptanceMod`，并把 `orderedMods` 展开为 `LudotsCoreMod`、`CoreInputMod`、`CameraAcceptanceMod`
 * live app 中 projection marker 已重新出现
 
 ## 5 结论

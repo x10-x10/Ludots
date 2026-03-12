@@ -1,148 +1,186 @@
-# CLI 运行与 Launcher 手册
+# Launcher CLI Runbook
 
-本文收口 Ludots 的启动脚本、CLI 入口和推荐 Mod 组合。当前 GUI 主路径是 `Ludots.Editor.Bridge` + `Ludots.Launcher.React`，不再把 WPF `ModLauncher` 作为新增能力的主承载面。
+本文定义 Ludots 启动器的规范 CLI 体验。产品面只保留一条启动主线:
 
-## 1 启动脚本
+- 可视化 launcher: `.\scripts\run-mod-launcher.cmd`
+- CLI launcher: `.\scripts\run-mod-launcher.cmd cli ...`
 
-### 1.1 Web Launcher
+两条入口都复用同一套 backend: `src/Tools/Ludots.Launcher.Backend/LauncherService.cs`，并通过 `src/Tools/Ludots.Editor.Bridge/Program.cs` 暴露给 web launcher。
 
-推荐直接启动 Web launcher：
+## 1 状态文件
 
-```bash
-.\scripts\run-launcher.cmd
+启动器状态拆成四类文件，职责不混用:
+
+- `launcher.config.json`
+  仓库级扫描根、binding、默认 adapter、project hint。`mod` 可以在任意路径，只要落在 `scanRoots` 内，或者被 `binding set --path ...` / `path:...` 显式指定。
+- `launcher.presets.json`
+  仓库级预设。保存 selector 组合、adapter 和 build mode。
+- `%AppData%/Ludots/Launcher/preferences.json`
+  用户偏好。只保存最近一次选择的 adapter / preset。
+- `%AppData%/Ludots/Launcher/config.overlay.json`
+  用户覆盖层。用于本机追加 scan root、binding 或 project hint，不污染仓库配置。
+
+运行时 bootstrap 不走以上三类文件:
+
+- `launcher.runtime.json`
+  启动时自动写到目标 adapter 输出目录，只包含 `ModPaths`。
+- `game.json`
+  变成可选调试入口。只有你绕过 launcher、直接运行 adapter app 时才需要手工传入；产品路径默认用 `launcher.runtime.json`。
+
+实际运行配置仍然来自 `src/Core/Config/ConfigPipeline.cs` 对 `assets/Configs/game.json`、`<Mod>/assets/game.json`、`<Mod>/assets/Configs/game.json` 的合并。
+
+## 2 Selector 模型
+
+CLI 统一接受 selector，而不是只接受固定 `mods/` 目录里的 mod id。
+
+支持的 selector:
+
+```text
+$camera_acceptance
+camera_acceptance
+mod:CameraAcceptanceMod
+path:mods/fixtures/camera/CameraAcceptanceMod
+preset:camera_acceptance_web
 ```
 
-或使用 PowerShell：
+规则:
 
-```bash
-.\scripts\run-launcher.ps1
+- `$alias`
+  直接命中 `launcher.config.json` 里的 binding。
+- `alias`
+  PowerShell 友好的 binding 简写。如果同名 binding 存在，优先解析成 `$alias`；否则解析成 `mod:<id>`。
+- `mod:<ModId>`
+  直接按 manifest id 解析。
+- `path:<mod-root>`
+  直接指向任意 mod 根目录，不要求它位于 `mods/`。
+- `preset:<presetId>`
+  复用预设里的 selector 集合。
+
+一个 `launch` / `resolve` 可以接收多个 selector。启动器会自动补齐依赖、导出 SDK ref dll，并对最终启动配置做显式诊断。
+
+## 3 常用命令
+
+### 3.1 查看启动计划
+
+```powershell
+.\scripts\run-mod-launcher.cmd cli resolve camera_acceptance --adapter raylib
+.\scripts\run-mod-launcher.cmd cli resolve camera_acceptance nav_playground --adapter web
+.\scripts\run-mod-launcher.cmd cli resolve --mod CameraAcceptanceMod --mod Navigation2DPlaygroundMod --adapter raylib --json
 ```
 
-这会启动：
+`resolve` 会输出:
 
-- `src/Tools/Ludots.Editor.Bridge/Ludots.Editor.Bridge.csproj`
-- `src/Tools/Ludots.Launcher.React`
+- `rootMods`: 用户显式选择的 root mod
+- `orderedMods`: 自动补齐依赖后的真实加载顺序
+- `startup`:
+  - `defaultCoreMod`
+  - `startupMapId`
+  - `startupInputContexts`
+- `warnings`: 多 root mod 时哪个 `startupMapId` 最终生效，以及生效来源文件
 
-默认地址：
+多 mod 同时提供 `startupMapId` 时，运行时仍然只会启动一个 map。以 `orderedMods` 中最后写入对应字段的 fragment 为准，所以先跑 `resolve` 再 `launch` 是规范体验。
 
-- Bridge: `http://localhost:5299`
-- Launcher: `http://localhost:5174`
+### 3.2 启动游戏
 
-停止：
-
-```bash
-.\scripts\stop-launcher.cmd
+```powershell
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib
+.\scripts\run-mod-launcher.cmd cli launch nav_playground --adapter web
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance nav_playground --adapter raylib
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance nav_playground --adapter web
 ```
 
-### 1.2 Editor + Bridge
+行为约定:
 
-地图编辑器仍走独立的 editor 前端：
+- `--adapter raylib|web` 显式指定适配层；不传时回落到用户偏好或仓库默认 adapter。
+- 依赖 mod、主 dll、ref dll、graph compile 都由 launcher backend 自动处理。
+- 所有 mod 开发者和玩家都走同一条启动链路，不再要求手工 `gamejson write`。
 
-```bash
-.\scripts\run-editor.cmd
-.\scripts\stop-editor.cmd
+### 3.3 录制启动证据
+
+```powershell
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib --record artifacts/acceptance/launcher-camera-acceptance-raylib
+.\scripts\run-mod-launcher.cmd cli launch nav_playground --adapter web --record artifacts/acceptance/launcher-nav-playground-web
 ```
 
-### 1.3 ModLauncher CLI
+`--record` 会生成多帧截图、摘要和签名。当前 cross-adapter 证据见:
 
-`ModLauncher` 保留 CLI 能力，用于构建、写入 `game.json` 和运行桌面 App：
+- `artifacts/acceptance/launcher-camera-acceptance-raylib`
+- `artifacts/acceptance/launcher-camera-acceptance-web`
+- `artifacts/acceptance/launcher-nav-playground-raylib`
+- `artifacts/acceptance/launcher-nav-playground-web`
 
-```bash
-.\scripts\run-mod-launcher.cmd cli <primary> <secondary> [options]
-.\scripts\run-mod-launcher.ps1 cli <primary> <secondary> [options]
+### 3.4 管理工作区和 binding
+
+```powershell
+.\scripts\run-mod-launcher.cmd cli workspace list
+.\scripts\run-mod-launcher.cmd cli workspace add --path ..\ExternalMods
+
+.\scripts\run-mod-launcher.cmd cli binding list
+.\scripts\run-mod-launcher.cmd cli binding set camera_acceptance --path mods/fixtures/camera/CameraAcceptanceMod --project CameraAcceptanceMod.csproj
+.\scripts\run-mod-launcher.cmd cli binding set nav_playground --path mods/Navigation2DPlaygroundMod --project Navigation2DPlaygroundMod.csproj
 ```
 
-注意：
+说明:
 
-- `run-mod-launcher.cmd` 会原样转发参数，不要额外插入 `--`。
-- 规范写法是 `.\scripts\run-mod-launcher.cmd cli ...`，不是 `.\scripts\run-mod-launcher.cmd -- cli ...`。
+- `workspace add` 会把目录加到 `launcher.config.json` 的 `scanRoots`，递归扫描其中所有 `mod.json`。
+- `binding set --path ...` 显式建立“变量名 -> 路径”的映射，适合放仓库内外任意位置的 mod。
+- `--project` 用于指定 csproj；launcher 仍会自动解析依赖和主 dll。
 
-## 2 ModLauncher CLI 常用命令
+### 3.5 管理预设
 
-```bash
-# 导出 Mod SDK
+```powershell
+.\scripts\run-mod-launcher.cmd cli preset list
+.\scripts\run-mod-launcher.cmd cli preset save --name camera-web camera_acceptance --adapter web
+.\scripts\run-mod-launcher.cmd cli preset save --name camera-nav-raylib camera_acceptance nav_playground --adapter raylib
+.\scripts\run-mod-launcher.cmd cli preset select preset_camera-nav-raylib
+```
+
+预设保存的是 selector 组合，不是展开后的固定 mod 列表，因此依赖和 binding 变化会在下次 `resolve`/`launch` 时自动重新计算。
+
+### 3.6 构建、SDK 和工程辅助
+
+```powershell
+.\scripts\run-mod-launcher.cmd cli build camera_acceptance --adapter raylib
+.\scripts\run-mod-launcher.cmd cli build app --adapter web
 .\scripts\run-mod-launcher.cmd cli sdk export
-
-# 构建 Raylib App
-.\scripts\run-mod-launcher.cmd cli app build
-
-# 构建指定 Mod
-.\scripts\run-mod-launcher.cmd cli mods build --mods "MyModA;MyModB"
-
-# 写入运行时 game.json
-.\scripts\run-mod-launcher.cmd cli gamejson write --mods "MyModA;MyModB"
-
-# 运行 Raylib App
-.\scripts\run-mod-launcher.cmd cli run
-
-# CameraShowcaseMod quick path
-.\scripts\run-mod-launcher.cmd cli mods build --mods "CameraShowcaseMod"
-.\scripts\run-mod-launcher.cmd cli app build
-.\scripts\run-mod-launcher.cmd cli gamejson write --mods "CameraShowcaseMod"
-.\scripts\run-mod-launcher.cmd cli run
+.\scripts\run-mod-launcher.cmd cli mod fix-project CameraAcceptanceMod
+.\scripts\run-mod-launcher.cmd cli mod solution CameraAcceptanceMod
 ```
 
-补充约束：
+说明:
 
-- `cli run` 不接受 `--mods`；它只会读取 Raylib 可执行文件旁边的 `game.json`。
-- 启动指定 Mod 的规范顺序是 `mods build -> app build -> gamejson write -> run`。
-- 真正加载了哪些 Mod，以 exe 旁 `game.json` 的 `ModPaths` 为准，不以“进程起来了”作为证据。
+- `build` 仍然可用，但只是 `launch` 的子流程，不再是普通用户的主路径。
+- `sdk export` 会导出 mod SDK 和 ref dll，保证开发态与玩家启动态共用一套产物约定。
 
-## 3 CLI Options
+## 4 Web Launcher 与 CLI 的关系
 
-- `--preset <id>`：使用预设的 Mod 组合。
-- `--config <path>`：指定 launcher 配置文件。
-- `--mod <name>`：追加单个 Mod。
-- `--mods "<a;b;c>"`：一次传入多个 Mod，使用 `;` 分隔。
+`.\scripts\run-mod-launcher.cmd` 不带 `cli` 时，会:
 
-## 4 推荐 Mod 组合
+1. 构建 `src/Tools/Ludots.Launcher.React`
+2. 确保 `src/Tools/Ludots.Editor.Bridge/Ludots.Editor.Bridge.csproj` 已启动
+3. 打开 `http://localhost:5299/launcher/`
 
-- `CoreInputMod` + `CameraProfilesMod`
-  用于共享输入 + 视角模式切换。
-- `CoreInputMod` + `CameraProfilesMod` + `CameraBootstrapMod`
-  用于地图默认视角 + 按地图边界自动归中。
-- `CoreInputMod` + `CameraProfilesMod` + `VirtualCameraShotsMod`
-  用于 declarative virtual camera shots。
-- `CameraAcceptanceMod`
-  最小验收夹具；会组合 `CameraProfilesMod`、`CameraBootstrapMod`、`VirtualCameraShotsMod`。
-- `CameraShowcaseMod`
-  生产级 camera 示例；会组合共享 profile、showcase profile、stack shot、selection follow、bootstrap 与 pose override。
-- `MobaDemoMod`
-  完整 MOBA 示例；保留通用输入主线。
+Bridge 的 `/api/launch` 直接调用 `LauncherService.LaunchAsync(...)`。因此 web launcher 和 CLI 复用同一套:
 
-## 5 工作目录与调试
+- selector 解析
+- dependency closure
+- startup diagnostics
+- SDK / ref dll 导出
+- adapter 启动逻辑
 
-### 5.1 `game.json` 的职责
+## 5 直接调试 adapter app
 
-App 旁边的 `game.json` 只承担引导职责：
+如果你需要绕过 launcher 直接调试 adapter 进程，可以手工传 bootstrap 文件:
 
-- 仅包含 `ModPaths`
-- 不承载实际运行时配置
-- 实际配置由 ConfigPipeline 从 Core + Mods 合并
-
-### 5.2 IDE 调试
-
-Raylib App 调试建议：
-
-- Project: `Ludots.App.Raylib`
-- Arguments: `game.json`
-- Working Directory: 指向可执行文件输出目录
-
-### 5.3 Web launcher 调试
-
-推荐分两个终端：
-
-```bash
-dotnet run --project src/Tools/Ludots.Editor.Bridge/Ludots.Editor.Bridge.csproj
+```powershell
+dotnet run --project src/Apps/Raylib/Ludots.App.Raylib/Ludots.App.Raylib.csproj -c Release -- launcher.runtime.json
+dotnet run --project src/Apps/Web/Ludots.App.Web/Ludots.App.Web.csproj -c Release -- launcher.runtime.json
 ```
 
-```bash
-cd src/Tools/Ludots.Launcher.React
-npm run dev
-```
+这里的 `launcher.runtime.json` 仍然只负责 `ModPaths`。真正的 `startupMapId`、`defaultCoreMod`、`startupInputContexts` 仍然由 `ConfigPipeline` 从 Core + Mods 合并得到。
 
 ## 6 相关文档
 
-- 环境与构建：见 `docs/conventions/03_environment_setup.md`
-- 启动顺序与入口：见 `docs/architecture/startup_entrypoints.md`
-- Mod 运行时唯一真相：见 `docs/architecture/mod_runtime_single_source_of_truth.md`
+- [开发环境与构建](../conventions/03_environment_setup.md)
+- [启动顺序与入口点](../architecture/startup_entrypoints.md)
+- [统一 launcher CLI RFC](../rfcs/RFC-0001-unified-launcher-cli-and-workspace.md)
