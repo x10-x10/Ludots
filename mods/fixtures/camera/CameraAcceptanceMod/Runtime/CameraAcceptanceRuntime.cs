@@ -65,26 +65,19 @@ namespace CameraAcceptanceMod.Runtime
 
         public void RefreshPanel(GameEngine engine)
         {
-            string? activeMapId = engine.CurrentMapSession?.MapId.Value;
-            if (CameraAcceptanceIds.IsAcceptanceMap(activeMapId))
-            {
-                MountPanel(engine, activeMapId!);
-            }
-            else
-            {
-                ClearPanelIfOwned(engine);
-            }
-        }
-
-        private void MountPanel(GameEngine engine, string activeMapId)
-        {
             if (engine.GetService(CoreServiceKeys.UIRoot) is not UIRoot root)
             {
                 return;
             }
 
-            root.MountScene(_panelController.BuildScene(engine, activeMapId));
-            root.IsDirty = true;
+            string? activeMapId = engine.CurrentMapSession?.MapId.Value;
+            if (!CameraAcceptanceIds.IsAcceptanceMap(activeMapId))
+            {
+                ClearPanelIfOwned(engine);
+                return;
+            }
+
+            _panelController.MountOrSync(root, engine);
         }
 
         private void ClearPanelIfOwned(ScriptContext context)

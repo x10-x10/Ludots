@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Text;
 using Arch.Core;
 using CameraAcceptanceMod;
 using Ludots.Core.Components;
@@ -19,6 +20,7 @@ using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
 using Ludots.UI;
 using Ludots.UI.Input;
+using Ludots.UI.Runtime;
 using Ludots.Platform.Abstractions;
 using NUnit.Framework;
 
@@ -153,6 +155,65 @@ namespace Ludots.Tests.ThreeC.Acceptance
 
             Assert.That(handledOutside, Is.False, "World clicks outside the panel card must pass through to gameplay input.");
             Assert.That(handledInside, Is.True, "Clicks on the panel card should remain UI-interactive.");
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_Panel_ReusesSameSceneReferenceAcrossPresentationTicks()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
+            LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
+
+            UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Acceptance panel should mount when a UIRoot service is present.");
+            long initialVersion = scene.Version;
+
+            Tick(engine, 3);
+
+            Assert.That(ReferenceEquals(scene, uiRoot.Scene), Is.True,
+                "Camera acceptance panel must keep one mounted UiScene and update it reactively instead of remounting every presentation tick.");
+            Assert.That(scene.Version, Is.EqualTo(initialVersion),
+                "Idle presentation ticks should not trigger unnecessary panel recomposition.");
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_Panel_SelectionStateUpdatesWithinMountedReactiveScene()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
+            LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
+
+            UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Acceptance panel should mount when a UIRoot service is present.");
+            long initialVersion = scene.Version;
+
+            Entity hero = FindEntityByName(engine.World, CameraAcceptanceIds.HeroName);
+            Entity scout = FindEntityByName(engine.World, CameraAcceptanceIds.ScoutName);
+            Entity captain = FindEntityByName(engine.World, CameraAcceptanceIds.CaptainName);
+            var projector = engine.GetService(CoreServiceKeys.ScreenProjector);
+            Assert.That(projector, Is.Not.Null);
+
+            Vector2 heroScreen = ProjectEntity(engine, projector!, hero);
+            Vector2 captainScreen = ProjectEntity(engine, projector!, captain);
+
+            var backend = GetInputBackend(engine);
+            DragMouse(engine, backend, "<Mouse>/LeftButton", heroScreen - new Vector2(24f, 24f), captainScreen + new Vector2(24f, 24f));
+            Tick(engine, 1);
+
+            Assert.That(ReferenceEquals(scene, uiRoot.Scene), Is.True,
+                "Reactive panel updates must preserve the mounted scene instance so pointer capture and focus are not reset.");
+            Assert.That(scene.Version, Is.GreaterThan(initialVersion),
+                "Selection changes should advance the reactive panel scene version.");
+
+            string sceneText = ExtractUiSceneText(scene);
+            Assert.That(sceneText, Does.Contain("Selection Buffer"));
+            Assert.That(sceneText, Does.Contain($"#{hero.Id}"));
+            Assert.That(sceneText, Does.Contain($"#{scout.Id}"));
+            Assert.That(sceneText, Does.Contain($"#{captain.Id}"));
         }
 
         [Test]
@@ -503,6 +564,36 @@ namespace Ludots.Tests.ThreeC.Acceptance
             }
 
             return lines;
+        }
+
+        private static string ExtractUiSceneText(UiScene scene)
+        {
+            if (scene.Root == null)
+            {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder();
+            AppendUiNodeText(scene.Root, sb);
+            return sb.ToString();
+        }
+
+        private static void AppendUiNodeText(UiNode node, StringBuilder sb)
+        {
+            if (!string.IsNullOrWhiteSpace(node.TextContent))
+            {
+                if (sb.Length > 0)
+                {
+                    sb.AppendLine();
+                }
+
+                sb.Append(node.TextContent);
+            }
+
+            for (int i = 0; i < node.Children.Count; i++)
+            {
+                AppendUiNodeText(node.Children[i], sb);
+            }
         }
 
         private static void AssertProjectionViewportState(GameEngine engine)
