@@ -170,8 +170,20 @@ namespace Ludots.Core.Input.Orders
         /// <summary>Whether the system is currently in aiming state (AimCast).</summary>
         public bool IsAiming => _isAiming;
 
+        /// <summary>Whether the current aiming interaction is a two-phase vector aim.</summary>
+        public bool IsVectorAiming => _isVectorAiming;
+
         /// <summary>The ActionId of the mapping being aimed (valid only when IsAiming).</summary>
         public string AimingActionId => _aimingActionId;
+
+        /// <summary>The currently active aiming mapping, including user overrides.</summary>
+        public InputOrderMapping? CurrentAimingMapping => _aimingMapping;
+
+        /// <summary>The current vector aim phase. Valid only when <see cref="IsVectorAiming"/> is true.</summary>
+        public VectorAimPhase VectorAimPhase => _vectorAimPhase;
+
+        /// <summary>The locked origin for vector aiming. Valid only during direction phase.</summary>
+        public Vector3 VectorAimOrigin => _vectorAimOrigin;
 
         /// <summary>The confirm action ID used to fire the aimed ability. Default: "Select" (left-click).</summary>
         public string ConfirmActionId { get; set; } = "Select";
@@ -436,6 +448,7 @@ namespace Ludots.Core.Input.Orders
             }
             
             _aimingStateChangedHandler?.Invoke(true, mapping);
+            EmitAimingPreviewOnEnter(mapping);
         }
 
         private void ExitAimingState()
@@ -583,6 +596,22 @@ namespace Ludots.Core.Input.Orders
                     }
                     break;
             }
+        }
+
+        private void EmitAimingPreviewOnEnter(InputOrderMapping mapping)
+        {
+            if (_isVectorAiming)
+            {
+                Vector3 cursorPos = default;
+                if (_groundPositionProvider != null && _groundPositionProvider(out cursorPos))
+                {
+                    _vectorAimUpdateHandler?.Invoke(mapping, cursorPos, cursorPos, VectorAimPhase.Origin);
+                }
+
+                return;
+            }
+
+            _aimingUpdateHandler?.Invoke(mapping);
         }
 
         // Order building

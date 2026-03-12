@@ -161,12 +161,29 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         bbEntities.TryGet(OrderBlackboardKeys.Cast_TargetEntity, out targetEntity);
                     }
 
+                    AbilityDefinition abilityDef = default;
+                    bool hasAbilityDef = slot.AbilityId > 0 &&
+                        _abilityDefinitions != null &&
+                        _abilityDefinitions.TryGet(slot.AbilityId, out abilityDef);
+
+                    // Toggle check comes before activation block tags so a toggled-on ability
+                    // can always be turned off, even while its reactivate cooldown is present.
+                    if (hasAbilityDef &&
+                        abilityDef.HasToggleSpec &&
+                        abilityDef.ToggleSpec.ToggleTagId > 0 &&
+                        hasActorTags &&
+                        actorTags.HasTag(abilityDef.ToggleSpec.ToggleTagId))
+                    {
+                        DeactivateToggle(actor, in abilityDef.ToggleSpec, slotIndex, slot.AbilityId, targetEntity);
+                        continue;
+                    }
+
                     // Block-tag check
                     AbilityActivationBlockTags blockTags = default;
                     bool hasBlockTags = false;
-                    if (slot.AbilityId > 0 && _abilityDefinitions != null && _abilityDefinitions.TryGet(slot.AbilityId, out var def) && def.HasActivationBlockTags)
+                    if (hasAbilityDef && abilityDef.HasActivationBlockTags)
                     {
-                        blockTags = def.ActivationBlockTags;
+                        blockTags = abilityDef.ActivationBlockTags;
                         hasBlockTags = true;
                     }
                     else if (slot.TemplateEntityId > 0)
@@ -216,27 +233,12 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         }
                     }
 
-                    // 鈹€鈹€ Toggle check: if ability has toggle spec and toggle tag is ON, deactivate instead 鈹€鈹€
-                    if (slot.AbilityId > 0 && _abilityDefinitions != null &&
-                        _abilityDefinitions.TryGet(slot.AbilityId, out var toggleDef) &&
-                        toggleDef.HasToggleSpec && toggleDef.ToggleSpec.ToggleTagId > 0 &&
-                        hasActorTags &&
-                        actorTags.HasTag(toggleDef.ToggleSpec.ToggleTagId))
-                    {
-                        DeactivateToggle(actor, ref actorTags, in toggleDef.ToggleSpec, slotIndex, slot.AbilityId, targetEntity);
-                        continue;
-                    }
-
                     if (!World.Has<AbilityExecInstance>(actor))
                     {
                         World.Add(actor, new AbilityExecInstance());
                     }
 
-                    GasClockId defaultClockId = GasClockId.Step;
-                    if (slot.AbilityId > 0 && _abilityDefinitions != null && _abilityDefinitions.TryGet(slot.AbilityId, out var aDef))
-                    {
-                        defaultClockId = aDef.ExecSpec.ClockId;
-                    }
+                    GasClockId defaultClockId = hasAbilityDef ? abilityDef.ExecSpec.ClockId : GasClockId.Step;
 
                     // Read OrderId from active OrderBuffer entry
                     int orderId = 0;
@@ -563,7 +565,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             var t = EntityUtil.Reconstruct(ids[i], wids[i], vers[i]);
                             if (!World.IsAlive(t)) continue;
                             PublishEffectRequest(actor, t, inst.TargetContext, templateId,
-                                hasCp ? callerPool.Get(cpIdx) : default, hasCp);
+                                hasCp ? callerPool.Get(cpIdx) : default, hasCp, in inst);
                         }
                     }
                 }
@@ -571,23 +573,49 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             else
             {
                 PublishEffectRequest(actor, target, inst.TargetContext, templateId,
-                    hasCp ? callerPool.Get(cpIdx) : default, hasCp);
+                    hasCp ? callerPool.Get(cpIdx) : default, hasCp, in inst);
             }
         }
 
         private void PublishEffectRequest(Entity source, Entity target, Entity targetContext,
-            int templateId, in EffectConfigParams callerParams, bool hasCallerParams)
+            int templateId, in EffectConfigParams callerParams, bool hasCallerParams, in AbilityExecInstance inst)
         {
+            var resolvedCallerParams = callerParams;
+            bool resolvedHasCallerParams = hasCallerParams;
+            resolvedHasCallerParams |= TryAppendSpatialCallerParams(ref resolvedCallerParams, in inst);
+
             var req = new EffectRequest
             {
                 Source = source,
                 Target = target,
                 TargetContext = targetContext,
                 TemplateId = templateId,
-                HasCallerParams = hasCallerParams,
+                HasCallerParams = resolvedHasCallerParams,
             };
-            if (hasCallerParams) req.CallerParams = callerParams;
+            if (resolvedHasCallerParams)
+            {
+                req.CallerParams = resolvedCallerParams;
+            }
+
             _effectRequests.Publish(req);
+        }
+
+        private static bool TryAppendSpatialCallerParams(ref EffectConfigParams callerParams, in AbilityExecInstance inst)
+        {
+            bool added = false;
+            if (inst.HasTargetPos != 0)
+            {
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetPosX, inst.TargetPosCm.X.ToFloat());
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetPosY, inst.TargetPosCm.Y.ToFloat());
+            }
+
+            if (inst.HasTargetOriginPos != 0)
+            {
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetOriginX, inst.TargetOriginPosCm.X.ToFloat());
+                added |= callerParams.TryAddFloat(EffectParamKeys.TargetOriginY, inst.TargetOriginPosCm.Y.ToFloat());
+            }
+
+            return added;
         }
 
         // 鈹€鈹€ Tag Clip (add at start, auto-remove via TimedTag) 鈹€鈹€
@@ -838,10 +866,15 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private void ActivateToggle(Entity actor, in AbilityToggleSpec toggleSpec)
         {
             if (!World.IsAlive(actor)) return;
-            if (!World.Has<GameplayTagContainer>(actor)) return;
-            
+            EnsureTagComponents(actor);
+            if (!World.Has<DirtyFlags>(actor)) World.Add(actor, new DirtyFlags());
+
             ref var tags = ref World.Get<GameplayTagContainer>(actor);
-            tags.AddTag(toggleSpec.ToggleTagId);
+            if (tags.HasTag(toggleSpec.ToggleTagId)) return;
+
+            ref var counts = ref World.Get<TagCountContainer>(actor);
+            ref var dirty = ref World.Get<DirtyFlags>(actor);
+            _tagOps.AddTag(ref tags, ref counts, toggleSpec.ToggleTagId, ref dirty);
             
             // Apply active effects as infinite-duration effects
             unsafe
@@ -867,11 +900,16 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         /// Deactivate toggle: remove toggle tag and active effects, then optionally
         /// run the deactivate timeline. If no deactivate timeline, completes instantly.
         /// </summary>
-        private void DeactivateToggle(Entity actor, ref GameplayTagContainer actorTags,
+        private void DeactivateToggle(Entity actor,
             in AbilityToggleSpec toggleSpec, int slotIndex, int abilityId, Entity targetEntity)
         {
-            // Remove toggle tag
-            actorTags.RemoveTag(toggleSpec.ToggleTagId);
+            EnsureTagComponents(actor);
+            if (!World.Has<DirtyFlags>(actor)) World.Add(actor, new DirtyFlags());
+
+            ref var tags = ref World.Get<GameplayTagContainer>(actor);
+            ref var counts = ref World.Get<TagCountContainer>(actor);
+            ref var dirty = ref World.Get<DirtyFlags>(actor);
+            _tagOps.RemoveTag(ref tags, ref counts, toggleSpec.ToggleTagId, ref dirty);
             
             // Remove active effects by tag (the effects are tagged with the toggle tag,
             // so removing the tag will cause EffectLifetimeSystem to clean them up via ExpireCondition)

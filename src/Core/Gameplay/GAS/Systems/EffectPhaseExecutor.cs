@@ -81,7 +81,8 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             EffectPresetType presetType,
             BuiltinHandlerExecutionContext? builtinRuntime = null)
         {
-            ExecutePhase(world, api, caster, target, targetContext, targetPos, phase, behavior, presetType, effectTagId: 0, effectTemplateId: 0, builtinRuntime);
+            EffectConfigParams mergedParams = default;
+            ExecutePhase(world, api, caster, target, targetContext, targetPos, phase, behavior, presetType, effectTagId: 0, effectTemplateId: 0, in mergedParams, builtinRuntime);
         }
 
         /// <summary>
@@ -101,6 +102,25 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             int effectTemplateId,
             BuiltinHandlerExecutionContext? builtinRuntime = null)
         {
+            EffectConfigParams mergedParams = default;
+            ExecutePhase(world, api, caster, target, targetContext, targetPos, phase, behavior, presetType, effectTagId, effectTemplateId, in mergedParams, builtinRuntime);
+        }
+
+        public void ExecutePhase(
+            World world,
+            IGraphRuntimeApi api,
+            Entity caster,
+            Entity target,
+            Entity targetContext,
+            IntVector2 targetPos,
+            EffectPhaseId phase,
+            in EffectPhaseGraphBindings behavior,
+            EffectPresetType presetType,
+            int effectTagId,
+            int effectTemplateId,
+            in EffectConfigParams mergedParams,
+            BuiltinHandlerExecutionContext? builtinRuntime = null)
+        {
             // ① Pre graph (user-defined)
             int preGraphId = behavior.GetGraphId(phase, PhaseSlot.Pre);
             if (preGraphId > 0)
@@ -111,7 +131,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             // ② Main handler (unless SkipMain)
             if (!behavior.IsSkipMain(phase))
             {
-                ExecuteMainHandler(world, api, caster, target, targetContext, targetPos, phase, presetType, effectTemplateId, builtinRuntime);
+                ExecuteMainHandler(world, api, caster, target, targetContext, targetPos, phase, presetType, effectTemplateId, in mergedParams, builtinRuntime);
             }
 
             // ③ Post graph (user-defined)
@@ -141,6 +161,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             EffectPhaseId phase,
             EffectPresetType presetType,
             int effectTemplateId,
+            in EffectConfigParams mergedParams,
             BuiltinHandlerExecutionContext? builtinRuntime)
         {
             if (!_presetTypes.IsRegistered(presetType)) return;
@@ -161,10 +182,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     }
                     ref readonly var tplData = ref _templates.GetRef(tplIdx);
                     var context = new EffectContext { Source = caster, Target = target, TargetContext = targetContext };
-                    var mergedParams = tplData.ConfigParams;
+                    var builtinParams = mergedParams.Count > 0 ? mergedParams : tplData.ConfigParams;
                     _builtinHandlers.Invoke(
                         (BuiltinHandlerId)handler.HandlerId,
-                        world, default, ref context, in mergedParams, in tplData, builtinRuntime);
+                        world, default, ref context, in builtinParams, in tplData, builtinRuntime);
                     break;
                 }
                 case PhaseHandlerKind.Graph:

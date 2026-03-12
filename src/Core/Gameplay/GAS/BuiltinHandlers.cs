@@ -79,6 +79,7 @@ namespace Ludots.Core.Gameplay.GAS
                 world,
                 in context,
                 in templateData.TargetQuery,
+                in mergedParams,
                 runtime.SpatialQueries,
                 runtime.ResolverBuffer);
 
@@ -111,6 +112,7 @@ namespace Ludots.Core.Gameplay.GAS
                 in templateData.TargetQuery,
                 in templateData.TargetFilter,
                 in templateData.TargetDispatch,
+                in mergedParams,
                 runtime.ResolverBuffer,
                 candidateCount,
                 runtime.FanOutBudget,
@@ -138,6 +140,7 @@ namespace Ludots.Core.Gameplay.GAS
                 world,
                 in context,
                 in templateData.TargetQuery,
+                in mergedParams,
                 runtime.SpatialQueries,
                 runtime.ResolverBuffer);
             if (candidateCount <= 0)
@@ -153,6 +156,7 @@ namespace Ludots.Core.Gameplay.GAS
                 in templateData.TargetQuery,
                 in templateData.TargetFilter,
                 in templateData.TargetDispatch,
+                in mergedParams,
                 runtime.ResolverBuffer,
                 candidateCount,
                 runtime.FanOutBudget,
@@ -211,7 +215,7 @@ namespace Ludots.Core.Gameplay.GAS
             ref readonly var unit = ref templateData.UnitCreation;
             if (unit.Count <= 0) return;
 
-            var origin = ResolveCreateUnitOrigin(world, in context);
+            var origin = ResolveCreateUnitOrigin(world, in context, in mergedParams);
 
             for (int i = 0; i < unit.Count; i++)
             {
@@ -254,6 +258,10 @@ namespace Ludots.Core.Gameplay.GAS
                 targetPointCm = world.Get<WorldPositionCm>(context.TargetContext).Value;
                 hasTargetPoint = true;
             }
+            else if (TryResolvePreservedTargetPoint(in mergedParams, out targetPointCm))
+            {
+                hasTargetPoint = true;
+            }
             else if (world.IsAlive(context.Source) && world.Has<AbilityExecInstance>(context.Source))
             {
                 ref readonly var sourceExec = ref world.Get<AbilityExecInstance>(context.Source);
@@ -282,11 +290,16 @@ namespace Ludots.Core.Gameplay.GAS
                 });
         }
 
-        private static Fix64Vec2 ResolveCreateUnitOrigin(World world, in EffectContext context)
+        private static Fix64Vec2 ResolveCreateUnitOrigin(World world, in EffectContext context, in EffectConfigParams mergedParams)
         {
             if (world.IsAlive(context.TargetContext) && world.Has<WorldPositionCm>(context.TargetContext))
             {
                 return world.Get<WorldPositionCm>(context.TargetContext).Value;
+            }
+
+            if (TryResolvePreservedTargetPoint(in mergedParams, out var preservedPoint))
+            {
+                return preservedPoint;
             }
 
             if (world.IsAlive(context.Source) && world.Has<AbilityExecInstance>(context.Source))
@@ -304,6 +317,19 @@ namespace Ludots.Core.Gameplay.GAS
             }
 
             throw new InvalidOperationException("CreateUnit requires target point or source WorldPositionCm.");
+        }
+
+        private static bool TryResolvePreservedTargetPoint(in EffectConfigParams mergedParams, out Fix64Vec2 targetPointCm)
+        {
+            if (mergedParams.TryGetFloat(EffectParamKeys.TargetPosX, out float x) &&
+                mergedParams.TryGetFloat(EffectParamKeys.TargetPosY, out float y))
+            {
+                targetPointCm = Fix64Vec2.FromFloat(x, y);
+                return true;
+            }
+
+            targetPointCm = default;
+            return false;
         }
 
         private static Fix64Vec2 ComputeScatterOffsetCm(Entity source, int unitTypeId, int index, int radiusCm)

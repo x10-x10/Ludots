@@ -7,8 +7,6 @@ using InteractionShowcaseMod.Runtime;
 using InteractionShowcaseMod.Systems;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS.Orders;
-using Ludots.Core.Gameplay.GAS.Registry;
-using Ludots.Core.Gameplay.GAS.Systems;
 using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Gameplay.Teams;
 using Ludots.Core.Mathematics;
@@ -79,20 +77,8 @@ namespace InteractionShowcaseMod.Triggers
                 SystemGroup.InputCollection);
             engine.RegisterPresentationSystem(new InteractionShowcasePanelPresentationSystem(engine, _runtime));
 
-            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.OrderTypeRegistry.Name, out var orderTypesObj) &&
-                orderTypesObj is OrderTypeRegistry orderTypes)
-            {
-                var config = engine.GetService(CoreServiceKeys.GameConfig);
-                engine.RegisterSystem(
-                    new StopOrderSystem(engine.World, orderTypes, config.Constants.OrderTypeIds["stop"]),
-                    SystemGroup.AbilityActivation);
-                engine.RegisterSystem(
-                    new AbilityMoveWorldCmSystem(engine.World, engine.EventBus, speedCmPerSec: 900f, stopRadiusCm: 40f),
-                    SystemGroup.AbilityActivation);
-            }
-
             WireSelectionFeedback(context, engine);
-            _ctx.Log("[InteractionShowcaseMod] Local order source, move/stop runtime, and selection feedback registered.");
+            _ctx.Log("[InteractionShowcaseMod] Local order source, stress runtime, and selection feedback registered.");
             return Task.CompletedTask;
         }
 

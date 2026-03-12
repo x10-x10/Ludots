@@ -25,6 +25,7 @@ namespace CoreInputMod.Systems
         private readonly World _world;
         private readonly Dictionary<string, object> _globals;
         private readonly OrderQueue _orders;
+        private readonly InputInteractionContextAccessor _context;
 
         public int CastAbilityOrderTypeId { get; }
         public int MoveToOrderTypeId { get; }
@@ -35,6 +36,7 @@ namespace CoreInputMod.Systems
             _world = world;
             _globals = globals;
             _orders = orders;
+            _context = new InputInteractionContextAccessor(world, globals);
             if (globals.TryGetValue(CoreServiceKeys.GameConfig.Name, out var configObj) && configObj is GameConfig config)
             {
                 CastAbilityOrderTypeId = config.Constants.OrderTypeIds["castAbility"];
@@ -71,7 +73,7 @@ namespace CoreInputMod.Systems
             mapping.SetGroundPositionProvider((out Vector3 worldCm) =>
             {
                 worldCm = default;
-                if (!TryGetGroundWorldCm(out var point))
+                if (!_context.TryGetGroundWorldCm(out var point))
                 {
                     return false;
                 }
@@ -79,13 +81,13 @@ namespace CoreInputMod.Systems
                 worldCm = new Vector3(point.X, 0f, point.Y);
                 return true;
             });
-            mapping.SetSelectedEntityProvider((out Entity entity) => TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out entity));
+            mapping.SetSelectedEntityProvider((out Entity entity) => _context.TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out entity));
             mapping.SetSelectedEntitiesProvider((ref OrderEntitySelection entities) =>
             {
                 entities = default;
-                if (!TryGetSelectionOwner(out var owner) || !_world.Has<SelectionBuffer>(owner))
+                if (!_context.TryGetSelectionOwner(out var owner) || !_world.Has<SelectionBuffer>(owner))
                 {
-                    if (!TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out var primary)) return false;
+                    if (!_context.TryGetEntity(CoreServiceKeys.SelectedEntity.Name, out var primary)) return false;
                     entities.Add(primary);
                     return true;
                 }
@@ -111,7 +113,7 @@ namespace CoreInputMod.Systems
 
                 return added > 0;
             });
-            mapping.SetHoveredEntityProvider((out Entity entity) => TryGetEntity(CoreServiceKeys.HoveredEntity.Name, out entity));
+            mapping.SetHoveredEntityProvider((out Entity entity) => _context.TryGetEntity(CoreServiceKeys.HoveredEntity.Name, out entity));
             if (_globals.TryGetValue(CoreServiceKeys.InteractionActionBindings.Name, out var bindingsObj) && bindingsObj is InteractionActionBindings bindings)
             {
                 mapping.ConfirmActionId = bindings.ConfirmActionId;
@@ -124,96 +126,13 @@ namespace CoreInputMod.Systems
                 mapping.SetContextScoredProvider(contextResolver.TryResolve);
             }
 
-            if (TryCreateAbilityIndicatorBridge(out var indicatorBridge))
-            {
-                mapping.SetAimingUpdateHandler(currentMapping =>
-                {
-                    Entity actor = GetControlledActor();
-                    if (!_world.IsAlive(actor))
-                    {
-                        return;
-                    }
-
-                    bool hasCursor = TryGetGroundWorldCm(out var groundCm);
-                    TryGetEntity(CoreServiceKeys.HoveredEntity.Name, out var hovered);
-                    indicatorBridge.UpdateAiming(
-                        actor,
-                        currentMapping,
-                        hasCursor,
-                        new Vector3(groundCm.X, 0f, groundCm.Y),
-                        hovered);
-                });
-                mapping.SetVectorAimUpdateHandler((currentMapping, origin, cursor, phase) =>
-                {
-                    Entity actor = GetControlledActor();
-                    if (!_world.IsAlive(actor))
-                    {
-                        return;
-                    }
-
-                    indicatorBridge.UpdateVectorAiming(actor, currentMapping, origin, cursor, phase);
-                });
-            }
-
             _globals[CoreServiceKeys.ActiveInputOrderMapping.Name] = mapping;
             return mapping;
         }
 
-        public bool TryGetEntity(string key, out Entity entity)
-        {
-            entity = default;
-            if (!_globals.TryGetValue(key, out var value) || value is not Entity candidate || !_world.IsAlive(candidate))
-            {
-                return false;
-            }
-
-            entity = candidate;
-            return true;
-        }
-
-        private bool TryGetSelectionOwner(out Entity owner)
-        {
-            owner = default;
-            return _globals.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localObj) &&
-                   localObj is Entity local &&
-                   _world.IsAlive(local) &&
-                   (owner = local) != Entity.Null;
-        }
-
-        public bool TryGetGroundWorldCm(out WorldCmInt2 worldCm)
-        {
-            worldCm = default;
-            if (!_globals.TryGetValue(CoreServiceKeys.ScreenRayProvider.Name, out var rayProviderObj) || rayProviderObj is not IScreenRayProvider rayProvider)
-            {
-                return false;
-            }
-
-            if (!_globals.TryGetValue(CoreServiceKeys.AuthoritativeInput.Name, out var inputObj) || inputObj is not IInputActionReader input)
-            {
-                return false;
-            }
-
-            var ray = rayProvider.GetRay(input.ReadAction<Vector2>("PointerPos"));
-            return GroundRaycastUtil.TryGetGroundWorldCm(in ray, out worldCm);
-        }
-
         public Entity GetControlledActor(int playerId = 1)
         {
-            if (_globals.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var selectedObj) &&
-                selectedObj is Entity selected &&
-                _world.IsAlive(selected) &&
-                _world.TryGet(selected, out PlayerOwner owner) &&
-                owner.PlayerId == playerId)
-            {
-                return selected;
-            }
-
-            if (_globals.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localObj) && localObj is Entity local)
-            {
-                return local;
-            }
-
-            return default;
+            return _context.GetControlledActor(playerId);
         }
 
         private bool TryCreateContextScoredResolver(out ContextScoredOrderResolver resolver)
@@ -236,19 +155,5 @@ namespace CoreInputMod.Systems
             return true;
         }
 
-        private bool TryCreateAbilityIndicatorBridge(out AbilityIndicatorOverlayBridge bridge)
-        {
-            bridge = default!;
-            if (!_globals.TryGetValue(CoreServiceKeys.AbilityDefinitionRegistry.Name, out var abilitiesObj) ||
-                abilitiesObj is not AbilityDefinitionRegistry abilities ||
-                !_globals.TryGetValue(CoreServiceKeys.GroundOverlayBuffer.Name, out var overlaysObj) ||
-                overlaysObj is not GroundOverlayBuffer overlays)
-            {
-                return false;
-            }
-
-            bridge = new AbilityIndicatorOverlayBridge(_world, abilities, overlays);
-            return true;
-        }
     }
 }

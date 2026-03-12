@@ -514,13 +514,16 @@ namespace Ludots.Core.Engine
             
             // Get order tags from config — fail-fast if missing (SSOT: game.json + OrderStateTags.cs)
             if (!orderTypeIds.ContainsKey("castAbility") ||
-                !orderTypeIds.ContainsKey("attackTarget") || !orderTypeIds.ContainsKey("stop"))
+                !orderTypeIds.ContainsKey("moveTo") ||
+                !orderTypeIds.ContainsKey("attackTarget") ||
+                !orderTypeIds.ContainsKey("stop"))
             {
                 throw new InvalidOperationException(
-                    "game.json constants.orderTypeIds must define all required keys: castAbility, attackTarget, stop. " +
+                    "game.json constants.orderTypeIds must define all required keys: castAbility, moveTo, attackTarget, stop. " +
                     "These are the single source of truth for order type ids.");
             }
             int cfgCastAbility = orderTypeIds["castAbility"];
+            int cfgMoveTo = orderTypeIds["moveTo"];
             int cfgAttackTarget = orderTypeIds["attackTarget"];
             int cfgStop = orderTypeIds["stop"];
             
@@ -538,6 +541,7 @@ namespace Ludots.Core.Engine
             int cfgChainNegate = responseChainOrderTypeIds.GetValueOrDefault("chainNegate", 2);
             int cfgChainActivateEffect = responseChainOrderTypeIds.GetValueOrDefault("chainActivateEffect", 3);
             if (!orderTypeRegistry.IsRegistered(cfgCastAbility) ||
+                !orderTypeRegistry.IsRegistered(cfgMoveTo) ||
                 !orderTypeRegistry.IsRegistered(cfgAttackTarget) ||
                 !orderTypeRegistry.IsRegistered(cfgStop) ||
                 !orderTypeRegistry.IsRegistered(cfgChainPass) ||
@@ -545,7 +549,7 @@ namespace Ludots.Core.Engine
                 !orderTypeRegistry.IsRegistered(cfgChainActivateEffect))
             {
                 throw new InvalidOperationException(
-                    "GAS/order_types.json must define castAbility, attackTarget, stop, chainPass, chainNegate, and chainActivateEffect order types. " +
+                    "GAS/order_types.json must define castAbility, moveTo, attackTarget, stop, chainPass, chainNegate, and chainActivateEffect order types. " +
                     "Order runtime is configured from merged config and does not provide code defaults.");
             }
             int stepRateHz = engineClockConfig.FixedHz / Math.Max(1, gasClockConfig.StepEveryFixedTicks);
@@ -554,6 +558,8 @@ namespace Ludots.Core.Engine
                 orderQueue, stepRateHz,
                 graphProgramRegistry, gasGraphApi);
             var abilityExecSystem = new AbilityExecSystem(World, clock, abilityInputRequestQueue, inputResponseBuffer, selectionRequestQueue, selectionResponseBuffer, effectRequestQueue, abilityDefinitions, EventBus, cfgCastAbility, gasPresentationEvents, phaseExecutor: phaseExecutor, graphApi: gasGraphApi, tagOps: tagOps, orderTypeRegistry: orderTypeRegistry);
+            var stopOrderSystem = new StopOrderSystem(World, orderTypeRegistry, cfgStop);
+            var moveToOrderSystem = new MoveToWorldCmOrderSystem(World, orderTypeRegistry, cfgMoveTo);
 
             // Register systems in Phase order according to GAS design document
             // Phase 0: SchemaUpdate
@@ -665,9 +671,11 @@ namespace Ludots.Core.Engine
             
             // Phase 2: AbilityActivation
             RegisterSystem(orderBufferSystem, SystemGroup.AbilityActivation);
+            RegisterSystem(stopOrderSystem, SystemGroup.AbilityActivation);
             RegisterSystem(reactionSystem, SystemGroup.AbilityActivation);
             RegisterSystem(abilitySystem, SystemGroup.AbilityActivation);
             RegisterSystem(abilityExecSystem, SystemGroup.AbilityActivation);
+            RegisterSystem(moveToOrderSystem, SystemGroup.AbilityActivation);
             
             // Phase 3: EffectProcessing (含响应链)
             var responseChainOrderTypes = new ResponseChainOrderTypes
@@ -1526,6 +1534,7 @@ namespace Ludots.Core.Engine
             GameTask.Update(dt);
             SyncContext.ProcessQueue();
             EnsureCameraRuntimeConfigured();
+            _inputRuntimeSystem?.Update(dt);
 
             // 1. Simulation Loop (GAS, Physics, AI) - Controlled by Pacemaker
             if (!_simulationBudgetFused)
@@ -1566,8 +1575,6 @@ namespace Ludots.Core.Engine
 
         private void Update(float dt)
         {
-            _inputRuntimeSystem?.Update(dt);
-
             _primitiveDrawBuffer?.Clear();
             _groundOverlayBuffer?.Clear();
             _worldHudBuffer?.Clear();

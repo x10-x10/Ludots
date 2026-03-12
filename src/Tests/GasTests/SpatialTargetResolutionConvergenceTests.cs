@@ -18,6 +18,12 @@ namespace Ludots.Tests.GAS
     [TestFixture]
     public sealed class SpatialTargetResolutionConvergenceTests
     {
+        [OneTimeSetUp]
+        public void OneTimeSetUp()
+        {
+            EffectParamKeys.Initialize();
+        }
+
         [Test]
         public void TargetResolver_CircleSearch_UsesExplicitTargetPoint_WhenTargetEntityIsMissing()
         {
@@ -130,6 +136,45 @@ namespace Ludots.Tests.GAS
             That(spatial.LastLineOrigin, Is.EqualTo(new WorldCmInt2(640, 480)));
             That(spatial.LastLineDirectionDeg, Is.EqualTo(0));
             That(spatial.LastLineLengthCm, Is.EqualTo(540));
+        }
+
+        [Test]
+        public void TargetResolver_LineSearch_UsesPreservedCallerParams_WhenExecIsMissing()
+        {
+            using var world = World.Create();
+            var actor = world.Create(WorldPositionCm.FromCm(1950, 900));
+
+            var spatial = new RecordingSpatialQueryService();
+            var query = new TargetQueryDescriptor
+            {
+                Kind = TargetResolverKind.BuiltinSpatial,
+                Spatial = new BuiltinSpatialDescriptor
+                {
+                    Shape = SpatialShape.Line,
+                    LengthCm = 780,
+                    HalfWidthCm = 95
+                }
+            };
+
+            var mergedParams = default(EffectConfigParams);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetOriginX, 1950f);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetOriginY, 900f);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosX, 1730f);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosY, 900f);
+
+            Span<Entity> buffer = stackalloc Entity[8];
+            int count = TargetResolverFanOutHelper.ResolveTargets(
+                world,
+                new EffectContext { Source = actor },
+                in query,
+                in mergedParams,
+                spatial,
+                buffer.ToArray());
+
+            That(count, Is.EqualTo(0));
+            That(spatial.LastLineOrigin, Is.EqualTo(new WorldCmInt2(1950, 900)));
+            That(spatial.LastLineDirectionDeg, Is.EqualTo(180));
+            That(spatial.LastLineLengthCm, Is.EqualTo(780));
         }
 
         [Test]

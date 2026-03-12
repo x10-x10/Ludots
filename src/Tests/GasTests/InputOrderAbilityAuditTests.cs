@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Text.Json.Nodes;
 using Arch.Core;
 using MobaDemoMod.GAS;
+using Ludots.Core.Components;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
@@ -428,6 +430,85 @@ namespace Ludots.Tests.GAS
             That(exec.OrderId, Is.EqualTo(7));
             That(exec.AbilitySlot, Is.EqualTo(0));
         }
+
+        [Test]
+        public void AbilityExecSystem_ToggleDeactivate_BypassesBlockedAnyCooldown_AndClearsTagCount()
+        {
+            using var world = World.Create();
+            var actor = world.Create(
+                OrderBuffer.CreateEmpty(),
+                new BlackboardIntBuffer(),
+                new BlackboardEntityBuffer(),
+                new AbilityStateBuffer(),
+                new GameplayTagContainer(),
+                new TagCountContainer(),
+                new TimedTagBuffer(),
+                new DirtyFlags());
+
+            const int castAbilityOrderTypeId = 100;
+            const int abilityId = 9002;
+            const int toggleTagId = 41;
+            const int cooldownTagId = 42;
+
+            ref var abilities = ref world.Get<AbilityStateBuffer>(actor);
+            abilities.AddAbility(abilityId);
+
+            ref var orderBuffer = ref world.Get<OrderBuffer>(actor);
+            var order = new Order
+            {
+                OrderId = 8,
+                Actor = actor,
+                OrderTypeId = castAbilityOrderTypeId,
+                Args = new OrderArgs { I0 = 0 }
+            };
+            orderBuffer.SetActiveDirect(in order, priority: 100);
+
+            ref var bbI = ref world.Get<BlackboardIntBuffer>(actor);
+            bbI.Set(OrderBlackboardKeys.Cast_SlotIndex, 0);
+
+            var tagOps = new TagOps();
+            ref var tags = ref world.Get<GameplayTagContainer>(actor);
+            ref var counts = ref world.Get<TagCountContainer>(actor);
+            ref var dirty = ref world.Get<DirtyFlags>(actor);
+            tagOps.AddTag(ref tags, ref counts, toggleTagId, ref dirty);
+            tagOps.AddTag(ref tags, ref counts, cooldownTagId, ref dirty);
+
+            var blockTags = new AbilityActivationBlockTags();
+            blockTags.BlockedAny.AddTag(cooldownTagId);
+
+            var defs = new AbilityDefinitionRegistry();
+            var def = new AbilityDefinition
+            {
+                HasActivationBlockTags = true,
+                ActivationBlockTags = blockTags,
+                HasToggleSpec = true,
+                ToggleSpec = new AbilityToggleSpec
+                {
+                    ToggleTagId = toggleTagId
+                }
+            };
+            defs.Register(abilityId, in def);
+
+            var system = new AbilityExecSystem(
+                world,
+                new DiscreteClock(),
+                new InputRequestQueue(),
+                new InputResponseBuffer(),
+                new SelectionRequestQueue(),
+                new SelectionResponseBuffer(),
+                new EffectRequestQueue(),
+                defs,
+                castAbilityOrderTypeId: castAbilityOrderTypeId,
+                tagOps: tagOps);
+
+            bool completed = system.UpdateSlice(0f, int.MaxValue);
+
+            That(completed, Is.True);
+            That(world.Get<GameplayTagContainer>(actor).HasTag(toggleTagId), Is.False, "Toggle should turn off even when reactivate cooldown is present.");
+            That(world.Get<TagCountContainer>(actor).GetCount(toggleTagId), Is.EqualTo(0), "Toggle removal must clear TagCountContainer as well as the bitset.");
+            That(world.Get<GameplayTagContainer>(actor).HasTag(cooldownTagId), Is.True, "Turning off a toggle should not remove the reactivation cooldown tag.");
+            That(world.Get<TagCountContainer>(actor).GetCount(cooldownTagId), Is.EqualTo(1));
+        }
         // Region: GraphExecutor.ExecuteValidation
         // ════════════════════════════════════════════════════════════════════
 
@@ -589,6 +670,106 @@ namespace Ludots.Tests.GAS
             That(world.Has<AbilityExecInstance>(actor), Is.True, "Navigation tag cleanup must stay separate from generic stop processing.");
             That(world.Get<NavGoal2D>(actor).Kind, Is.EqualTo(NavGoalKind2D.Point));
             That(world.Get<OrderBuffer>(actor).HasActive, Is.True);
+        }
+
+        [Test]
+        public void MoveToWorldCmOrderSystem_ActiveMoveToOrder_MovesAndCompletes()
+        {
+            using var world = World.Create();
+            int moveSpeedId = AttributeRegistry.Register("MoveSpeed");
+            var actor = world.Create(
+                WorldPositionCm.FromCm(0, 0),
+                new AttributeBuffer(),
+                OrderBuffer.CreateEmpty());
+
+            ref var attributes = ref world.Get<AttributeBuffer>(actor);
+            attributes.SetBase(moveSpeedId, 300f);
+
+            var orderTypes = new OrderTypeRegistry();
+            orderTypes.Register(new OrderTypeConfig
+            {
+                OrderTypeId = 101,
+                AllowQueuedMode = true,
+                ClearQueueOnActivate = true,
+                SpatialBlackboardKey = OrderBlackboardKeys.Generic_TargetPosition
+            });
+
+            var args = new OrderArgs();
+            args.Spatial.Kind = OrderSpatialKind.WorldCm;
+            args.Spatial.Mode = OrderCollectionMode.Single;
+            args.Spatial.WorldCm = new Vector3(90f, 0f, 0f);
+
+            ref var buffer = ref world.Get<OrderBuffer>(actor);
+            var order = new Order { Actor = actor, OrderTypeId = 101, Args = args };
+            buffer.SetActiveDirect(in order, priority: 60);
+
+            var system = new MoveToWorldCmOrderSystem(world, orderTypes, 101, defaultSpeedCmPerSec: 300f, stopRadiusCm: 5f);
+            system.Update(0.10f);
+
+            var firstStepPos = world.Get<WorldPositionCm>(actor).ToWorldCmInt2();
+            That(firstStepPos.X, Is.EqualTo(30).Within(1));
+            That(world.Get<OrderBuffer>(actor).HasActive, Is.True);
+
+            system.Update(0.10f);
+            system.Update(0.10f);
+
+            var finalPos = world.Get<WorldPositionCm>(actor).ToWorldCmInt2();
+            That(finalPos.X, Is.EqualTo(90).Within(1));
+            That(world.Get<OrderBuffer>(actor).HasActive, Is.False);
+        }
+
+        [Test]
+        public void MoveToWorldCmOrderSystem_Arrival_PromotesQueuedWaypoint()
+        {
+            using var world = World.Create();
+            int moveSpeedId = AttributeRegistry.Register("MoveSpeed");
+            var actor = world.Create(
+                WorldPositionCm.FromCm(0, 0),
+                new AttributeBuffer(),
+                OrderBuffer.CreateEmpty(),
+                new BlackboardSpatialBuffer());
+
+            ref var attributes = ref world.Get<AttributeBuffer>(actor);
+            attributes.SetBase(moveSpeedId, 300f);
+
+            var orderTypes = new OrderTypeRegistry();
+            orderTypes.Register(new OrderTypeConfig
+            {
+                OrderTypeId = 101,
+                AllowQueuedMode = true,
+                ClearQueueOnActivate = true,
+                SpatialBlackboardKey = OrderBlackboardKeys.Generic_TargetPosition
+            });
+
+            var firstArgs = new OrderArgs();
+            firstArgs.Spatial.Kind = OrderSpatialKind.WorldCm;
+            firstArgs.Spatial.Mode = OrderCollectionMode.Single;
+            firstArgs.Spatial.WorldCm = new Vector3(30f, 0f, 0f);
+
+            var secondArgs = new OrderArgs();
+            secondArgs.Spatial.Kind = OrderSpatialKind.WorldCm;
+            secondArgs.Spatial.Mode = OrderCollectionMode.Single;
+            secondArgs.Spatial.WorldCm = new Vector3(60f, 0f, 0f);
+
+            ref var buffer = ref world.Get<OrderBuffer>(actor);
+            var firstOrder = new Order { Actor = actor, OrderTypeId = 101, Args = firstArgs };
+            var secondOrder = new Order { Actor = actor, OrderTypeId = 101, Args = secondArgs, SubmitMode = OrderSubmitMode.Queued };
+            buffer.SetActiveDirect(in firstOrder, priority: 60);
+            buffer.Enqueue(in secondOrder, priority: 60, expireStep: -1, insertStep: 1);
+
+            var system = new MoveToWorldCmOrderSystem(world, orderTypes, 101, defaultSpeedCmPerSec: 300f, stopRadiusCm: 5f);
+            system.Update(0.10f);
+
+            ref var promotedBuffer = ref world.Get<OrderBuffer>(actor);
+            That(promotedBuffer.HasActive, Is.True);
+            That(promotedBuffer.ActiveOrder.Order.Args.Spatial.WorldCm.X, Is.EqualTo(60f).Within(0.001f));
+            That(promotedBuffer.QueuedCount, Is.EqualTo(0));
+
+            system.Update(0.10f);
+
+            var finalPos = world.Get<WorldPositionCm>(actor).ToWorldCmInt2();
+            That(finalPos.X, Is.EqualTo(60).Within(1));
+            That(world.Get<OrderBuffer>(actor).HasActive, Is.False);
         }
 
     }

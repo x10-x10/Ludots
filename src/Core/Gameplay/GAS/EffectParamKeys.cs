@@ -33,6 +33,10 @@ namespace Ludots.Core.Gameplay.GAS
         public static int QueryLength;
         public static int QueryRotation;
         public static int QueryMaxTargets;
+        public static int TargetPosX;
+        public static int TargetPosY;
+        public static int TargetOriginX;
+        public static int TargetOriginY;
 
         // ── TargetDispatchParams ──
         public static int PayloadEffectId;
@@ -75,6 +79,10 @@ namespace Ludots.Core.Gameplay.GAS
             QueryLength = ConfigKeyRegistry.Register("_ep.queryLength");
             QueryRotation = ConfigKeyRegistry.Register("_ep.queryRotation");
             QueryMaxTargets = ConfigKeyRegistry.Register("_ep.queryMaxTargets");
+            TargetPosX = ConfigKeyRegistry.Register("_ep.targetPosX");
+            TargetPosY = ConfigKeyRegistry.Register("_ep.targetPosY");
+            TargetOriginX = ConfigKeyRegistry.Register("_ep.targetOriginX");
+            TargetOriginY = ConfigKeyRegistry.Register("_ep.targetOriginY");
 
             // TargetDispatchParams
             PayloadEffectId = ConfigKeyRegistry.Register("_ep.payloadEffectId");

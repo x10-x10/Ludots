@@ -598,6 +598,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 tpl.PresetType,
                 tpl.TagId,
                 templateId,
+                in mergedConfig,
                 builtinRuntime);
 
             _graphApiHost?.ClearConfigContext();

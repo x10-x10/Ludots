@@ -8,47 +8,47 @@
     {
       "Template": "interaction_arcweaver",
       "Overrides": {
-        "WorldPositionCm": { "Value": { "X": 1100, "Y": 850 } }
+        "WorldPositionCm": { "Value": { "X": 1150, "Y": 900 } }
       }
     },
     {
       "Template": "interaction_vanguard",
       "Overrides": {
-        "WorldPositionCm": { "Value": { "X": 1550, "Y": 420 } }
+        "WorldPositionCm": { "Value": { "X": 1500, "Y": 470 } }
       }
     },
     {
       "Template": "interaction_commander",
       "Overrides": {
-        "WorldPositionCm": { "Value": { "X": 1620, "Y": 1230 } }
+        "WorldPositionCm": { "Value": { "X": 1600, "Y": 1260 } }
       }
     },
     {
       "Template": "interaction_enemy_raider",
       "Overrides": {
         "Name": { "Value": "EnemySkirmisherA" },
-        "WorldPositionCm": { "Value": { "X": 2500, "Y": 820 } }
+        "WorldPositionCm": { "Value": { "X": 1730, "Y": 900 } }
       }
     },
     {
       "Template": "interaction_enemy_raider",
       "Overrides": {
         "Name": { "Value": "EnemySkirmisherB" },
-        "WorldPositionCm": { "Value": { "X": 2680, "Y": 1120 } }
+        "WorldPositionCm": { "Value": { "X": 1880, "Y": 1050 } }
       }
     },
     {
       "Template": "interaction_enemy_bruiser",
       "Overrides": {
         "Name": { "Value": "EnemyBruiserA" },
-        "WorldPositionCm": { "Value": { "X": 3050, "Y": 780 } }
+        "WorldPositionCm": { "Value": { "X": 1770, "Y": 470 } }
       }
     },
     {
       "Template": "interaction_enemy_bruiser",
       "Overrides": {
         "Name": { "Value": "EnemyBruiserB" },
-        "WorldPositionCm": { "Value": { "X": 3180, "Y": 1180 } }
+        "WorldPositionCm": { "Value": { "X": 2230, "Y": 1260 } }
       }
     }
   ]
