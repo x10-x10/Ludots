@@ -64,7 +64,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.{ID}.Main",
   "presetType": "InstantDamage",            // EffectPresetType
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "DamageCoeff": 1.5
   },

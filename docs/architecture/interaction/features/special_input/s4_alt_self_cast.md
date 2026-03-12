@@ -73,7 +73,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.HealSpell.Main",
   "presetType": "Heal",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "HealCoeff": 1.5
   },

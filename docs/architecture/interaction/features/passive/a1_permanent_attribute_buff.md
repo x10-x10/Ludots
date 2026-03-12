@@ -51,7 +51,7 @@ Effect 模板：
 {
   "id": "Effect.Passive.A1.StatBuff",
   "presetType": "None",                      // EffectPresetType.None
-  "lifetime": { "kind": "Permanent" },       // LifetimeKind.Permanent
+  "lifetime": "Infinite",       // LifetimeKind.Infinite — never expires, must be explicitly removed
   "modifiers": [
     { "attribute": "AttackDamage", "op": "Add",      "value": 30 },
     { "attribute": "MoveSpeed",    "op": "Multiply", "value": 1.1 }

@@ -73,7 +73,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.Q1.Execute",
   "presetType": "InstantDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "ExecuteThreshold": 0.2
   },

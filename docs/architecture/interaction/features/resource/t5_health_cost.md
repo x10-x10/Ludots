@@ -66,7 +66,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.BloodAbility.Main",
   "presetType": "InstantDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "HealthCost": 100.0,
     "DamageCoeff": 2.5  // 高伤害补偿生命消耗

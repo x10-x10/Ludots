@@ -30,7 +30,7 @@
 {
   "id": "Effect.ArmorPassive.Active",
   "presetType": "Buff",
-  "lifetime": { "kind": "Permanent" },
+  "lifetime": "Infinite",
   "phaseListeners": [
     {
       "phase": "OnCalculate",    // 伤害计算阶段

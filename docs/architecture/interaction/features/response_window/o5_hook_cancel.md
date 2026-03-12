@@ -31,7 +31,7 @@ Hook/取消是一种程序自动取消效果的机制，无需玩家交互。核
 {
   "id": "Effect.SpellShield.Active",
   "presetType": "Buff",
-  "lifetime": { "kind": "Duration", "ticks": -1 },
+  "lifetime": "Infinite",
   "grantedTags": ["Status.SpellShielded"],
   "phaseListeners": [
     {
@@ -91,7 +91,7 @@ Graph.Hook.SpellShield:
   "presetType": "InstantRemoveBuff",
   "grantedTags": [],
   "removedTags": ["Status.SpellShielded"],  // 移除护盾 Tag
-  "lifetime": { "kind": "Instant" }
+  "lifetime": "Instant"
 }
 ```
 

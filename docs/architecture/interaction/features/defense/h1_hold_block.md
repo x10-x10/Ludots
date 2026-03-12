@@ -56,7 +56,7 @@ Phase OnApply Main:
 === BlockingBuff 内置 Listener（减伤）===
 
 // Effect: Effect.HoldBlock.BlockingBuff
-// presetType: Custom, lifetime: { kind: "UntilRemoved" }
+// presetType: Buff, lifetime: "Infinite"
 // grantedTags: ["Status.Blocking"]
 
 Phase OnApply Listener (eventTagId="incoming_damage", priority=100, scope=Self):
@@ -76,8 +76,8 @@ Effect 模板示例：
 ```json5
 {
   "id": "Effect.HoldBlock.BlockingBuff",
-  "presetType": "Custom",
-  "lifetime": { "kind": "UntilRemoved" },
+  "presetType": "Buff",
+  "lifetime": "Infinite",
   "configParams": {
     "MitigationCoeff": 0.15,
     "StaminaDrainPerHit": 10.0

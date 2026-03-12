@@ -54,7 +54,7 @@ on_incoming_damage:
 
 ## Configuration Example
 
-> ⚠️ 以下配置使用 Ludots 标准 EffectTemplate + Graph Phase 格式，替换了原虚构 DSL。
+> 以下配置使用 Ludots 标准 EffectTemplate + ContextGroup 优先级路由 + ResponseChainListener 格式。
 
 ```json5
 // === Effect Templates (mods/<yourMod>/Effects/directional_counter_effects.json) ===

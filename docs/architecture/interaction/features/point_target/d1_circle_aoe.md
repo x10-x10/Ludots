@@ -79,7 +79,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.D1.AoeSearch",
   "presetType": "Search",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "QueryRadiusCm": 250
   },
@@ -91,7 +91,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.D1.Damage",
   "presetType": "InstantDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "DamageCoeff": 1.5,
     "DamageType": 1

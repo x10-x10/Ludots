@@ -52,7 +52,7 @@ player_counter_ability:
 
 ## Configuration Example
 
-> ⚠️ 以下配置使用 Ludots 标准 EffectTemplate + Graph Phase 格式，替换了原虚构 DSL。
+> 以下配置使用 Ludots 标准 EffectTemplate + Graph Phase + ResponseChainListener 格式。
 
 ```json5
 // === Effect Templates (mods/<yourMod>/Effects/counter_prompt_effects.json) ===

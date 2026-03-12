@@ -91,7 +91,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.ForwardSlash.Main",
   "presetType": "InstantDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "DamageCoeff": 1.5                    // 前进攻击伤害系数
   },

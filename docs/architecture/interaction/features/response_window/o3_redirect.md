@@ -87,7 +87,8 @@ Effect 模板示例（反射护盾）：
 {
   "id": "Effect.Ability.Redirect.ReflectShield",
   "presetType": "Buff",
-  "lifetime": { "kind": "Duration", "ticks": 300 },
+  "lifetime": "After",
+  "duration": { "durationTicks": 300 },
   "grantedTags": ["Status.Reflecting"],
   "phaseListeners": [
     {

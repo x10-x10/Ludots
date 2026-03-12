@@ -37,7 +37,8 @@ Entity 挂载 `ResponseChainListener`，监听 `entity_death` EventTag，`Respon
 ```jsonc
 {
   "effect_preset": "None",
-  "lifetime": { "kind": "Duration", "ticks": 300 },
+  "lifetime": "After",
+  "duration": { "durationTicks": 300 },
   "modifiers": [
     { "attribute": "health_current", "op": "Set", "value": 1 }
   ],

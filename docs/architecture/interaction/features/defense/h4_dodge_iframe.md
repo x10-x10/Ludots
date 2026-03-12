@@ -48,7 +48,7 @@ on_incoming_damage:
 
 ## Configuration Example
 
-> ⚠️ 以下配置使用 Ludots 标准 EffectTemplate + Graph Phase 格式，替换了原虚构 DSL。
+> 以下配置使用 Ludots 标准 EffectTemplate + AbilityExecSpec timeline + ResponseChainListener 格式。
 
 ```json5
 // === Effect Templates (mods/<yourMod>/Effects/dodge_effects.json) ===
@@ -86,7 +86,7 @@ on_incoming_damage:
 ]
 
 // === AbilityExecSpec: 闪避翻滚 ===
-// 使用 timeline items 在不同 tick 偏移触发效果，替代虚构 Delay 机制
+// 使用 AbilityExecSpec timeline items 在不同 tick 偏移触发效果
 {
   "id": "Ability.Dodge.Roll",
   "blockTags": ["Status.Dodging"],           // 闪避期间不可再闪避

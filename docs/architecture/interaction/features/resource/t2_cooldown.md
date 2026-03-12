@@ -63,7 +63,8 @@ Phase OnApply Main:
 {
   "id": "Effect.Ability.Q.Cooldown",
   "presetType": "Buff",
-  "lifetime": { "kind": "Duration", "durationTicks": 180 },  // 冷却 3 秒 = 180 ticks
+  "lifetime": "After",
+  "duration": { "durationTicks": 180 },  // 冷却 3 秒 = 180 ticks
   "grantedTags": ["ability_Q.cd"],                           // 持有此 Tag 时屏蔽技能
   "phaseListeners": []
 }

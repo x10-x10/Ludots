@@ -52,7 +52,7 @@ projectile_on_hit_fallback:
 
 ## Configuration Example
 
-> ⚠️ 以下配置使用 Ludots 标准 EffectTemplate + Graph Phase 格式，替换了原虚构 DSL。
+> 以下配置使用 Ludots 标准 EffectTemplate + ResponseChainListener + BuiltinHandler 格式。
 
 ```json5
 // === Effect Templates (mods/<yourMod>/Effects/deflect_effects.json) ===

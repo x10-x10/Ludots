@@ -71,7 +71,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.Q.Main",
   "presetType": "InstantDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "ManaCost": 50.0,
     "DamageCoeff": 1.5

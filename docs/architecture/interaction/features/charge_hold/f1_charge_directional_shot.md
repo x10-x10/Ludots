@@ -83,8 +83,9 @@ Effect 模板示例：
 // mods/<yourMod>/Effects/Effect.F1.ChargeAccumulator.json
 {
   "id": "Effect.F1.ChargeAccumulator",
-  "presetType": "Custom",
-  "lifetime": { "kind": "Duration", "ticks": 120 },   // 最大蓄力帧数
+  "presetType": "Buff",
+  "lifetime": "After",
+  "duration": { "durationTicks": 120 },   // 最大蓄力帧数
   "period": 1,                                          // 每帧触发 OnPeriod
   "configParams": {
     "DeltaPerTick": 0.00833                             // 1.0 / 120
@@ -97,7 +98,7 @@ Effect 模板示例：
 {
   "id": "Effect.F1.ReleaseProjectile",
   "presetType": "InstantDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "DamageCoeff": 1.8,
     "BaseSpeedCm": 1200

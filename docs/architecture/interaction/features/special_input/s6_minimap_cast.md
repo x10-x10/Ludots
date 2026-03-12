@@ -68,7 +68,8 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.Teleport.Main",
   "presetType": "Teleport",
-  "lifetime": { "kind": "Duration", "durationTicks": 180 },  // 3 秒引导
+  "lifetime": "After",
+  "duration": { "durationTicks": 180 },  // 3 秒引导
   "configParams": {
     "TeleportDelay": 180
   },

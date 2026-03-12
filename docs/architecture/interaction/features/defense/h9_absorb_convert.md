@@ -54,7 +54,7 @@ energy_resource:
 
 ## Configuration Example
 
-> ⚠️ 以下配置使用 Ludots 标准 EffectTemplate + Graph Phase 格式，替换了原虚构 DSL。
+> 以下配置使用 Ludots 标准 EffectTemplate + PhaseListener Graph + Attribute 转换格式。
 
 ```json5
 // === Effect Templates (mods/<yourMod>/Effects/absorb_convert_effects.json) ===
@@ -64,7 +64,7 @@ energy_resource:
     // 松开按键后由 Ability block.End 移除
     "id": "Effect.Absorb.ShieldBuff",
     "presetType": "Buff",
-    "lifetime": "UntilRemoved",
+    "lifetime": "Infinite",
     "grantedTags": [
       { "tag": "Status.Absorbing", "formula": "Fixed", "amount": 1 }
     ],

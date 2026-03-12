@@ -70,7 +70,7 @@ Phase OnApply Main:
 {
   "id": "Effect.Passive.RageGeneration",
   "presetType": "Buff",
-  "lifetime": { "kind": "Permanent" },
+  "lifetime": "Infinite",
   "phaseListeners": [
     {
       "phase": "OnDamageDealt",
@@ -93,7 +93,7 @@ Phase OnApply Main:
 {
   "id": "Effect.Passive.RageDecay",
   "presetType": "Buff",
-  "lifetime": { "kind": "Permanent" },
+  "lifetime": "Infinite",
   "phaseListeners": [
     {
       "phase": "OnPeriod",

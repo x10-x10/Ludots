@@ -75,7 +75,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.Fireball.Main",
   "presetType": "AoEDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "Radius": 300.0,
     "DamageCoeff": 1.5

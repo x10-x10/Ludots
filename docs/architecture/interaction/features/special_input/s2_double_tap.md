@@ -63,7 +63,8 @@ Effect 模板示例：
 {
   "id": "Effect.Sprint.Main",
   "presetType": "Buff",
-  "lifetime": { "kind": "Duration", "durationTicks": 60 },
+  "lifetime": "After",
+  "duration": { "durationTicks": 60 },
   "configParams": {
     "SpeedBoost": 200.0                   // 移动速度 +200
   },

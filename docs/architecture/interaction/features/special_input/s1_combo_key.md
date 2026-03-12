@@ -70,7 +70,7 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.Q_Shift.Main",
   "presetType": "InstantDamage",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "DamageCoeff": 2.0                    // 组合键技能伤害系数更高
   },

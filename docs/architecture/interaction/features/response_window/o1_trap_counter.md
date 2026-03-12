@@ -82,7 +82,8 @@ Effect 模板示例：
 {
   "id": "Effect.TrapCounter.Main",
   "presetType": "Shield",
-  "lifetime": { "kind": "Duration", "ticks": 180 },
+  "lifetime": "After",
+  "duration": { "durationTicks": 180 },
   "configParams": {
     "ShieldCoeff": 2.0
   },

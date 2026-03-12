@@ -50,7 +50,8 @@ Effect 模板示例：
 {
   "id": "Effect.Ability.B1.Buff",
   "presetType": "Buff",
-  "lifetime": { "kind": "Duration", "ticks": 300 },
+  "lifetime": "After",
+  "duration": { "durationTicks": 300 },
   "modifiers": [
     { "attribute": "AttackDamage", "op": "Multiply", "value": 1.5 }
   ],

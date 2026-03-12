@@ -69,7 +69,8 @@ Phase OnApply Main:
 {
   "id": "Effect.Ability.Q.ChargeRefill",
   "presetType": "Buff",
-  "lifetime": { "kind": "Duration", "durationTicks": 300 },  // 回复 1 次需 5 秒
+  "lifetime": "After",
+  "duration": { "durationTicks": 300 },  // 回复 1 次需 5 秒
   "phaseListeners": [
     {
       "phase": "OnExpire",

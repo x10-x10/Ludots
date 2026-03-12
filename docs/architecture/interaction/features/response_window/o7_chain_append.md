@@ -30,7 +30,8 @@ Chain/追加效果允许 Phase Listener 在效果结算的 OnApply 阶段调用 
 {
   "id": "Effect.Refraction.Active",
   "presetType": "Buff",
-  "lifetime": { "kind": "Duration", "ticks": 600 },
+  "lifetime": "After",
+  "duration": { "durationTicks": 600 },
   "grantedTags": ["Status.Refracted"],
   "phaseListeners": [
     {
@@ -99,7 +100,7 @@ Graph.Chain.ConsumeRefraction:
 {
   "id": "Effect.Refraction.BlockDamage",
   "presetType": "InstantHeal",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "phaseListeners": [
     {
       "phase": "OnApply",

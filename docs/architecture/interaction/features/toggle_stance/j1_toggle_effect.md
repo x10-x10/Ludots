@@ -61,7 +61,7 @@ Effect 模板（Buff 开启）：
 {
   "id": "Effect.Ability.J1.Buff",
   "presetType": "Buff",
-  "lifetime": { "kind": "Infinite" },
+  "lifetime": "Infinite",
   "grantedTags": ["toggle_active"],
   "configParams": {
     "ManaPerTick": 5,
@@ -76,7 +76,7 @@ Effect 模板（关闭 — 移除 Buff）：
 {
   "id": "Effect.Ability.J1.RemoveBuff",
   "presetType": "RemoveEffect",
-  "lifetime": { "kind": "Instant" },
+  "lifetime": "Instant",
   "configParams": {
     "TargetEffectId": "Effect.Ability.J1.Buff"
   }
@@ -88,7 +88,7 @@ Effect 模板（关闭 — 移除 Buff）：
 {
   "id": "Effect.Ability.J1.PeriodicCost",
   "presetType": "PeriodicSearch",
-  "lifetime": { "kind": "WhileTagPresent", "tagId": "toggle_active" },
+  "lifetime": "Infinite",  // expires via GasConditionHandle when toggle_active tag is removed
   "configParams": {
     "Period": 30,
     "ManaCost": 5

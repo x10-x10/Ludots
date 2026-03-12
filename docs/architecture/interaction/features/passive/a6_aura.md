@@ -41,7 +41,8 @@ Entity 挂载 `PeriodicSearch` Effect（period=每30 tick, radius=300cm）：
 ```jsonc
 {
   "effect_preset": "None",
-  "lifetime": { "kind": "Duration", "ticks": 40 },
+  "lifetime": "After",
+  "duration": { "durationTicks": 40 },
   "same_type_policy": "Replace",
   "modifiers": [
     { "attribute": "armor", "op": "Add", "value": 5 }
