@@ -76,9 +76,8 @@ namespace Ludots.Core.Gameplay.GAS
                 spatial.Shape == SpatialShape.Line ||
                 spatial.Shape == SpatialShape.Rectangle;
 
-            if (preferSourceCenter && world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source))
+            if (preferSourceCenter && TryResolveQueryOrigin(world, in ctx, out center))
             {
-                center = world.Get<WorldPositionCm>(ctx.Source).Value.ToWorldCmInt2();
             }
             else if (!preferSourceCenter && TryResolveTargetPoint(world, in ctx, out center))
             {
@@ -282,12 +281,11 @@ namespace Ludots.Core.Gameplay.GAS
 
         private static int ComputeDirection(World world, in EffectContext ctx)
         {
-            if (world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source) &&
+            if (TryResolveQueryOrigin(world, in ctx, out var sourcePos) &&
                 TryResolveTargetPoint(world, in ctx, out var targetPos))
             {
-                var srcPos = world.Get<WorldPositionCm>(ctx.Source).Value.ToWorldCmInt2();
-                int dx = targetPos.X - srcPos.X;
-                int dy = targetPos.Y - srcPos.Y;
+                int dx = targetPos.X - sourcePos.X;
+                int dy = targetPos.Y - sourcePos.Y;
                 if (dx != 0 || dy != 0)
                 {
                     var rad = Fix64Math.Atan2Fast(Fix64.FromInt(dy), Fix64.FromInt(dx));
@@ -297,6 +295,29 @@ namespace Ludots.Core.Gameplay.GAS
                 }
             }
             return 0;
+        }
+
+        private static bool TryResolveQueryOrigin(World world, in EffectContext ctx, out WorldCmInt2 point)
+        {
+            if (world.IsAlive(ctx.Source) &&
+                world.Has<AbilityExecInstance>(ctx.Source))
+            {
+                ref readonly var exec = ref world.Get<AbilityExecInstance>(ctx.Source);
+                if (exec.HasTargetOriginPos != 0)
+                {
+                    point = exec.TargetOriginPosCm.ToWorldCmInt2();
+                    return true;
+                }
+            }
+
+            if (world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source))
+            {
+                point = world.Get<WorldPositionCm>(ctx.Source).Value.ToWorldCmInt2();
+                return true;
+            }
+
+            point = default;
+            return false;
         }
 
         private static bool TryResolveTargetPoint(World world, in EffectContext ctx, out WorldCmInt2 point)

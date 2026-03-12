@@ -93,7 +93,47 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
-        public void AbilityExecSystem_SpatialListCast_UsesLastPointAsTargetPosition()
+        public void TargetResolver_LineSearch_UsesVectorOrigin_WhenCastStoresTwoPoints()
+        {
+            using var world = World.Create();
+            var actor = world.Create(
+                WorldPositionCm.FromCm(300, 300),
+                new AbilityExecInstance
+                {
+                    TargetOriginPosCm = Fix64Vec2.FromInt(640, 480),
+                    HasTargetOriginPos = 1,
+                    TargetPosCm = Fix64Vec2.FromInt(1120, 480),
+                    HasTargetPos = 1
+                });
+
+            var spatial = new RecordingSpatialQueryService();
+            var query = new TargetQueryDescriptor
+            {
+                Kind = TargetResolverKind.BuiltinSpatial,
+                Spatial = new BuiltinSpatialDescriptor
+                {
+                    Shape = SpatialShape.Line,
+                    LengthCm = 540,
+                    HalfWidthCm = 70
+                }
+            };
+
+            Span<Entity> buffer = stackalloc Entity[8];
+            int count = TargetResolverFanOutHelper.ResolveTargets(
+                world,
+                new EffectContext { Source = actor },
+                in query,
+                spatial,
+                buffer.ToArray());
+
+            That(count, Is.EqualTo(0));
+            That(spatial.LastLineOrigin, Is.EqualTo(new WorldCmInt2(640, 480)));
+            That(spatial.LastLineDirectionDeg, Is.EqualTo(0));
+            That(spatial.LastLineLengthCm, Is.EqualTo(540));
+        }
+
+        [Test]
+        public void AbilityExecSystem_SpatialListCast_UsesFirstPointAsVectorOrigin_AndLastPointAsTargetPosition()
         {
             using var world = World.Create();
             var actor = world.Create(
@@ -147,6 +187,8 @@ namespace Ludots.Tests.GAS
 
             That(world.Has<AbilityExecInstance>(actor), Is.True);
             ref var exec = ref world.Get<AbilityExecInstance>(actor);
+            That(exec.HasTargetOriginPos, Is.EqualTo(1));
+            That(exec.TargetOriginPosCm, Is.EqualTo(Fix64Vec2.FromInt(240, 360)));
             That(exec.HasTargetPos, Is.EqualTo(1));
             That(exec.TargetPosCm, Is.EqualTo(Fix64Vec2.FromInt(840, 1260)));
         }

@@ -257,6 +257,8 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     exec.TargetContext = default;
                     exec.TargetPosCm = default;
                     exec.HasTargetPos = 0;
+                    exec.TargetOriginPosCm = default;
+                    exec.HasTargetOriginPos = 0;
                     exec.MultiTargetCount = 0;
                     exec.State = AbilityExecRunState.Running;
                     exec.CurrentTick = 0;
@@ -271,6 +273,13 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     {
                         ref var bbSpatial = ref World.Get<BlackboardSpatialBuffer>(actor);
                         int pointCount = bbSpatial.GetPointCount(OrderBlackboardKeys.Cast_TargetPosition);
+                        if (pointCount > 1 &&
+                            bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, 0, out var originPos))
+                        {
+                            exec.TargetOriginPosCm = Fix64Vec2.FromFloat(originPos.X, originPos.Z);
+                            exec.HasTargetOriginPos = 1;
+                        }
+
                         int targetPointIndex = pointCount > 1 ? pointCount - 1 : 0;
                         if (pointCount > 0 &&
                             bbSpatial.TryGetPointAt(OrderBlackboardKeys.Cast_TargetPosition, targetPointIndex, out var targetPos))
