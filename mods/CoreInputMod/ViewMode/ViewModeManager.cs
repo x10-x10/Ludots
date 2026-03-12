@@ -183,7 +183,7 @@ namespace CoreInputMod.ViewMode
                 return;
             }
 
-            if (_globals.TryGetValue(LocalOrderSourceHelper.ActiveMappingKey, out var mappingObj) && mappingObj is InputOrderMappingSystem mapping)
+            if (_globals.TryGetValue(CoreServiceKeys.ActiveInputOrderMapping.Name, out var mappingObj) && mappingObj is InputOrderMappingSystem mapping)
             {
                 mapping.SetInteractionMode(interactionMode);
             }

@@ -22,8 +22,6 @@ namespace CoreInputMod.Systems
 {
     public sealed class LocalOrderSourceHelper
     {
-        public const string ActiveMappingKey = "CoreInputMod.ActiveInputOrderMapping";
-
         private readonly World _world;
         private readonly Dictionary<string, object> _globals;
         private readonly OrderQueue _orders;
@@ -157,7 +155,7 @@ namespace CoreInputMod.Systems
                 });
             }
 
-            _globals[ActiveMappingKey] = mapping;
+            _globals[CoreServiceKeys.ActiveInputOrderMapping.Name] = mapping;
             return mapping;
         }
 

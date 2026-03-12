@@ -47,6 +47,7 @@ namespace Ludots.Core.Scripting
         public const string RuntimeEntitySpawnQueue = "RuntimeEntitySpawnQueue";
         public const string SelectionRuleRegistry = "SelectionRuleRegistry";
         public const string InteractionActionBindings = "InteractionActionBindings";
+        public const string ActiveInputOrderMapping = "ActiveInputOrderMapping";
         public const string OrderQueue = "OrderQueue";
         public const string OrderTypeRegistry = "OrderTypeRegistry";
         public const string OrderBufferSystem = "OrderBufferSystem";
