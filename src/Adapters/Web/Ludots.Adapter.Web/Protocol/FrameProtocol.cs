@@ -40,7 +40,18 @@ namespace Ludots.Adapter.Web.Protocol
 
     public static class WireWorldHudItem
     {
-        public const int SizeInBytes = 73;
+        public const int SizeInBytes = 113;
+    }
+
+    public static class WirePresentationTextPacket
+    {
+        public const int ArgSizeInBytes = 8;
+        public const int SizeInBytes = 8 + (4 * ArgSizeInBytes);
+    }
+
+    public static class WireScreenOverlayItem
+    {
+        public const int SizeInBytes = 95;
     }
 
     public static class WireDebugLine

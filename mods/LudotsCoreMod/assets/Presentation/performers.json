@@ -64,6 +64,11 @@
         "attributeName": "Health"
       },
       {
+        "paramKey": 15,
+        "source": "textToken",
+        "textToken": "hud.attribute.current_over_base"
+      },
+      {
         "paramKey": 16,
         "source": "constant",
         "constantValue": 1

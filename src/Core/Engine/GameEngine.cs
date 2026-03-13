@@ -486,12 +486,19 @@ namespace Ludots.Core.Engine
             var performerGraphApi = new GasGraphRuntimeApi(World, spatialQueries: null, coords: null, eventBus: null);
             new MeshAssetConfigLoader(ConfigPipeline, meshAssets, presentationPrefabs).Load();
             new VisualTemplateConfigLoader(ConfigPipeline, visualTemplates, meshAssets, animatorControllers).Load();
-            BuiltinPerformerDefinitions.Register(performerDefinitions, meshAssets);
+            var presentationTextCatalog = new PresentationTextCatalogLoader(ConfigPipeline).Load(ConfigCatalog, ConfigConflictReport);
+            var presentationTextLocaleSelection = new PresentationTextLocaleSelection(presentationTextCatalog);
+            BuiltinPerformerDefinitions.Register(performerDefinitions, meshAssets, presentationTextCatalog.GetTokenId);
             var performerRuleSystem = new PerformerRuleSystem(World, presentationEventStream, presentationCommandBuffer, performerDefinitions, graphProgramRegistry, performerGraphApi, GlobalContext);
             var performerRuntimeSystem = new PerformerRuntimeSystem(World, presentationPrefabs, presentationCommandBuffer, primitiveDrawBuffer, transientMarkerBuffer, performerInstances, presentationStableIds);
             var performerEmitSystem = new PerformerEmitSystem(World, performerInstances, performerDefinitions, groundOverlayBuffer, primitiveDrawBuffer, worldHudBuffer, graphProgramRegistry, performerGraphApi, GlobalContext,
                 entityColorResolver: (world, entity) => Ludots.Core.Presentation.Utils.TeamColorResolver.Resolve(world, entity));
-            new PerformerDefinitionConfigLoader(ConfigPipeline, performerDefinitions, Ludots.Core.Gameplay.GAS.Registry.AttributeRegistry.Register, meshAssets.GetId).Load();
+            new PerformerDefinitionConfigLoader(
+                ConfigPipeline,
+                performerDefinitions,
+                Ludots.Core.Gameplay.GAS.Registry.AttributeRegistry.Register,
+                meshAssets.GetId,
+                presentationTextCatalog.GetTokenId).Load();
             var presentationAuthoring = new PresentationAuthoringContext(visualTemplates, performerDefinitions, animatorControllers, presentationStableIds);
             MapLoader.PresentationAuthoringContext = presentationAuthoring;
 
@@ -502,7 +509,7 @@ namespace Ludots.Core.Engine
                 meshAssets.TryGetDescriptor(meshAssets.GetId(WellKnownMeshKeys.Sphere), out var _sphereDbg) && _sphereDbg.Type == MeshAssetType.Primitive,
                 "MeshAssetRegistry: 'sphere' descriptor missing or invalid after config load");
 
-            var worldHudStrings = new WorldHudStringTable();
+            var worldHudStrings = new WorldHudStringTable(presentationTextCatalog, presentationTextLocaleSelection);
             new AttributeConstraintsLoader(ConfigPipeline).Load();
 
             var abilitySystem = new AbilitySystem(World, effectRequestQueue, abilityDefinitions, tagOps, graphProgramRegistry, gasGraphApi);
@@ -629,6 +636,8 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.PresentationVisualSnapshotBuffer, visualSnapshotBuffer);
             SetService(CoreServiceKeys.PresentationWorldHudBuffer, worldHudBuffer);
             SetService(CoreServiceKeys.PresentationWorldHudStrings, worldHudStrings);
+            SetService(CoreServiceKeys.PresentationTextCatalog, presentationTextCatalog);
+            SetService(CoreServiceKeys.PresentationTextLocaleSelection, presentationTextLocaleSelection);
             var screenHudBuffer = new ScreenHudBatchBuffer();
             SetService(CoreServiceKeys.PresentationScreenHudBuffer, screenHudBuffer);
             SetService(CoreServiceKeys.ScreenOverlayBuffer, new ScreenOverlayBuffer());
