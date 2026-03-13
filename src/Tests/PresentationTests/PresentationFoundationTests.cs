@@ -1,7 +1,10 @@
 using System;
+using System.Numerics;
 using System.Text.Json.Nodes;
 using Arch.Core;
 using Arch.Core.Extensions;
+using Ludots.Core.Components;
+using Ludots.Core.Mathematics.FixedPoint;
 using Ludots.Core.Presentation;
 using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.Commands;
@@ -183,6 +186,137 @@ namespace Ludots.Tests.Presentation
             system.Update(0.016f);
 
             Assert.That(commands.Count, Is.EqualTo(0), "Startup performers should only be emitted on the first update.");
+        }
+
+        [Test]
+        public void WorldToVisualSyncSystem_AndEntityVisualEmitSystem_SnapshotCarriesSyncedTransformRotationAndIdentity()
+        {
+            using var world = World.Create();
+            world.Create(PresentationFrameState.Default);
+
+            world.Create(
+                WorldPositionCm.FromCm(250, 500),
+                new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(100, 200) },
+                VisualTransform.Default,
+                new FacingDirection { AngleRad = MathF.PI * 0.5f },
+                VisualRuntimeState.Create(
+                    meshAssetId: 7,
+                    materialId: 9,
+                    baseScale: 1f,
+                    renderPath: VisualRenderPath.StaticMesh),
+                new PresentationStableId { Value = 501 });
+
+            using var sync = new WorldToVisualSyncSystem(world);
+            var drawBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer();
+            var snapshotBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer();
+            using var emit = new EntityVisualEmitSystem(world, drawBuffer, snapshotBuffer);
+
+            sync.Update(0.016f);
+            emit.Update(0.016f);
+
+            Assert.That(drawBuffer.Count, Is.EqualTo(1));
+            Assert.That(snapshotBuffer.Count, Is.EqualTo(1));
+
+            var item = snapshotBuffer.GetSpan()[0];
+            Assert.That(item.StableId, Is.EqualTo(501));
+            Assert.That(item.Visibility, Is.EqualTo(VisualVisibility.Visible));
+            Assert.That(item.Position.X, Is.EqualTo(2.5f).Within(0.001f));
+            Assert.That(item.Position.Y, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(item.Position.Z, Is.EqualTo(5f).Within(0.001f));
+            AssertQuaternionEquivalent(item.Rotation, Quaternion.CreateFromAxisAngle(Vector3.UnitY, -MathF.PI * 0.5f));
+        }
+
+        [Test]
+        public void EntityVisualEmitSystem_WritesVisibilityIdentityAndTransformToSnapshot_WithoutChangingDrawBufferFiltering()
+        {
+            using var world = World.Create();
+            var drawBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer();
+            var snapshotBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer();
+
+            Quaternion visibleRotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.25f);
+            Quaternion hiddenRotation = Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.5f);
+            Quaternion culledRotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.75f);
+
+            world.Create(
+                new PresentationStableId { Value = 101 },
+                new VisualTransform
+                {
+                    Position = new Vector3(1f, 2f, 3f),
+                    Rotation = visibleRotation,
+                    Scale = new Vector3(2f, 3f, 4f),
+                },
+                VisualRuntimeState.Create(
+                    meshAssetId: 10,
+                    materialId: 20,
+                    baseScale: 1.5f,
+                    renderPath: VisualRenderPath.StaticMesh));
+
+            world.Create(
+                new PresentationStableId { Value = 202 },
+                new VisualTransform
+                {
+                    Position = new Vector3(4f, 5f, 6f),
+                    Rotation = hiddenRotation,
+                    Scale = new Vector3(1f, 2f, 3f),
+                },
+                VisualRuntimeState.Create(
+                    meshAssetId: 11,
+                    materialId: 21,
+                    baseScale: 2f,
+                    renderPath: VisualRenderPath.StaticMesh,
+                    visible: false));
+
+            world.Create(
+                new PresentationStableId { Value = 303 },
+                new VisualTransform
+                {
+                    Position = new Vector3(7f, 8f, 9f),
+                    Rotation = culledRotation,
+                    Scale = new Vector3(3f, 2f, 1f),
+                },
+                VisualRuntimeState.Create(
+                    meshAssetId: 12,
+                    materialId: 22,
+                    baseScale: 0.5f,
+                    renderPath: VisualRenderPath.InstancedStaticMesh),
+                new CullState { IsVisible = false });
+
+            using var system = new EntityVisualEmitSystem(world, drawBuffer, snapshotBuffer);
+            system.Update(0.016f);
+
+            Assert.That(drawBuffer.Count, Is.EqualTo(1), "Legacy draw buffer should still contain only currently drawable visuals.");
+            Assert.That(snapshotBuffer.Count, Is.EqualTo(3), "Adapter-facing snapshot must retain hidden and culled visuals with explicit visibility.");
+
+            var snapshotsByStableId = new System.Collections.Generic.Dictionary<int, Ludots.Core.Presentation.Rendering.PrimitiveDrawItem>();
+            foreach (ref readonly var item in snapshotBuffer.GetSpan())
+            {
+                snapshotsByStableId[item.StableId] = item;
+            }
+
+            Assert.That(snapshotsByStableId[101].Visibility, Is.EqualTo(VisualVisibility.Visible));
+            Assert.That(snapshotsByStableId[101].Scale, Is.EqualTo(new Vector3(3f, 4.5f, 6f)));
+            AssertQuaternionEquivalent(snapshotsByStableId[101].Rotation, visibleRotation);
+
+            Assert.That(snapshotsByStableId[202].Visibility, Is.EqualTo(VisualVisibility.Hidden));
+            Assert.That(snapshotsByStableId[202].Scale, Is.EqualTo(new Vector3(2f, 4f, 6f)));
+            AssertQuaternionEquivalent(snapshotsByStableId[202].Rotation, hiddenRotation);
+
+            Assert.That(snapshotsByStableId[303].Visibility, Is.EqualTo(VisualVisibility.Culled));
+            Assert.That(snapshotsByStableId[303].Scale, Is.EqualTo(new Vector3(1.5f, 1f, 0.5f)));
+            AssertQuaternionEquivalent(snapshotsByStableId[303].Rotation, culledRotation);
+
+            var drawnItem = drawBuffer.GetSpan()[0];
+            Assert.That(drawnItem.StableId, Is.EqualTo(101));
+            Assert.That(drawnItem.Visibility, Is.EqualTo(VisualVisibility.Visible));
+            AssertQuaternionEquivalent(drawnItem.Rotation, visibleRotation);
+        }
+
+        private static void AssertQuaternionEquivalent(Quaternion actual, Quaternion expected, float epsilon = 0.0001f)
+        {
+            Quaternion normalizedActual = Quaternion.Normalize(actual);
+            Quaternion normalizedExpected = Quaternion.Normalize(expected);
+            float similarity = MathF.Abs(Quaternion.Dot(normalizedActual, normalizedExpected));
+            Assert.That(similarity, Is.GreaterThanOrEqualTo(1f - epsilon));
         }
     }
 }

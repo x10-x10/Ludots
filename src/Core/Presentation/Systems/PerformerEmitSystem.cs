@@ -377,12 +377,14 @@ namespace Ludots.Core.Presentation.Systems
             {
                 MeshAssetId = def.MeshOrShapeId,
                 Position = pos,
+                Rotation = Quaternion.Identity,
                 Scale = new Vector3(sx, sy, sz),
                 Color = color,
                 StableId = stableId,
                 RenderPath = VisualRenderPath.StaticMesh,
                 Mobility = VisualMobility.Movable,
                 Flags = VisualRuntimeFlags.Visible,
+                Visibility = VisualVisibility.Visible,
             });
         }
 

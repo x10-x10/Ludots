@@ -9,29 +9,31 @@ namespace Ludots.Core.Presentation.Systems
     public sealed class EntityVisualEmitSystem : BaseSystem<World, float>
     {
         private readonly PrimitiveDrawBuffer _drawBuffer;
+        private readonly PrimitiveDrawBuffer? _snapshotBuffer;
 
-        private readonly QueryDescription _visibleQuery = new QueryDescription()
+        private readonly QueryDescription _withCullQuery = new QueryDescription()
             .WithAll<VisualTransform, VisualRuntimeState, CullState>();
 
-        private readonly QueryDescription _unculledQuery = new QueryDescription()
+        private readonly QueryDescription _withoutCullQuery = new QueryDescription()
             .WithAll<VisualTransform, VisualRuntimeState>()
             .WithNone<CullState>();
 
-        public EntityVisualEmitSystem(World world, PrimitiveDrawBuffer drawBuffer)
+        public EntityVisualEmitSystem(World world, PrimitiveDrawBuffer drawBuffer, PrimitiveDrawBuffer? snapshotBuffer = null)
             : base(world)
         {
             _drawBuffer = drawBuffer;
+            _snapshotBuffer = snapshotBuffer;
         }
 
         public override void Update(in float dt)
         {
-            EmitVisible();
-            EmitUnculled();
+            EmitWithCullState();
+            EmitWithoutCullState();
         }
 
-        private void EmitVisible()
+        private void EmitWithCullState()
         {
-            var query = World.Query(in _visibleQuery);
+            var query = World.Query(in _withCullQuery);
             foreach (var chunk in query)
             {
                 var transforms = chunk.GetArray<VisualTransform>();
@@ -39,33 +41,28 @@ namespace Ludots.Core.Presentation.Systems
                 var culls = chunk.GetArray<CullState>();
                 for (int i = 0; i < chunk.Count; i++)
                 {
-                    if (!culls[i].IsVisible)
-                    {
-                        continue;
-                    }
-
-                    Emit(chunk.Entity(i), visuals[i], transforms[i]);
+                    Emit(chunk.Entity(i), visuals[i], transforms[i], culls[i].IsVisible);
                 }
             }
         }
 
-        private void EmitUnculled()
+        private void EmitWithoutCullState()
         {
-            var query = World.Query(in _unculledQuery);
+            var query = World.Query(in _withoutCullQuery);
             foreach (var chunk in query)
             {
                 var transforms = chunk.GetArray<VisualTransform>();
                 var visuals = chunk.GetArray<VisualRuntimeState>();
                 for (int i = 0; i < chunk.Count; i++)
                 {
-                    Emit(chunk.Entity(i), visuals[i], transforms[i]);
+                    Emit(chunk.Entity(i), visuals[i], transforms[i], cullVisible: true);
                 }
             }
         }
 
-        private void Emit(Entity entity, in VisualRuntimeState visual, in VisualTransform transform)
+        private void Emit(Entity entity, in VisualRuntimeState visual, in VisualTransform transform, bool cullVisible)
         {
-            if (!visual.ShouldEmit)
+            if (!visual.HasRenderableAsset)
             {
                 return;
             }
@@ -75,11 +72,13 @@ namespace Ludots.Core.Presentation.Systems
             int stableId = World.Has<PresentationStableId>(entity) ? World.Get<PresentationStableId>(entity).Value : 0;
             int templateId = World.Has<VisualTemplateRef>(entity) ? World.Get<VisualTemplateRef>(entity).TemplateId : 0;
             AnimatorPackedState animator = World.Has<AnimatorPackedState>(entity) ? World.Get<AnimatorPackedState>(entity) : default;
+            VisualVisibility visibility = visual.ResolveVisibility(cullVisible);
 
-            _drawBuffer.TryAdd(new PrimitiveDrawItem
+            var item = new PrimitiveDrawItem
             {
                 MeshAssetId = visual.MeshAssetId,
                 Position = transform.Position,
+                Rotation = transform.Rotation,
                 Scale = scale,
                 Color = TeamColorResolver.Resolve(World, entity),
                 StableId = stableId,
@@ -89,7 +88,15 @@ namespace Ludots.Core.Presentation.Systems
                 Mobility = visual.Mobility,
                 Flags = visual.Flags,
                 Animator = animator,
-            });
+                Visibility = visibility,
+            };
+
+            _snapshotBuffer?.TryAdd(item);
+
+            if (visibility == VisualVisibility.Visible)
+            {
+                _drawBuffer.TryAdd(item);
+            }
         }
     }
 }

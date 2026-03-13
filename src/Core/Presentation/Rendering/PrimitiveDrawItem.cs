@@ -6,6 +6,7 @@ namespace Ludots.Core.Presentation.Rendering
     {
         public int MeshAssetId;
         public Vector3 Position;
+        public Quaternion Rotation;
         public Vector3 Scale;
         public Vector4 Color;
         public int StableId;
@@ -15,5 +16,6 @@ namespace Ludots.Core.Presentation.Rendering
         public VisualMobility Mobility;
         public VisualRuntimeFlags Flags;
         public AnimatorPackedState Animator;
+        public VisualVisibility Visibility;
     }
 }
