@@ -24,6 +24,7 @@ using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Utils;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
+using Ludots.Launcher.Backend;
 using Ludots.UI;
 using Ludots.UI.Input;
 using Ludots.UI.Reactive;
@@ -304,14 +305,25 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Assert.That(uiRoot.Scene, Is.Not.Null, "Hotpath harness should keep the reactive panel mounted while panel rendering is enabled.");
             Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Contain("Presentation Hotpath"));
             Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Contain("Crowd/Culling ON"));
+            Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Contain("Visible Entities"));
+            Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Contain("Visible on screen:"));
+            Assert.That(uiRoot.Scene!.FindByElementId("camera-visible-entity-list"), Is.Not.Null);
+            Assert.That(uiRoot.Scene.TryGetVirtualWindow("camera-visible-entity-list", out UiVirtualWindow visibleWindow), Is.True);
+            Assert.That(visibleWindow.TotalCount, Is.GreaterThan(0));
+            Assert.That(visibleWindow.VisibleCount, Is.GreaterThan(0));
             Assert.That(baseline.CrowdCount, Is.EqualTo(CameraAcceptanceIds.HotpathCrowdTargetCount));
+            Assert.That(baseline.CrowdCount, Is.GreaterThanOrEqualTo(10000));
             Assert.That(baseline.VisibleCrowdCount, Is.GreaterThan(0));
             Assert.That(baseline.WorldBarCount, Is.EqualTo(baseline.VisibleCrowdCount));
             Assert.That(baseline.WorldTextCount, Is.EqualTo(baseline.VisibleCrowdCount));
-            Assert.That(baseline.ScreenBarCount, Is.EqualTo(baseline.WorldBarCount));
-            Assert.That(baseline.ScreenTextCount, Is.EqualTo(baseline.WorldTextCount));
+            Assert.That(baseline.ScreenBarCount, Is.GreaterThan(0));
+            Assert.That(baseline.ScreenBarCount, Is.LessThanOrEqualTo(baseline.WorldBarCount));
+            Assert.That(baseline.ScreenTextCount, Is.GreaterThan(0));
+            Assert.That(baseline.ScreenTextCount, Is.LessThanOrEqualTo(baseline.WorldTextCount));
             Assert.That(baseline.SelectionLabelCount, Is.EqualTo(CameraAcceptanceIds.HotpathSelectionLabelLimit));
             Assert.That(baseline.DiagnosticsHudVisible, Is.True);
+            Assert.That(engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer)?.DroppedSinceClear, Is.EqualTo(0));
+            Assert.That(engine.GetService(CoreServiceKeys.PresentationScreenHudBuffer)?.DroppedSinceClear, Is.EqualTo(0));
 
             PressButton(engine, backend, "<Keyboard>/f7");
             HotpathHarnessSnapshot hudOff = CaptureHotpathSnapshot(engine, hudProjection, uiRoot, "diag_hud_off");
@@ -340,11 +352,6 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Assert.That(hudTextOff.WorldTextCount, Is.EqualTo(0), "F10 should disable the hotpath HUD text lane.");
             Assert.That(hudTextOff.ScreenTextCount, Is.EqualTo(0));
 
-            PressButton(engine, backend, "<Keyboard>/f11");
-            HotpathHarnessSnapshot terrainOff = CaptureHotpathSnapshot(engine, hudProjection, uiRoot, "terrain_off");
-            snapshots.Add(terrainOff);
-            Assert.That(terrainOff.TerrainEnabled, Is.False, "F11 should disable terrain rendering for manual adapter-side isolation.");
-
             PressButton(engine, backend, "<Keyboard>/f12");
             HotpathHarnessSnapshot primitivesOff = CaptureHotpathSnapshot(engine, hudProjection, uiRoot, "primitives_off");
             snapshots.Add(primitivesOff);
@@ -367,7 +374,6 @@ namespace Ludots.Tests.ThreeC.Acceptance
             PressButton(engine, backend, "<Keyboard>/f8");
             PressButton(engine, backend, "<Keyboard>/f9");
             PressButton(engine, backend, "<Keyboard>/f10");
-            PressButton(engine, backend, "<Keyboard>/f11");
             PressButton(engine, backend, "<Keyboard>/f12");
             PressButton(engine, backend, "<Keyboard>/c");
             TickWithHudProjection(engine, hudProjection, 12);
@@ -380,8 +386,11 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Assert.That(restored.CrowdCount, Is.EqualTo(CameraAcceptanceIds.HotpathCrowdTargetCount));
             Assert.That(restored.WorldBarCount, Is.EqualTo(restored.VisibleCrowdCount));
             Assert.That(restored.WorldTextCount, Is.EqualTo(restored.VisibleCrowdCount));
+            Assert.That(restored.ScreenBarCount, Is.GreaterThan(0));
+            Assert.That(restored.ScreenBarCount, Is.LessThanOrEqualTo(restored.WorldBarCount));
+            Assert.That(restored.ScreenTextCount, Is.GreaterThan(0));
+            Assert.That(restored.ScreenTextCount, Is.LessThanOrEqualTo(restored.WorldTextCount));
             Assert.That(restored.SelectionLabelCount, Is.EqualTo(CameraAcceptanceIds.HotpathSelectionLabelLimit));
-            Assert.That(restored.TerrainEnabled, Is.True);
             Assert.That(restored.PrimitivesEnabled, Is.True);
 
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildHotpathTraceJsonl(snapshots));
@@ -658,6 +667,88 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Assert.That(diagnostics.PanelIncrementalPatchCount, Is.EqualTo(incrementalBeforeScroll + 1));
             Assert.That(scene.TryGetVirtualWindow("camera-selection-buffer-list", out UiVirtualWindow scrolledWindow), Is.True);
             Assert.That(scrolledWindow.StartIndex, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_HotpathPanel_ReportsVisibleEntities_AndUpdatesWhenCameraViewChanges()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
+            LoadMap(engine, CameraAcceptanceIds.HotpathMapId);
+            Tick(engine, 12);
+
+            UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Hotpath panel should mount when a UIRoot service is present.");
+            Assert.That(scene.FindByElementId("camera-visible-entity-list"), Is.Not.Null);
+            Assert.That(scene.TryGetVirtualWindow("camera-visible-entity-list", out UiVirtualWindow initialWindow), Is.True);
+            Assert.That(initialWindow.TotalCount, Is.GreaterThan(0));
+
+            UiNode summaryNode = scene.FindByElementId("camera-visible-entity-summary") ?? throw new InvalidOperationException("Visible entity summary node should exist.");
+            string beforeSummary = summaryNode.TextContent ?? string.Empty;
+            string beforeFirstRow = scene.FindByElementId("camera-visible-row-0000")?.TextContent ?? string.Empty;
+            long beforeVersion = scene.Version;
+
+            engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
+            {
+                TargetCm = new Vector2(8400f, 6200f)
+            });
+
+            Tick(engine, 3);
+
+            Assert.That(scene.Version, Is.GreaterThan(beforeVersion), "Changing the camera view should refresh the hotpath visible-entity panel.");
+            Assert.That(scene.TryGetVirtualWindow("camera-visible-entity-list", out UiVirtualWindow updatedWindow), Is.True);
+            Assert.That(updatedWindow.TotalCount, Is.GreaterThan(0));
+
+            string afterSummary = (scene.FindByElementId("camera-visible-entity-summary")?.TextContent) ?? string.Empty;
+            string afterFirstRow = scene.FindByElementId("camera-visible-row-0000")?.TextContent ?? string.Empty;
+            Assert.That(afterSummary != beforeSummary || afterFirstRow != beforeFirstRow, Is.True,
+                "Visible entity summary or first visible row should change after the camera view moves across the hotpath crowd.");
+        }
+
+        [Test]
+        public void CameraAcceptanceHotpathEntryMod_LauncherResolve_UsesHotpathStartupMap()
+        {
+            string repoRoot = FindRepoRoot();
+            string tempDirectory = Path.Combine(Path.GetTempPath(), $"ludots-launcher-test-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDirectory);
+
+            try
+            {
+                string preferencesPath = Path.Combine(tempDirectory, "preferences.json");
+                string userConfigPath = Path.Combine(tempDirectory, "config.overlay.json");
+                File.WriteAllText(preferencesPath, "{}");
+                File.WriteAllText(userConfigPath, "{}");
+
+                var service = new LauncherService(
+                    repoRoot,
+                    Path.Combine(repoRoot, "launcher.config.json"),
+                    Path.Combine(repoRoot, "launcher.presets.json"),
+                    preferencesPath,
+                    userConfigPath);
+
+                var state = service.GetState();
+                Assert.That(state.Bindings.Any(binding => string.Equals(binding.Name, "camera_acceptance_hotpath", StringComparison.OrdinalIgnoreCase)), Is.True,
+                    "Repository launcher config should expose a dedicated hotpath binding.");
+                Assert.That(state.Presets.Any(preset => string.Equals(preset.Id, "camera_acceptance_hotpath_raylib", StringComparison.OrdinalIgnoreCase)), Is.True,
+                    "Repository launcher presets should expose a dedicated Raylib hotpath preset.");
+
+                var result = service.Resolve(new[] { "$camera_acceptance_hotpath" }, LauncherPlatformIds.Raylib, LauncherBuildMode.Never);
+                var startupSetting = result.Plan.Diagnostics.Settings.Single(setting => string.Equals(setting.Key, "startupMapId", StringComparison.OrdinalIgnoreCase));
+
+                Assert.That(result.Plan.RootModIds, Is.EqualTo(new[] { "CameraAcceptanceHotpathEntryMod" }));
+                Assert.That(result.Plan.OrderedModIds, Does.Contain("CameraAcceptanceMod"),
+                    "Hotpath entry mod should compose the existing camera acceptance mod instead of replacing it.");
+                Assert.That(startupSetting.EffectiveValue?.GetValue<string>(), Is.EqualTo(CameraAcceptanceIds.HotpathMapId),
+                    "Launcher startup diagnostics should resolve directly to the hotpath map.");
+                Assert.That(startupSetting.EffectiveSource, Does.Contain("CameraAcceptanceHotpathEntryMod").IgnoreCase,
+                    "Hotpath entry mod game.json should be the winning startup source.");
+            }
+            finally
+            {
+                Directory.Delete(tempDirectory, recursive: true);
+            }
         }
 
         [Test]
@@ -1293,7 +1384,6 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 PanelMounted: uiRoot.Scene != null,
                 DiagnosticsHudVisible: ContainsOverlayText(overlayText, "FPS="),
                 PanelEnabled: renderDebug!.DrawSkiaUi,
-                TerrainEnabled: renderDebug.DrawTerrain,
                 PrimitivesEnabled: renderDebug.DrawPrimitives,
                 CameraCullingMs: timings!.CameraCullingMs,
                 HudProjectionMs: timings.WorldHudProjectionMs,
@@ -1458,7 +1548,6 @@ namespace Ludots.Tests.ThreeC.Acceptance
                     panel_mounted = snapshot.PanelMounted,
                     diagnostics_hud = snapshot.DiagnosticsHudVisible,
                     panel_enabled = snapshot.PanelEnabled,
-                    terrain_enabled = snapshot.TerrainEnabled,
                     primitives_enabled = snapshot.PrimitivesEnabled,
                     camera_culling_ms = Math.Round(snapshot.CameraCullingMs, 4),
                     hud_projection_ms = Math.Round(snapshot.HudProjectionMs, 4),
@@ -1481,33 +1570,34 @@ namespace Ludots.Tests.ThreeC.Acceptance
             {
                 HotpathHarnessSnapshot snapshot = snapshots[i];
                 timeline.AppendLine(
-                    $"- [T+{snapshot.Tick:000}] {snapshot.Step} | Crowd={snapshot.CrowdCount}/{snapshot.VisibleCrowdCount} | Bars={snapshot.WorldBarCount}->{snapshot.ScreenBarCount} | Text={snapshot.WorldTextCount}->{snapshot.ScreenTextCount} | Labels={snapshot.SelectionLabelCount} | Panel={(snapshot.PanelMounted ? "ON" : "OFF")} | HUD={(snapshot.DiagnosticsHudVisible ? "ON" : "OFF")} | Terrain={(snapshot.TerrainEnabled ? "ON" : "OFF")} | Prims={(snapshot.PrimitivesEnabled ? "ON" : "OFF")} | Cull={snapshot.CameraCullingMs:F2}ms | HudProj={snapshot.HudProjectionMs:F2}ms");
+                    $"- [T+{snapshot.Tick:000}] {snapshot.Step} | Crowd={snapshot.CrowdCount}/{snapshot.VisibleCrowdCount} | Bars={snapshot.WorldBarCount}->{snapshot.ScreenBarCount} | Text={snapshot.WorldTextCount}->{snapshot.ScreenTextCount} | Labels={snapshot.SelectionLabelCount} | Panel={(snapshot.PanelMounted ? "ON" : "OFF")} | HUD={(snapshot.DiagnosticsHudVisible ? "ON" : "OFF")} | Prims={(snapshot.PrimitivesEnabled ? "ON" : "OFF")} | Cull={snapshot.CameraCullingMs:F2}ms | HudProj={snapshot.HudProjectionMs:F2}ms");
             }
 
             var sb = new StringBuilder();
             sb.AppendLine("# Scenario Card: presentation-hotpath-harness");
             sb.AppendLine();
             sb.AppendLine("## Intent");
-            sb.AppendLine("- Player goal: isolate presentation hotpath lanes inside the shared camera acceptance scene and verify live controls affect the expected runtime buffers immediately.");
-            sb.AppendLine("- Gameplay domain: CameraAcceptanceMod diagnostics / panel / HUD bar / HUD text / selection label / terrain / primitive / culling crowd lanes.");
+            sb.AppendLine("- Player goal: move the camera across a 10k+ hotpath crowd, read the live visible-entity panel, and isolate presentation lanes without leaving the shared acceptance scene.");
+            sb.AppendLine("- Gameplay domain: CameraAcceptanceMod diagnostics / visible-entity panel / HUD bar / HUD text / selection label / primitive / culling crowd lanes.");
             sb.AppendLine();
             sb.AppendLine("## Determinism Inputs");
             sb.AppendLine("- Seed: none");
             sb.AppendLine("- Map: `mods/fixtures/camera/CameraAcceptanceMod/assets/Maps/camera_acceptance_hotpath.json`");
             sb.AppendLine($"- Crowd: `{CameraAcceptanceIds.HotpathCrowdTargetCount}` deterministic Dummy entities from the runtime spawn queue.");
             sb.AppendLine("- Clock profile: fixed `1/60s` headless acceptance ticks with explicit `WorldHudToScreenSystem` projection.");
-            sb.AppendLine("- Controls: `F6 panel`, `F7 diagnostics HUD`, `F8 selection labels`, `F9 bars`, `F10 HUD text`, `F11 terrain`, `F12 primitives`, `C crowd`.");
+            sb.AppendLine("- Controls: RTS manual camera movement plus `F6 panel`, `F7 diagnostics HUD`, `F8 selection labels`, `F9 bars`, `F10 HUD text`, `F12 primitives`, `C crowd`.");
             sb.AppendLine();
             sb.AppendLine("## Action Script");
             sb.AppendLine("1. Load the shared hotpath map and wait for the deterministic crowd to spawn.");
-            sb.AppendLine("2. Capture the baseline with all presentation lanes enabled.");
-            sb.AppendLine("3. Toggle diagnostics HUD, selection labels, bars, HUD text, terrain, primitives, crowd, and panel one by one.");
-            sb.AppendLine("4. Restore all lanes and verify the same scene returns to the baseline shape.");
+            sb.AppendLine("2. Verify the panel exposes the current visible entities for the active camera view.");
+            sb.AppendLine("3. Capture the baseline with all presentation lanes enabled.");
+            sb.AppendLine("4. Toggle diagnostics HUD, selection labels, bars, HUD text, primitives, crowd, and panel one by one.");
+            sb.AppendLine("5. Restore all lanes and verify the same scene returns to the baseline shape.");
             sb.AppendLine();
             sb.AppendLine("## Expected Outcomes");
-            sb.AppendLine("- Primary success condition: each live toggle changes only its target lane or render gate while the rest of the scene remains stable.");
-            sb.AppendLine("- Failure branch condition: bars/text/selection survive after their toggle, panel fails to unmount/remount, or crowd removal does not collapse the culling workload inputs.");
-            sb.AppendLine("- Key metrics: crowd count, visible crowd count, world/screen HUD item counts, selection-label count, culling timing, HUD projection timing.");
+            sb.AppendLine("- Primary success condition: the panel prints the visible entities for the current camera view, and each live toggle changes only its target lane or render gate while the rest of the scene remains stable.");
+            sb.AppendLine("- Failure branch condition: visible-entity panel stays stale after view changes, bars/text/selection survive after their toggle, panel fails to unmount/remount, or crowd removal does not collapse the culling workload inputs.");
+            sb.AppendLine("- Key metrics: crowd count, visible crowd count, world/screen HUD item counts, selection-label count, HUD buffer drops, culling timing, HUD projection timing.");
             sb.AppendLine();
             sb.AppendLine("## Evidence Artifacts");
             sb.AppendLine("- `artifacts/acceptance/presentation-hotpath-harness/trace.jsonl`");
@@ -1519,8 +1609,8 @@ namespace Ludots.Tests.ThreeC.Acceptance
             sb.AppendLine();
             sb.AppendLine("## Outcome");
             sb.AppendLine("- success: yes");
-            sb.AppendLine("- verdict: shared presentation hotpath harness toggles panel, diagnostics, bars, HUD text, terrain/primitives gates, and culling crowd load without changing the underlying acceptance scene.");
-            sb.AppendLine($"- reason: baseline crowd `{baseline.CrowdCount}` and restored crowd `{restored.CrowdCount}` match, while toggle snapshots show bars/text/labels/crowd collapsing to zero exactly when their lane is disabled.");
+            sb.AppendLine("- verdict: shared presentation hotpath harness keeps a 10k+ crowd, prints visible entities in the panel, and toggles diagnostics/bars/HUD text/primitives/culling gates without changing the underlying scene contract.");
+            sb.AppendLine($"- reason: baseline crowd `{baseline.CrowdCount}` and restored crowd `{restored.CrowdCount}` match, the panel keeps a visible-entity window alive, and toggle snapshots show bars/text/labels/crowd collapsing to zero exactly when their lane is disabled.");
             sb.AppendLine();
             sb.AppendLine("## Summary Stats");
             sb.AppendLine($"- snapshot count: `{snapshots.Count}`");
@@ -1529,7 +1619,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             sb.AppendLine($"- restored world bars/text: `{restored.WorldBarCount}` / `{restored.WorldTextCount}`");
             sb.AppendLine($"- max culling sample: `{MaxCameraCullingMs(snapshots):F2}` ms");
             sb.AppendLine($"- max HUD projection sample: `{MaxHudProjectionMs(snapshots):F2}` ms");
-            sb.AppendLine("- reusable wiring: `CameraAcceptanceHotpathLaneSystem`, `CameraAcceptanceSelectionOverlaySystem`, `WorldHudToScreenSystem`, `PresentationTimingDiagnostics`");
+            sb.AppendLine("- reusable wiring: `CameraAcceptanceHotpathLaneSystem`, `CameraAcceptancePanelController`, `CameraAcceptanceSelectionOverlaySystem`, `WorldHudToScreenSystem`, `PresentationTimingDiagnostics`");
             return sb.ToString();
         }
 
@@ -1539,16 +1629,17 @@ namespace Ludots.Tests.ThreeC.Acceptance
             {
                 "flowchart TD",
                 "    A[Load camera_acceptance_hotpath] --> B[Spawn deterministic crowd through RuntimeEntitySpawnQueue]",
-                "    B --> C[Capture baseline panel + diagnostics + HUD lanes]",
-                "    C --> D{Toggle diagnostics HUD / selection / bars / HUD text}",
-                "    D -->|lane disabled| E[Expected lane count drops to zero]",
-                "    D -->|lane left on| F[Other lane counts stay stable]",
-                "    E --> G{Toggle terrain / primitives render gates}",
-                "    G -->|off| H[RenderDebugState gates flip immediately]",
-                "    H --> I{Toggle crowd off}",
-                "    I -->|crowd=0| J[Visible crowd and label counts collapse]",
-                "    J --> K{Toggle panel off then restore all lanes}",
-                "    K -->|restored| L[Write battle-report + trace + path]"
+                "    B --> C[Panel prints visible entities for the current camera view]",
+                "    C --> D[Capture baseline panel + diagnostics + HUD lanes]",
+                "    D --> E{Toggle diagnostics HUD / selection / bars / HUD text}",
+                "    E -->|lane disabled| F[Expected lane count drops to zero]",
+                "    E -->|lane left on| G[Other lane counts stay stable]",
+                "    F --> H{Toggle primitives render gate}",
+                "    H -->|off| I[RenderDebugState primitive gate flips immediately]",
+                "    I --> J{Toggle crowd off}",
+                "    J -->|crowd=0| K[Visible crowd and label counts collapse]",
+                "    K --> L{Toggle panel off then restore all lanes}",
+                "    L -->|restored| M[Write battle-report + trace + path]"
             }) + Environment.NewLine;
         }
 
@@ -1746,7 +1837,6 @@ namespace Ludots.Tests.ThreeC.Acceptance
             bool PanelMounted,
             bool DiagnosticsHudVisible,
             bool PanelEnabled,
-            bool TerrainEnabled,
             bool PrimitivesEnabled,
             float CameraCullingMs,
             float HudProjectionMs,

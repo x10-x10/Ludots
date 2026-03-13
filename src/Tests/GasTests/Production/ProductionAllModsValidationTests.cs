@@ -95,6 +95,12 @@ namespace Ludots.Tests.GAS.Production
                 .SetName("ProdModSmoke_CameraAcceptanceMod");
 
             yield return new TestCaseData(new ModCase(
+                    "CameraAcceptanceHotpathEntryMod",
+                    new[] { "LudotsCoreMod", "CoreInputMod", "CameraAcceptanceMod", "CameraAcceptanceHotpathEntryMod" },
+                    true))
+                .SetName("ProdModSmoke_CameraAcceptanceHotpathEntryMod");
+
+            yield return new TestCaseData(new ModCase(
                     "InteractionShowcaseMod",
                     new[] { "LudotsCoreMod", "CoreInputMod", "CameraProfilesMod", "InteractionShowcaseMod" },
                     true))

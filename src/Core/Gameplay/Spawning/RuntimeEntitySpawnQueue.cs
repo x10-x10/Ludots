@@ -31,7 +31,7 @@ namespace Ludots.Core.Gameplay.Spawning
         private int _tail;
         private int _count;
 
-        public RuntimeEntitySpawnQueue(int capacity = 1024)
+        public RuntimeEntitySpawnQueue(int capacity = 32768)
         {
             if (capacity < 16) capacity = 16;
             _items = new RuntimeEntitySpawnRequest[capacity];

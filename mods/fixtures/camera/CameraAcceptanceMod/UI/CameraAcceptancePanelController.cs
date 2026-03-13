@@ -8,6 +8,8 @@ using Ludots.Core.Components;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Input.Selection;
+using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Scripting;
 using Ludots.UI;
@@ -24,13 +26,19 @@ namespace CameraAcceptanceMod.UI
         private const float SelectionRowHeight = 22f;
         private const int SelectionRowPoolSize = SelectionBuffer.CAPACITY;
         private const string SelectionBufferHostId = "camera-selection-buffer-list";
+        private const float VisibleEntityBufferHeight = 220f;
+        private const float VisibleEntityRowHeight = 20f;
+        private const string VisibleEntityBufferHostId = "camera-visible-entity-list";
         private static readonly Vector2 CaptainOriginCm = new(3400f, 2200f);
         private static readonly Vector2 CaptainMovedCm = new(4200f, 2800f);
+        private static readonly QueryDescription VisibleEntityQuery = new QueryDescription()
+            .WithAll<Name, MapEntity, CullState, VisualTransform>();
 
         private readonly ReactivePage<CameraAcceptancePanelState> _page;
         private CameraAcceptancePanelState _lastState = CameraAcceptancePanelState.Empty;
         private GameEngine? _engine;
         private int _lastSelectionRowsTouched;
+        private int _lastRowPoolSize = SelectionRowPoolSize;
 
         public CameraAcceptancePanelController()
         {
@@ -43,7 +51,7 @@ namespace CameraAcceptanceMod.UI
         public long FullRecomposeCount => _page.FullRecomposeCount;
         public long IncrementalPatchCount => _page.IncrementalPatchCount;
         public int LastSelectionRowsTouched => _lastSelectionRowsTouched;
-        public int RowPoolSize => SelectionRowPoolSize;
+        public int RowPoolSize => _lastRowPoolSize;
 
         public bool MountOrSync(UIRoot root, GameEngine engine)
         {
@@ -80,6 +88,7 @@ namespace CameraAcceptanceMod.UI
 
             _lastState = CameraAcceptancePanelState.Empty;
             _lastSelectionRowsTouched = 0;
+            _lastRowPoolSize = SelectionRowPoolSize;
             _page.SetState(_ => CameraAcceptancePanelState.Empty);
             _engine = null;
         }
@@ -127,7 +136,6 @@ namespace CameraAcceptanceMod.UI
                     .Gap(8f),
                 Ui.Text("Actions").FontSize(12f).Bold().Color("#F4C77D"),
                 BuildScenarioActions(state),
-                BuildSelectedIdsSection(context, state.SelectedIds),
                 Ui.Text("How To Verify").FontSize(12f).Bold().Color("#F4C77D"),
                 Ui.Text(state.ControlsDescription).FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
             };
@@ -135,6 +143,11 @@ namespace CameraAcceptanceMod.UI
             if (string.Equals(state.MapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
             {
                 children.Add(BuildHotpathControls(state));
+                children.Add(BuildVisibleEntitiesSection(context, state.VisibleEntityRows, state.VisibleEntitySummary));
+            }
+            else
+            {
+                children.Add(BuildSelectedIdsSection(context, state.SelectedIds));
             }
 
             return Ui.Card(children.ToArray()).Width(PanelWidth)
@@ -202,6 +215,56 @@ namespace CameraAcceptanceMod.UI
             return Ui.Spacer(height);
         }
 
+        private static UiElementBuilder BuildVisibleEntitiesSection(
+            ReactiveContext<CameraAcceptancePanelState> context,
+            IReadOnlyList<string> visibleEntityRows,
+            string summary)
+        {
+            UiVirtualWindow window = context.GetVerticalVirtualWindow(
+                VisibleEntityBufferHostId,
+                visibleEntityRows.Count,
+                VisibleEntityRowHeight,
+                VisibleEntityBufferHeight,
+                overscan: 2);
+
+            var rows = new List<UiElementBuilder>();
+            if (window.LeadingSpacerExtent > 0.01f)
+            {
+                rows.Add(Ui.Spacer(window.LeadingSpacerExtent));
+            }
+
+            for (int i = window.StartIndex; i < window.EndIndexExclusive; i++)
+            {
+                rows.Add(
+                    Ui.Text(visibleEntityRows[i])
+                        .Id(GetVisibleEntityRowId(i))
+                        .FontSize(12f)
+                        .Color("#D0D8E6"));
+            }
+
+            if (window.TrailingSpacerExtent > 0.01f)
+            {
+                rows.Add(Ui.Spacer(window.TrailingSpacerExtent));
+            }
+
+            if (rows.Count == 0)
+            {
+                rows.Add(Ui.Text("none").FontSize(12f).Color("#62758C"));
+            }
+
+            return Ui.Column(
+                    Ui.Text("Visible Entities").FontSize(12f).Bold().Color("#F4C77D"),
+                    Ui.Text($"{summary} | Visible: {FormatVisibleRange(window)}").Id("camera-visible-entity-summary").FontSize(11f).Color("#8EA2BD"),
+                    Ui.ScrollView(rows.ToArray())
+                        .Id(VisibleEntityBufferHostId)
+                        .Height(VisibleEntityBufferHeight)
+                        .Padding(8f)
+                        .Gap(4f)
+                        .Radius(12f)
+                        .Background("#0C1420"))
+                .Gap(6f);
+        }
+
         private static string GetSelectionRowId(int index)
         {
             return $"camera-selection-row-{index:00}";
@@ -224,7 +287,7 @@ namespace CameraAcceptanceMod.UI
                     .Color("#8EA2BD")
                     .WhiteSpace(UiWhiteSpace.Normal),
                 CameraAcceptanceIds.HotpathMapId => Ui.Text(
-                        $"This scene auto-builds a crowd up to {CameraAcceptanceIds.HotpathCrowdTargetCount} dummies. Toggle lanes live to isolate panel, HUD, text, terrain, primitive, and culling costs.")
+                        $"This scene auto-builds a deterministic {CameraAcceptanceIds.HotpathCrowdTargetCount} crowd. Move the camera manually, verify the visible-entity list changes with culling, and toggle lanes live to isolate panel, HUD, text, primitive, and culling costs.")
                     .FontSize(12f)
                     .Color("#8EA2BD")
                     .WhiteSpace(UiWhiteSpace.Normal),
@@ -264,13 +327,17 @@ namespace CameraAcceptanceMod.UI
         {
             return Ui.Column(
                     Ui.Text("Presentation Hotpath").FontSize(12f).Bold().Color("#F4C77D"),
+                    Ui.Text(state.VisibleEntitySummary)
+                        .FontSize(12f)
+                        .Color("#8EA2BD")
+                        .WhiteSpace(UiWhiteSpace.Normal),
                     Ui.Text(
                             $"HUD {OnOff(state.DiagnosticsHudEnabled)} | Selection {OnOff(state.SelectionTextEnabled)} | Bars {OnOff(state.HotpathBarsEnabled)} | HUD Text {OnOff(state.HotpathHudTextEnabled)}")
                         .FontSize(12f)
                         .Color("#8EA2BD")
                         .WhiteSpace(UiWhiteSpace.Normal),
                     Ui.Text(
-                            $"Terrain {OnOff(state.TerrainEnabled)} | Primitives {OnOff(state.PrimitivesEnabled)} | Crowd/Culling {OnOff(state.HotpathCullCrowdEnabled)}")
+                            $"Primitives {OnOff(state.PrimitivesEnabled)} | Crowd/Culling {OnOff(state.HotpathCullCrowdEnabled)}")
                         .FontSize(12f)
                         .Color("#8EA2BD")
                         .WhiteSpace(UiWhiteSpace.Normal),
@@ -283,7 +350,6 @@ namespace CameraAcceptanceMod.UI
                         .Gap(8f),
                     Ui.Row(
                             BuildActionButton("Text", state.HotpathHudTextEnabled, ToggleHotpathHudText),
-                            BuildActionButton("Terrain", state.TerrainEnabled, ToggleTerrain),
                             BuildActionButton("Prims", state.PrimitivesEnabled, TogglePrimitives),
                             BuildActionButton("Crowd", state.HotpathCullCrowdEnabled, ToggleHotpathCullCrowd))
                         .Wrap()
@@ -318,7 +384,8 @@ namespace CameraAcceptanceMod.UI
                 return false;
             }
 
-            _lastSelectionRowsTouched = CountSelectionRowChanges(_lastState.SelectedIds, next.SelectedIds);
+            _lastSelectionRowsTouched = CountSelectionRowChanges(ResolveTrackedRows(_lastState), ResolveTrackedRows(next));
+            _lastRowPoolSize = ResolveTrackedRowPoolSize(next);
             _lastState = next;
             _page.SetState(_ => next);
             return true;
@@ -333,6 +400,9 @@ namespace CameraAcceptanceMod.UI
             }
 
             string[] selectedIds = ResolveSelectedEntityIds(engine);
+            string[] visibleEntityRows = string.Equals(mapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase)
+                ? ResolveVisibleEntityRows(engine, mapId)
+                : Array.Empty<string>();
             CameraAcceptanceDiagnosticsState? diagnostics = engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState);
             RenderDebugState? renderDebug = engine.GetService(CoreServiceKeys.RenderDebugState);
             return new CameraAcceptancePanelState(
@@ -347,12 +417,13 @@ namespace CameraAcceptanceMod.UI
                 FormatVector(engine.GameSession.Camera.FollowTargetPositionCm),
                 ResolveActiveBlendCameraId(engine),
                 CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine),
+                BuildVisibleEntitySummary(visibleEntityRows),
+                visibleEntityRows,
                 renderDebug?.DrawSkiaUi ?? true,
                 diagnostics?.HudEnabled ?? true,
                 diagnostics?.TextEnabled ?? true,
                 diagnostics?.HotpathBarsEnabled ?? true,
                 diagnostics?.HotpathHudTextEnabled ?? true,
-                renderDebug?.DrawTerrain ?? true,
                 renderDebug?.DrawPrimitives ?? true,
                 diagnostics?.HotpathCullCrowdEnabled ?? true);
         }
@@ -456,16 +527,6 @@ namespace CameraAcceptanceMod.UI
             }
         }
 
-        private void ToggleTerrain()
-        {
-            GameEngine engine = RequireEngine();
-            if (engine.GetService(CoreServiceKeys.RenderDebugState) is RenderDebugState renderDebug)
-            {
-                renderDebug.DrawTerrain = !renderDebug.DrawTerrain;
-                SyncMountedRoot();
-            }
-        }
-
         private void TogglePrimitives()
         {
             GameEngine engine = RequireEngine();
@@ -537,12 +598,12 @@ namespace CameraAcceptanceMod.UI
                 !string.Equals(left.FollowTarget, right.FollowTarget, StringComparison.Ordinal) ||
                 !string.Equals(left.ActiveBlendCameraId, right.ActiveBlendCameraId, StringComparison.Ordinal) ||
                 left.ProjectionSpawnCount != right.ProjectionSpawnCount ||
+                !string.Equals(left.VisibleEntitySummary, right.VisibleEntitySummary, StringComparison.Ordinal) ||
                 left.PanelEnabled != right.PanelEnabled ||
                 left.DiagnosticsHudEnabled != right.DiagnosticsHudEnabled ||
                 left.SelectionTextEnabled != right.SelectionTextEnabled ||
                 left.HotpathBarsEnabled != right.HotpathBarsEnabled ||
                 left.HotpathHudTextEnabled != right.HotpathHudTextEnabled ||
-                left.TerrainEnabled != right.TerrainEnabled ||
                 left.PrimitivesEnabled != right.PrimitivesEnabled ||
                 left.HotpathCullCrowdEnabled != right.HotpathCullCrowdEnabled)
             {
@@ -557,6 +618,19 @@ namespace CameraAcceptanceMod.UI
             for (int i = 0; i < left.SelectedIds.Length; i++)
             {
                 if (!string.Equals(left.SelectedIds[i], right.SelectedIds[i], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            if (left.VisibleEntityRows.Length != right.VisibleEntityRows.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < left.VisibleEntityRows.Length; i++)
+            {
+                if (!string.Equals(left.VisibleEntityRows[i], right.VisibleEntityRows[i], StringComparison.Ordinal))
                 {
                     return false;
                 }
@@ -624,6 +698,48 @@ namespace CameraAcceptanceMod.UI
             return lines;
         }
 
+        private static string[] ResolveVisibleEntityRows(GameEngine engine, string mapId)
+        {
+            if (engine.GetService(CoreServiceKeys.ViewController) is not IViewController view)
+            {
+                throw new InvalidOperationException("Camera acceptance hotpath panel requires IViewController.");
+            }
+
+            var camera = CameraViewportUtil.StateToRenderState(engine.GameSession.Camera.State);
+            if (camera.FovYDeg <= 0f || view.Fov <= 0f || view.Resolution.X <= 0f || view.Resolution.Y <= 0f)
+            {
+                return Array.Empty<string>();
+            }
+
+            var visibleRows = new List<VisibleEntityRow>();
+            engine.World.Query(in VisibleEntityQuery, (Entity entity, ref Name name, ref MapEntity mapEntity, ref CullState cull, ref VisualTransform transform) =>
+            {
+                if (!cull.IsVisible ||
+                    !string.Equals(mapEntity.MapId.Value, mapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                Vector2 screen = CameraViewportUtil.WorldToScreen(transform.Position, camera, view.Resolution, view.AspectRatio);
+                if (!IsInsideViewport(screen, view.Resolution))
+                {
+                    return;
+                }
+
+                visibleRows.Add(new VisibleEntityRow(entity.Id, $"{name.Value} {CameraAcceptanceSelectionView.FormatEntityId(entity)}"));
+            });
+
+            visibleRows.Sort(static (left, right) => left.EntityId.CompareTo(right.EntityId));
+
+            string[] rows = new string[visibleRows.Count];
+            for (int i = 0; i < visibleRows.Count; i++)
+            {
+                rows[i] = visibleRows[i].Text;
+            }
+
+            return rows;
+        }
+
         private static int CountSelectionRowChanges(IReadOnlyList<string> previous, IReadOnlyList<string> next)
         {
             int count = 0;
@@ -639,6 +755,27 @@ namespace CameraAcceptanceMod.UI
             }
 
             return count;
+        }
+
+        private static IReadOnlyList<string> ResolveTrackedRows(CameraAcceptancePanelState state)
+        {
+            return string.Equals(state.MapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase)
+                ? state.VisibleEntityRows
+                : state.SelectedIds;
+        }
+
+        private static int ResolveTrackedRowPoolSize(CameraAcceptancePanelState state)
+        {
+            return string.Equals(state.MapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase)
+                ? state.VisibleEntityRows.Length
+                : SelectionRowPoolSize;
+        }
+
+        private static string BuildVisibleEntitySummary(IReadOnlyList<string> visibleEntityRows)
+        {
+            return visibleEntityRows.Count <= 0
+                ? "Visible on screen: 0"
+                : $"Visible on screen: {visibleEntityRows.Count}";
         }
 
         private static string SummarizeSelectedIds(IReadOnlyList<string> selectedIds)
@@ -706,6 +843,23 @@ namespace CameraAcceptanceMod.UI
 
         private static string OnOff(bool value) => value ? "ON" : "OFF";
 
+        private static bool IsInsideViewport(Vector2 screen, Vector2 resolution)
+        {
+            return !float.IsNaN(screen.X) &&
+                   !float.IsNaN(screen.Y) &&
+                   !float.IsInfinity(screen.X) &&
+                   !float.IsInfinity(screen.Y) &&
+                   screen.X >= 0f &&
+                   screen.Y >= 0f &&
+                   screen.X <= resolution.X &&
+                   screen.Y <= resolution.Y;
+        }
+
+        private static string GetVisibleEntityRowId(int index)
+        {
+            return $"camera-visible-row-{index:0000}";
+        }
+
         private sealed record CameraAcceptancePanelState(
             string MapId,
             string MapDescription,
@@ -718,12 +872,13 @@ namespace CameraAcceptanceMod.UI
             string FollowTarget,
             string ActiveBlendCameraId,
             int ProjectionSpawnCount,
+            string VisibleEntitySummary,
+            string[] VisibleEntityRows,
             bool PanelEnabled,
             bool DiagnosticsHudEnabled,
             bool SelectionTextEnabled,
             bool HotpathBarsEnabled,
             bool HotpathHudTextEnabled,
-            bool TerrainEnabled,
             bool PrimitivesEnabled,
             bool HotpathCullCrowdEnabled)
         {
@@ -739,7 +894,8 @@ namespace CameraAcceptanceMod.UI
                 "none",
                 CameraAcceptanceIds.BlendSmoothCameraId,
                 CameraAcceptanceIds.ProjectionSpawnCountDefault,
-                true,
+                "Visible on screen: 0",
+                Array.Empty<string>(),
                 true,
                 true,
                 true,
@@ -748,5 +904,7 @@ namespace CameraAcceptanceMod.UI
                 true,
                 true);
         }
+
+        private readonly record struct VisibleEntityRow(int EntityId, string Text);
     }
 }

@@ -17,6 +17,7 @@ using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
 using Ludots.Platform.Abstractions;
+using Ludots.Presentation.Skia;
 using Ludots.UI;
 using Ludots.UI.Input;
 using Raylib_cs;
@@ -61,7 +62,10 @@ namespace Ludots.Adapter.Raylib
                 Rl.SetExitKey(0);
                 Rl.SetTargetFPS(targetFps);
 
+                using var underlayRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
                 using var uiRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
+                using var overlayRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
+                using var overlaySkiaRenderer = new SkiaOverlayRenderer();
                 uiRoot.Resize(screenWidth, screenHeight);
 
                 var initialCamera = new Camera3D
@@ -96,13 +100,20 @@ namespace Ludots.Adapter.Raylib
                 engine.RegisterPresentationSystem(new CullingVisualizationPresentationSystem(engine.GlobalContext));
                 var presentationFrameSetup = engine.GetService(CoreServiceKeys.PresentationFrameSetup);
 
-                WorldHudToScreenSystem hudProjection = null;
+                WorldHudToScreenSystem? hudProjection = null;
+                PresentationOverlaySceneBuilder? overlaySceneBuilder = null;
+                PresentationOverlayScene? overlayScene = null;
+                ScreenOverlayBuffer? screenOverlayBuffer = null;
                 if (engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudBuffer.Name, out var whObj) && whObj is WorldHudBatchBuffer worldHud &&
                     engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationScreenHudBuffer.Name, out var shObj) && shObj is ScreenHudBatchBuffer screenHud)
                 {
-                    engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudStrings.Name, out var strObj);
-                    var worldHudStrings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
+                    WorldHudStringTable? worldHudStrings = engine.GetService(CoreServiceKeys.PresentationWorldHudStrings);
+                    PresentationTextCatalog? textCatalog = engine.GetService(CoreServiceKeys.PresentationTextCatalog);
+                    PresentationTextLocaleSelection? localeSelection = engine.GetService(CoreServiceKeys.PresentationTextLocaleSelection);
+                    screenOverlayBuffer = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
                     hudProjection = new WorldHudToScreenSystem(engine.World, worldHud, worldHudStrings, screenProjector, viewController, screenHud, presentationTiming);
+                    overlaySceneBuilder = new PresentationOverlaySceneBuilder(screenHud, worldHudStrings, textCatalog, localeSelection, screenOverlayBuffer);
+                    overlayScene = new PresentationOverlayScene(screenHud.Capacity + ScreenOverlayBuffer.MaxItems);
                 }
 
                 ValidateRequiredContextBeforeLoop(engine);
@@ -119,6 +130,8 @@ namespace Ludots.Adapter.Raylib
 
                 int lastW = screenWidth;
                 int lastH = screenHeight;
+                bool underlayHadContent = false;
+                bool overlayHadContent = false;
 
                 while (!Rl.WindowShouldClose())
                 {
@@ -130,7 +143,9 @@ namespace Ludots.Adapter.Raylib
                         {
                             lastW = w;
                             lastH = h;
+                            underlayRenderer.Resize(w, h);
                             uiRenderer.Resize(w, h);
+                            overlayRenderer.Resize(w, h);
                             uiRoot.Resize(w, h);
                         }
 
@@ -157,6 +172,10 @@ namespace Ludots.Adapter.Raylib
                         float cameraAlpha = presentationFrameSetup?.GetInterpolationAlpha() ?? 1f;
                         cameraPresenter.Update(engine.GameSession.Camera, cameraAlpha, renderCameraDebug);
                         hudProjection?.Update(dt);
+                        if (overlaySceneBuilder != null && overlayScene != null)
+                        {
+                            overlaySceneBuilder.Build(overlayScene);
+                        }
 
                         Rl.BeginDrawing();
                         Rl.ClearBackground(new Raylib_cs.Color(0, 0, 0, 255));
@@ -164,14 +183,14 @@ namespace Ludots.Adapter.Raylib
                         var activeCamera = cameraAdapter.Camera;
                         Rl.BeginMode3D(activeCamera);
 
-                        // 锚定到 target，网格以观察点为中心；halfCount 越大边界越远
                         DrawInfiniteGrid(activeCamera.target, 300, 1.0f, 10);
 
-                        var t = activeCamera.target;
-                        Rl.DrawLine3D(t, t + new Vector3(2.0f, 0, 0), Color.RED);
-                        Rl.DrawLine3D(t, t + new Vector3(0, 0, 2.0f), Color.BLUE);
-                        Rl.DrawLine3D(t, t + new Vector3(0, 2.0f, 0), Color.GREEN);
+                        var target = activeCamera.target;
+                        Rl.DrawLine3D(target, target + new Vector3(2.0f, 0, 0), Color.RED);
+                        Rl.DrawLine3D(target, target + new Vector3(0, 0, 2.0f), Color.BLUE);
+                        Rl.DrawLine3D(target, target + new Vector3(0, 2.0f, 0), Color.GREEN);
 
+                        // 锚定到 target，网格以观察点为中心；halfCount 越大边界越远
                         if (drawTerrain)
                         {
                             long terrainStart = Stopwatch.GetTimestamp();
@@ -226,7 +245,24 @@ namespace Ludots.Adapter.Raylib
 
                         Rl.EndMode3D();
 
-                        DrawScreenHud(engine);
+                        bool hasUnderlay = overlayScene != null && overlayScene.ContainsLayer(PresentationOverlayLayer.UnderUi);
+                        bool refreshUnderlay = hasUnderlay || underlayHadContent;
+                        if (overlayScene != null && refreshUnderlay)
+                        {
+                            underlayRenderer.Canvas.Clear(SKColors.Transparent);
+                            if (hasUnderlay)
+                            {
+                                overlaySkiaRenderer.Render(overlayScene, underlayRenderer.Canvas, PresentationOverlayLayer.UnderUi);
+                            }
+
+                            underlayRenderer.UpdateTexture();
+                            underlayHadContent = hasUnderlay;
+                        }
+
+                        if (refreshUnderlay)
+                        {
+                            underlayRenderer.Draw();
+                        }
 
                         if (drawSkiaUi && uiRoot.IsDirty)
                         {
@@ -249,9 +285,27 @@ namespace Ludots.Adapter.Raylib
                             uiRenderer.Draw();
                         }
 
-                        var res = viewController.Resolution;
                         long overlayStart = Stopwatch.GetTimestamp();
-                        DrawScreenOverlays(engine, (int)res.X, (int)res.Y);
+                        bool hasTopOverlay = overlayScene != null && overlayScene.ContainsLayer(PresentationOverlayLayer.TopMost);
+                        bool refreshTopOverlay = hasTopOverlay || overlayHadContent;
+                        if (overlayScene != null && refreshTopOverlay)
+                        {
+                            overlayRenderer.Canvas.Clear(SKColors.Transparent);
+                            if (hasTopOverlay)
+                            {
+                                overlaySkiaRenderer.Render(overlayScene, overlayRenderer.Canvas, PresentationOverlayLayer.TopMost);
+                            }
+
+                            overlayRenderer.UpdateTexture();
+                            overlayHadContent = hasTopOverlay;
+                        }
+
+                        if (refreshTopOverlay)
+                        {
+                            overlayRenderer.Draw();
+                        }
+
+                        screenOverlayBuffer?.Clear();
                         presentationTiming?.ObserveScreenOverlayDraw(ElapsedMs(overlayStart));
 
                         Rl.EndDrawing();
@@ -356,48 +410,6 @@ namespace Ludots.Adapter.Raylib
 
                 Rl.DrawLine3D(new Vector3(x, y, startZ), new Vector3(x, y, endZ), xCol);
                 Rl.DrawLine3D(new Vector3(startX, y, z), new Vector3(endX, y, z), zCol);
-            }
-        }
-
-        private static void DrawScreenHud(GameEngine engine)
-        {
-            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationScreenHudBuffer.Name, out var hudObj)) return;
-            engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudStrings.Name, out var strObj);
-            if (hudObj is not ScreenHudBatchBuffer hud) return;
-            var strings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
-
-            var span = hud.GetSpan();
-            for (int i = 0; i < span.Length; i++)
-            {
-                ref readonly var item = ref span[i];
-                int ix = (int)item.ScreenX;
-                int iy = (int)item.ScreenY;
-                int iw = (int)item.Width;
-                int ih = (int)item.Height;
-
-                if (item.Kind == WorldHudItemKind.Bar)
-                {
-                    var bg = ToRaylibColor(item.Color0);
-                    var fg = ToRaylibColor(item.Color1);
-
-                    Rl.DrawRectangle(ix, iy, iw, ih, bg);
-                    int fw = (int)(iw * item.Value0);
-                    Rl.DrawRectangle(ix, iy, fw, ih, fg);
-                    Rl.DrawRectangleLines(ix, iy, iw, ih, new Color(0, 0, 0, 255));
-                    continue;
-                }
-
-                if (item.Kind == WorldHudItemKind.Text)
-                {
-                    int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
-                    var col = ToRaylibColor(item.Color0);
-                    string? text = ResolveScreenHudText(engine, strings, in item);
-
-                    if (!string.IsNullOrEmpty(text))
-                    {
-                        Rl.DrawText(text, ix, iy, fontSize, col);
-                    }
-                }
             }
         }
 
@@ -588,109 +600,5 @@ namespace Ludots.Adapter.Raylib
         }
 
         private static Color ToRaylibColor(Vector4 c) => RaylibColorUtil.ToRaylibColor(in c);
-
-        private static void DrawScreenOverlays(GameEngine engine, int screenWidth, int screenHeight)
-        {
-            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.ScreenOverlayBuffer.Name, out var bufferObj)) return;
-            if (bufferObj is not ScreenOverlayBuffer buffer) return;
-
-            const int maxOverlayDim = 4096;
-
-            var span = buffer.GetSpan();
-            for (int i = 0; i < span.Length; i++)
-            {
-                ref readonly var item = ref span[i];
-                switch (item.Kind)
-                {
-                    case ScreenOverlayItemKind.Text:
-                    {
-                        string? text = ResolveScreenOverlayText(engine, buffer, in item);
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
-                            Rl.DrawText(text, item.X, item.Y, fontSize, ToRaylibColor(item.Color));
-                        }
-                        break;
-                    }
-                    case ScreenOverlayItemKind.Rect:
-                    {
-                        if (item.Width <= 0 || item.Height <= 0 || item.Width > maxOverlayDim || item.Height > maxOverlayDim) break;
-                        Rl.DrawRectangle(item.X, item.Y, item.Width, item.Height, ToRaylibColor(item.BackgroundColor));
-                        if (item.Color.W > 0.01f)
-                        {
-                            Rl.DrawRectangleLines(item.X, item.Y, item.Width, item.Height, ToRaylibColor(item.Color));
-                        }
-                        break;
-                    }
-                }
-            }
-
-            buffer.Clear();
-        }
-
-        private static string? ResolveScreenHudText(GameEngine engine, WorldHudStringTable? strings, in ScreenHudItem item)
-        {
-            if (TryFormatTextPacket(engine, in item.Text, out string? packetText))
-            {
-                return packetText;
-            }
-
-            if (item.Id0 != 0 && strings != null)
-            {
-                return strings.TryGet(item.Id0);
-            }
-
-            var mode = (WorldHudValueMode)item.Id1;
-            if (mode == WorldHudValueMode.AttributeCurrentOverBase)
-            {
-                return $"{(int)item.Value0}/{(int)item.Value1}";
-            }
-
-            if (mode == WorldHudValueMode.AttributeCurrent)
-            {
-                return $"{(int)item.Value0}";
-            }
-
-            if (mode == WorldHudValueMode.Constant)
-            {
-                return $"{item.Value0}";
-            }
-
-            return null;
-        }
-
-        private static string? ResolveScreenOverlayText(GameEngine engine, ScreenOverlayBuffer buffer, in ScreenOverlayItem item)
-        {
-            if (TryFormatTextPacket(engine, in item.Text, out string? packetText))
-            {
-                return packetText;
-            }
-
-            return buffer.GetString(item.StringId);
-        }
-
-        private static bool TryFormatTextPacket(GameEngine engine, in PresentationTextPacket packet, out string? text)
-        {
-            text = null;
-            if (!packet.HasValue)
-            {
-                return false;
-            }
-
-            PresentationTextCatalog? catalog = engine.GetService(CoreServiceKeys.PresentationTextCatalog);
-            PresentationTextLocaleSelection? localeSelection = engine.GetService(CoreServiceKeys.PresentationTextLocaleSelection);
-            if (catalog == null || localeSelection == null)
-            {
-                return false;
-            }
-
-            if (!PresentationTextFormatter.TryFormat(catalog, localeSelection.ActiveLocaleId, in packet, out string formatted))
-            {
-                return false;
-            }
-
-            text = formatted;
-            return true;
-        }
     }
 }

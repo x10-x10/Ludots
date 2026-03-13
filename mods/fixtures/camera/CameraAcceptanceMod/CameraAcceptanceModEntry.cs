@@ -14,7 +14,6 @@ namespace CameraAcceptanceMod
         public void OnLoad(IModContext context)
         {
             context.Log("[CameraAcceptanceMod] Loaded");
-            CameraAcceptanceHotpathTerrainGenerator.EnsureGenerated(context);
             var runtime = new CameraAcceptanceRuntime();
             context.OnEvent(GameEvents.GameStart, ctx =>
             {

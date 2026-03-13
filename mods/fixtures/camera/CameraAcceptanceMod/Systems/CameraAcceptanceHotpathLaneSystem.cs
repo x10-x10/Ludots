@@ -23,21 +23,15 @@ namespace CameraAcceptanceMod.Systems
     {
         private const string CrowdRequestedKey = "CameraAcceptance.HotpathCrowdRequested";
 
-        private static readonly QueryDescription DummyNameQuery = new QueryDescription()
-            .WithAll<Name, MapEntity>();
-
-        private static readonly QueryDescription DummyVisibleQuery = new QueryDescription()
-            .WithAll<Name, CullState, MapEntity>();
-
         private static readonly QueryDescription UntaggedDummyQuery = new QueryDescription()
             .WithAll<Name, MapEntity>()
             .WithNone<CameraAcceptanceHotpathCrowdTag>();
 
         private static readonly QueryDescription TaggedCrowdQuery = new QueryDescription()
-            .WithAll<CameraAcceptanceHotpathCrowdTag>();
+            .WithAll<CameraAcceptanceHotpathCrowdTag, MapEntity>();
 
         private static readonly QueryDescription TaggedCrowdVisibleQuery = new QueryDescription()
-            .WithAll<CameraAcceptanceHotpathCrowdTag, CullState>();
+            .WithAll<CameraAcceptanceHotpathCrowdTag, CullState, MapEntity>();
 
         private static readonly QueryDescription TaggedCrowdVisualQuery = new QueryDescription()
             .WithAll<CameraAcceptanceHotpathCrowdTag, MapEntity, VisualTransform, CullState>();
@@ -82,13 +76,13 @@ namespace CameraAcceptanceMod.Systems
 
             TagExistingCrowd(currentMapId);
 
-            int crowdCount = CountDummyCrowd(currentMapId);
-            int visibleCrowdCount = CountVisibleDummyCrowd(currentMapId);
+            int crowdCount = CountTaggedCrowd(currentMapId);
+            int visibleCrowdCount = CountVisibleTaggedCrowd(currentMapId);
             if (!diagnostics.HotpathCullCrowdEnabled)
             {
                 if (crowdCount > 0)
                 {
-                    DestroyDummyCrowd(currentMapId);
+                    DestroyTaggedCrowd(currentMapId);
                 }
 
                 SetCrowdRequested(false);
@@ -101,8 +95,8 @@ namespace CameraAcceptanceMod.Systems
 
             if (crowdCount > CameraAcceptanceIds.HotpathCrowdTargetCount)
             {
-                crowdCount = TrimDummyCrowdToTarget(currentMapId);
-                visibleCrowdCount = CountVisibleDummyCrowd(currentMapId);
+                crowdCount = TrimTaggedCrowdToTarget(currentMapId);
+                visibleCrowdCount = CountVisibleTaggedCrowd(currentMapId);
                 if (_engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is RuntimeEntitySpawnQueue spawnQueue)
                 {
                     spawnQueue.Clear();
@@ -112,8 +106,14 @@ namespace CameraAcceptanceMod.Systems
             }
             else if (!IsCrowdRequested())
             {
-                EnsureCrowdSpawned(currentMapId, crowdCount);
-                SetCrowdRequested(true);
+                int requestedCount = crowdCount;
+                if (_engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is RuntimeEntitySpawnQueue spawnQueue)
+                {
+                    requestedCount += spawnQueue.Count;
+                }
+
+                int enqueued = EnsureCrowdSpawned(currentMapId, requestedCount);
+                SetCrowdRequested(requestedCount + enqueued >= CameraAcceptanceIds.HotpathCrowdTargetCount);
             }
 
             int barCount = EmitBars(diagnostics, currentMapId);
@@ -159,13 +159,12 @@ namespace CameraAcceptanceMod.Systems
             }
         }
 
-        private int CountDummyCrowd(MapId currentMapId)
+        private int CountTaggedCrowd(MapId currentMapId)
         {
             int crowdCount = 0;
-            _engine.World.Query(in DummyNameQuery, (ref Name name, ref MapEntity mapEntity) =>
+            _engine.World.Query(in TaggedCrowdQuery, (ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity) =>
             {
-                if (MatchesMap(mapEntity, currentMapId) &&
-                    string.Equals(name.Value, "Dummy", StringComparison.OrdinalIgnoreCase))
+                if (MatchesMap(mapEntity, currentMapId))
                 {
                     crowdCount++;
                 }
@@ -174,14 +173,13 @@ namespace CameraAcceptanceMod.Systems
             return crowdCount;
         }
 
-        private int CountVisibleDummyCrowd(MapId currentMapId)
+        private int CountVisibleTaggedCrowd(MapId currentMapId)
         {
             int visibleCount = 0;
-            _engine.World.Query(in DummyVisibleQuery, (ref Name name, ref CullState cull, ref MapEntity mapEntity) =>
+            _engine.World.Query(in TaggedCrowdVisibleQuery, (ref CameraAcceptanceHotpathCrowdTag _, ref CullState cull, ref MapEntity mapEntity) =>
             {
                 if (MatchesMap(mapEntity, currentMapId) &&
-                    cull.IsVisible &&
-                    string.Equals(name.Value, "Dummy", StringComparison.OrdinalIgnoreCase))
+                    cull.IsVisible)
                 {
                     visibleCount++;
                 }
@@ -190,13 +188,13 @@ namespace CameraAcceptanceMod.Systems
             return visibleCount;
         }
 
-        private void DestroyDummyCrowd(MapId currentMapId)
+        private void DestroyTaggedCrowd(MapId currentMapId)
         {
             _destroyBuffer.Clear();
-            _engine.World.Query(in DummyNameQuery, (Entity entity, ref Name name, ref MapEntity mapEntity) =>
+            _engine.World.Query(in TaggedCrowdDestroyQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _) =>
             {
-                if (MatchesMap(mapEntity, currentMapId) &&
-                    string.Equals(name.Value, "Dummy", StringComparison.OrdinalIgnoreCase))
+                if (_engine.World.TryGet(entity, out MapEntity mapEntity) &&
+                    MatchesMap(mapEntity, currentMapId))
                 {
                     _destroyBuffer.Add(entity);
                 }
@@ -212,13 +210,13 @@ namespace CameraAcceptanceMod.Systems
             }
         }
 
-        private int TrimDummyCrowdToTarget(MapId currentMapId)
+        private int TrimTaggedCrowdToTarget(MapId currentMapId)
         {
             _destroyBuffer.Clear();
-            _engine.World.Query(in DummyNameQuery, (Entity entity, ref Name name, ref MapEntity mapEntity) =>
+            _engine.World.Query(in TaggedCrowdDestroyQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _) =>
             {
-                if (MatchesMap(mapEntity, currentMapId) &&
-                    string.Equals(name.Value, "Dummy", StringComparison.OrdinalIgnoreCase))
+                if (_engine.World.TryGet(entity, out MapEntity mapEntity) &&
+                    MatchesMap(mapEntity, currentMapId))
                 {
                     _destroyBuffer.Add(entity);
                 }
@@ -236,11 +234,11 @@ namespace CameraAcceptanceMod.Systems
             return Math.Min(_destroyBuffer.Count, CameraAcceptanceIds.HotpathCrowdTargetCount);
         }
 
-        private void EnsureCrowdSpawned(MapId currentMapId, int crowdCount)
+        private int EnsureCrowdSpawned(MapId currentMapId, int crowdCount)
         {
             if (crowdCount >= CameraAcceptanceIds.HotpathCrowdTargetCount)
             {
-                return;
+                return 0;
             }
 
             if (_engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is not RuntimeEntitySpawnQueue spawnQueue)
@@ -248,6 +246,7 @@ namespace CameraAcceptanceMod.Systems
                 throw new InvalidOperationException("RuntimeEntitySpawnQueue is required for the presentation hotpath harness.");
             }
 
+            int enqueued = 0;
             int remaining = CameraAcceptanceIds.HotpathCrowdTargetCount - crowdCount;
             for (int i = 0; i < remaining; i++)
             {
@@ -264,7 +263,11 @@ namespace CameraAcceptanceMod.Systems
                 {
                     break;
                 }
+
+                enqueued++;
             }
+
+            return enqueued;
         }
 
         private bool IsCrowdRequested()
@@ -430,15 +433,15 @@ namespace CameraAcceptanceMod.Systems
 
         private static WorldCmInt2 ResolveCrowdPosition(int index)
         {
-            const int columns = 16;
-            const int baseX = 1920;
-            const int baseY = 980;
-            const int spacingX = 170;
-            const int spacingY = 150;
+            const int columns = 64;
+            const int baseX = 1440;
+            const int baseY = 960;
+            const int spacingX = 150;
+            const int spacingY = 132;
             int row = index / columns;
             int column = index % columns;
             int x = baseX + (column * spacingX);
-            int y = baseY + (row * spacingY) + ((column & 1) == 0 ? 0 : 40);
+            int y = baseY + (row * spacingY) + ((column & 1) == 0 ? 0 : 36);
             return new WorldCmInt2(x, y);
         }
     }

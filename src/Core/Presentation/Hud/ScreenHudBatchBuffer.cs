@@ -10,8 +10,10 @@ namespace Ludots.Core.Presentation.Hud
 
         public int Count => _count;
         public int Capacity => _buffer.Length;
+        public int DroppedSinceClear { get; private set; }
+        public int DroppedTotal { get; private set; }
 
-        public ScreenHudBatchBuffer(int capacity = 16384)
+        public ScreenHudBatchBuffer(int capacity = 65536)
         {
             if (capacity <= 0) throw new System.ArgumentOutOfRangeException(nameof(capacity));
             _buffer = new ScreenHudItem[capacity];
@@ -20,7 +22,11 @@ namespace Ludots.Core.Presentation.Hud
         public bool TryAdd(in ScreenHudItem item)
         {
             if (_count >= _buffer.Length)
+            {
+                DroppedSinceClear++;
+                DroppedTotal++;
                 return false;
+            }
 
             _buffer[_count++] = item;
             return true;
@@ -31,6 +37,7 @@ namespace Ludots.Core.Presentation.Hud
         public void Clear()
         {
             _count = 0;
+            DroppedSinceClear = 0;
         }
     }
 }

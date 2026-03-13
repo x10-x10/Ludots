@@ -30,8 +30,14 @@ dotnet build src/Tools/Ludots.Editor.Bridge/Ludots.Editor.Bridge.csproj -c Relea
 # Inspect a launch plan
 .\scripts\run-mod-launcher.cmd cli resolve camera_acceptance --adapter raylib
 
+# Inspect the direct hotpath acceptance plan
+.\scripts\run-mod-launcher.cmd cli resolve camera_acceptance_hotpath --adapter raylib
+
 # Launch a single mod
 .\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib
+
+# Launch directly into the camera hotpath acceptance map
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance_hotpath --adapter raylib
 
 # Launch multiple root mods on web
 .\scripts\run-mod-launcher.cmd cli launch camera_acceptance nav_playground --adapter web
