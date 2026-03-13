@@ -15,6 +15,16 @@ namespace Ludots.Core.Presentation.Components
         public readonly bool HasRenderableAsset => MeshAssetId > 0 && RenderPath != VisualRenderPath.None;
         public readonly bool ShouldEmit => HasRenderableAsset && IsVisibleRequested;
 
+        public readonly VisualVisibility ResolveVisibility(bool cullVisible)
+        {
+            if (!IsVisibleRequested)
+                return VisualVisibility.Hidden;
+
+            return cullVisible
+                ? VisualVisibility.Visible
+                : VisualVisibility.Culled;
+        }
+
         public static VisualRuntimeState Create(
             int meshAssetId,
             int materialId,

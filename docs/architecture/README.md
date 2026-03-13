@@ -22,6 +22,7 @@
 *   [GAS 战斗体系基建与 MOBA 实践指南](gas_combat_infrastructure.md)
 *   [交互模型与技能系统](interaction/README.md)
 *   [表现管线与 Performer 体系](presentation_performer.md)
+*   [表现层 visual snapshot contract](presentation_snapshot_contract.md)
 *   [3C 系统：相机、角色与控制](camera_character_control.md)
 
 ## 3 相关查表与证据

@@ -107,8 +107,10 @@ namespace Ludots.Core.Presentation.Rendering
                 {
                     MeshAssetId = m.MeshAssetId,
                     Position = pos,
+                    Rotation = Quaternion.Identity,
                     Scale = m.Scale,
-                    Color = c
+                    Color = c,
+                    Visibility = VisualVisibility.Visible,
                 });
 
                 i++;
