@@ -89,7 +89,10 @@ namespace Ludots.Tests.Presentation
             _healthAttrId = AttributeRegistry.Register("Health");
 
             var meshes = new MeshAssetRegistry();
-            BuiltinPerformerDefinitions.Register(_defs, meshes);
+            BuiltinPerformerDefinitions.Register(
+                _defs,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
             var session = new GameSession();
             var graphApi = new GasGraphRuntimeApi(_world, null, null, null);

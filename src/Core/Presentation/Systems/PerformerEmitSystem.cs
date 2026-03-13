@@ -409,17 +409,27 @@ namespace Ludots.Core.Presentation.Systems
         {
             var color = ResolveColor(handle, def, owner, 4, 5, 6, 7, def.DefaultColor);
             color.W *= alphaMod;
+            float value0 = ResolveParam(handle, def, owner, 0, 0f);
+            float value1 = ResolveParam(handle, def, owner, 1, 0f);
+            int textTokenId = (int)ResolveParam(handle, def, owner, 15, def.DefaultTextId);
+            var legacyMode = (WorldHudValueMode)(int)ResolveParam(handle, def, owner, 16, (int)def.LegacyWorldTextMode);
+            int legacyStringId = legacyMode == WorldHudValueMode.None ? textTokenId : 0;
 
             _worldHud.TryAdd(new WorldHudItem
             {
                 Kind = WorldHudItemKind.Text,
                 WorldPosition = pos,
-                Value0 = ResolveParam(handle, def, owner, 0, 0f),
-                Value1 = ResolveParam(handle, def, owner, 1, 0f),
-                Id0 = (int)ResolveParam(handle, def, owner, 15, 0f), // string table id
-                Id1 = (int)ResolveParam(handle, def, owner, 16, 0f), // WorldHudValueMode
+                Value0 = value0,
+                Value1 = value1,
+                Id0 = legacyStringId,
+                Id1 = (int)legacyMode, // WorldHudValueMode legacy adapter contract
                 FontSize = (int)ResolveParam(handle, def, owner, 3, def.DefaultFontSize),
                 Color0 = color,
+                Text = PresentationTextPacket.FromLegacyWorldHud(
+                    textTokenId,
+                    legacyMode,
+                    value0,
+                    value1),
             });
         }
 

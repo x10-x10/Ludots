@@ -79,7 +79,7 @@ namespace Ludots.Tests.Presentation
         }
 
         [Test]
-        public void ProjectionMap_HealthHud_UsesRegisteredAttributeValues()
+        public void ProjectionMap_CameraFixture_DisablesEntityHudPerformers()
         {
             using var engine = CreateEngine(ProjectionMods);
             LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
@@ -94,20 +94,16 @@ namespace Ludots.Tests.Presentation
                 if (item.Kind == WorldHudItemKind.Bar)
                 {
                     barCount++;
-                    Assert.That(item.Value0, Is.EqualTo(1f).Within(0.001f), "Health bar fill must resolve the real Health ratio.");
                 }
 
                 if (item.Kind == WorldHudItemKind.Text)
                 {
                     textCount++;
-                    Assert.That(item.Value0, Is.EqualTo(100f).Within(0.001f), "Health text current value must come from AttributeBuffer.");
-                    Assert.That(item.Value1, Is.EqualTo(100f).Within(0.001f), "Health text base value must come from AttributeBuffer.");
-                    Assert.That(item.Id1, Is.EqualTo((int)WorldHudValueMode.AttributeCurrentOverBase));
                 }
             }
 
-            Assert.That(barCount, Is.EqualTo(3));
-            Assert.That(textCount, Is.EqualTo(3));
+            Assert.That(barCount, Is.EqualTo(0), "Projection camera fixture overrides entity HUD performers off at config level.");
+            Assert.That(textCount, Is.EqualTo(0), "Projection camera fixture overrides entity HUD performers off at config level.");
         }
 
         private static GameEngine CreateEngine(params string[] modIds)

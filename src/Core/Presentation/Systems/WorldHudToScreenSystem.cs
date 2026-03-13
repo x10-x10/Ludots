@@ -90,6 +90,7 @@ namespace Ludots.Core.Presentation.Systems
                     Id0 = item.Id0,
                     Id1 = item.Id1,
                     FontSize = item.FontSize,
+                    Text = item.Text,
                 });
             }
 

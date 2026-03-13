@@ -1,7 +1,9 @@
+using System;
 using System.Numerics;
 using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.Commands;
 using Ludots.Core.Presentation.Events;
+using Ludots.Core.Presentation.Hud;
 
 namespace Ludots.Core.Presentation.Performers
 {
@@ -12,13 +14,17 @@ namespace Ludots.Core.Presentation.Performers
     /// </summary>
     public static class BuiltinPerformerDefinitions
     {
-        public static void Register(PerformerDefinitionRegistry registry, MeshAssetRegistry meshes)
+        public static void Register(
+            PerformerDefinitionRegistry registry,
+            MeshAssetRegistry meshes,
+            Func<string, int>? resolveTextTokenId = null)
         {
+            resolveTextTokenId ??= _ => 0;
             int sphereId = meshes.GetId(WellKnownMeshKeys.Sphere);
 
             RegisterCastCommittedMarker(registry, sphereId);
             RegisterCastFailedMarker(registry, sphereId);
-            RegisterFloatingCombatText(registry);
+            RegisterFloatingCombatText(registry, resolveTextTokenId);
             RegisterEntityHealthBar(registry);
         }
 
@@ -90,15 +96,24 @@ namespace Ludots.Core.Presentation.Performers
             });
         }
 
-        private static void RegisterFloatingCombatText(PerformerDefinitionRegistry registry)
+        private static void RegisterFloatingCombatText(PerformerDefinitionRegistry registry, Func<string, int> resolveTextTokenId)
         {
             string key = WellKnownPerformerKeys.FloatingCombatText;
             int id = registry.GetOrRegisterId(key);
+            int textTokenId = resolveTextTokenId(WellKnownHudTextKeys.CombatDelta);
+            if (textTokenId <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Built-in performer '{WellKnownPerformerKeys.FloatingCombatText}' requires text token '{WellKnownHudTextKeys.CombatDelta}'.");
+            }
+
             registry.Register(key, new PerformerDefinition
             {
                 VisualKind = PerformerVisualKind.WorldText,
                 DefaultColor = new Vector4(1f, 0.2f, 0.1f, 1f),
                 DefaultFontSize = 18,
+                DefaultTextId = textTokenId,
+                LegacyWorldTextMode = WorldHudValueMode.AttributeCurrent,
                 DefaultLifetime = 1.2f,
                 PositionOffset = new Vector3(0f, 1.0f, 0f),
                 PositionYDriftPerSecond = 0.8f,

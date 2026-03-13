@@ -74,7 +74,10 @@ namespace Ludots.Tests.Presentation
             _healthAttrId = AttributeRegistry.Register("Health");
 
             // Register built-in definitions (CastCommitted marker, CastFailed marker, FloatingCombatText, EntityHealthBar)
-            BuiltinPerformerDefinitions.Register(_defs, new MeshAssetRegistry());
+            BuiltinPerformerDefinitions.Register(
+                _defs,
+                new MeshAssetRegistry(),
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
             var session = new GameSession();
             var graphApi = new GasGraphRuntimeApi(_world, null, null, null);
@@ -138,6 +141,8 @@ namespace Ludots.Tests.Presentation
                 if (hudSpan[i].Kind == WorldHudItemKind.Text)
                 {
                     foundText = true;
+                    Assert.That(hudSpan[i].Text.TokenId, Is.EqualTo(1), "Floating combat text should carry the stable text token id.");
+                    Assert.That(hudSpan[i].Text.ArgCount, Is.EqualTo(1), "Floating combat text should expose one runtime text argument.");
                     break;
                 }
             }

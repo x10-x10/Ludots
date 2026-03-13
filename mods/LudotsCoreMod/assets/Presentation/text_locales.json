@@ -1,0 +1,17 @@
+{
+  "defaultLocale": "en-US",
+  "locales": {
+    "en-US": {
+      "hud.attribute.current": "{0}",
+      "hud.attribute.current_over_base": "{0}/{1}",
+      "hud.attribute.constant": "{0}",
+      "hud.combat.delta": "{0}"
+    },
+    "zh-CN": {
+      "hud.attribute.current": "{0}",
+      "hud.attribute.current_over_base": "{0}/{1}",
+      "hud.attribute.constant": "{0}",
+      "hud.combat.delta": "{0}"
+    }
+  }
+}
