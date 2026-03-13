@@ -1,11 +1,13 @@
 using System;
 using System.Numerics;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Arch.Core;
 using Ludots.Core.Components;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Components;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Spatial;
 
 namespace Ludots.Core.Systems
@@ -18,6 +20,7 @@ namespace Ludots.Core.Systems
         private readonly CameraManager _cameraManager;
         private readonly ISpatialQueryService _spatial;
         private readonly IViewController _view;
+        private readonly PresentationTimingDiagnostics? _timingDiagnostics;
         private Entity[] _buffer = new Entity[4096];
         private HashSet<Entity> _prevVisible = new HashSet<Entity>();
         private HashSet<Entity> _nextVisible = new HashSet<Entity>();
@@ -32,15 +35,22 @@ namespace Ludots.Core.Systems
         public float LowLODDistCm = 20000f;    // < 200m (Low)
         // > LowLODDistCm → Culled
 
-        public CameraCullingSystem(World world, CameraManager cameraManager, ISpatialQueryService spatial, IViewController view) : base(world) 
+        public CameraCullingSystem(
+            World world,
+            CameraManager cameraManager,
+            ISpatialQueryService spatial,
+            IViewController view,
+            PresentationTimingDiagnostics? timingDiagnostics = null) : base(world) 
         {
             _cameraManager = cameraManager;
             _spatial = spatial ?? throw new ArgumentNullException(nameof(spatial));
             _view = view ?? throw new ArgumentNullException(nameof(view));
+            _timingDiagnostics = timingDiagnostics;
         }
 
         public override void Update(in float dt)
         {
+            long start = Stopwatch.GetTimestamp();
             CameraStateSnapshot cameraState = _cameraManager.GetInterpolatedState(ReadPresentationAlpha());
             var target = cameraState.TargetCm;
             float distanceCm = cameraState.DistanceCm;
@@ -171,6 +181,7 @@ namespace Ludots.Core.Systems
             DebugState.LowLodDist = LowLODDistCm;
             DebugState.CameraTargetCm = new System.Numerics.Vector2(target.X, target.Y);
             DebugState.VisibleEntityCount = _prevVisible.Count;
+            _timingDiagnostics?.ObserveCameraCulling((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency, _prevVisible.Count);
         }
 
         private float ReadPresentationAlpha()

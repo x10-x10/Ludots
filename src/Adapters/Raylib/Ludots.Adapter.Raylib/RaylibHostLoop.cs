@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using Ludots.Adapter.Raylib.Services;
 using Ludots.Client.Raylib.Rendering;
@@ -33,6 +34,7 @@ namespace Ludots.Adapter.Raylib
             var engine = setup.Engine;
             var config = setup.Config;
             var uiRoot = setup.UiRoot;
+            var presentationTiming = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
 
             int screenWidth = config.WindowWidth <= 0 ? 1280 : config.WindowWidth;
             int screenHeight = config.WindowHeight <= 0 ? 720 : config.WindowHeight;
@@ -71,7 +73,7 @@ namespace Ludots.Adapter.Raylib
                 };
 
                 var cameraAdapter = new RaylibCameraAdapter(initialCamera);
-                var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter);
+                var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter, presentationTiming);
 
                 var viewController = new RaylibViewController(cameraAdapter);
                 engine.GlobalContext[CoreServiceKeys.ViewController.Name] = viewController;
@@ -83,7 +85,7 @@ namespace Ludots.Adapter.Raylib
                 engine.GlobalContext[CoreServiceKeys.ScreenProjector.Name] = screenProjector;
                 engine.GlobalContext[CoreServiceKeys.ScreenRayProvider.Name] = screenRayProvider;
 
-                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController);
+                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController, presentationTiming);
                 engine.RegisterPresentationSystem(cullingSystem);
                 engine.GlobalContext[CoreServiceKeys.CameraCullingDebugState.Name] = cullingSystem.DebugState;
 
@@ -99,7 +101,7 @@ namespace Ludots.Adapter.Raylib
                 {
                     engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudStrings.Name, out var strObj);
                     var worldHudStrings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
-                    hudProjection = new WorldHudToScreenSystem(engine.World, worldHud, worldHudStrings, screenProjector, viewController, screenHud);
+                    hudProjection = new WorldHudToScreenSystem(engine.World, worldHud, worldHudStrings, screenProjector, viewController, screenHud, presentationTiming);
                 }
 
                 ValidateRequiredContextBeforeLoop(engine);
@@ -112,7 +114,7 @@ namespace Ludots.Adapter.Raylib
                 engine.LoadMap(config.StartupMapId);
 
                 var debugDrawRenderer = new RaylibDebugDrawRenderer { PlaneY = 0.35f };
-                using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Immediate, engine.VFS);
+                using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Instanced, engine.VFS);
 
                 int lastW = screenWidth;
                 int lastH = screenHeight;
@@ -138,7 +140,16 @@ namespace Ludots.Adapter.Raylib
                         bool drawDebugDraw = renderDebug.DrawDebugDraw;
                         bool drawSkiaUi = renderDebug.DrawSkiaUi;
 
-                        bool uiCaptured = drawSkiaUi && UpdateInput(uiRoot);
+                        double uiInputMs = 0d;
+                        bool uiCaptured = false;
+                        if (drawSkiaUi)
+                        {
+                            long uiInputStart = Stopwatch.GetTimestamp();
+                            uiCaptured = UpdateInput(uiRoot);
+                            uiInputMs = ElapsedMs(uiInputStart);
+                        }
+
+                        presentationTiming?.ObserveUiInput(uiInputMs);
                         engine.GlobalContext[CoreServiceKeys.UiCaptured.Name] = uiCaptured;
                         engine.Tick(dt);
 
@@ -162,7 +173,17 @@ namespace Ludots.Adapter.Raylib
 
                         if (drawTerrain)
                         {
+                            long terrainStart = Stopwatch.GetTimestamp();
                             terrainRenderer.Render(engine.VertexMap, activeCamera);
+                            presentationTiming?.ObserveTerrain(
+                                ElapsedMs(terrainStart),
+                                terrainRenderer.ChunkBuildMsLastFrame,
+                                terrainRenderer.DrawnChunkCountLastFrame,
+                                terrainRenderer.BuiltChunkCountLastFrame);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveTerrain(0d, 0d, 0, 0);
                         }
 
                         if (drawPrimitives &&
@@ -176,7 +197,16 @@ namespace Ludots.Adapter.Raylib
                                 System.Diagnostics.Debug.WriteLine("[RaylibHostLoop] PrimitiveDrawBuffer is empty on first render frame — no Marker3D performers emitting?");
                                 _emptyBufferWarned = true;
                             }
+                            long primitiveStart = Stopwatch.GetTimestamp();
                             primitiveRenderer.Draw(draw, meshes, renderDebug.AcceptanceScaleMultiplier);
+                            presentationTiming?.ObservePrimitiveRender(
+                                ElapsedMs(primitiveStart),
+                                primitiveRenderer.LastInstancedInstances,
+                                primitiveRenderer.LastInstancedBatches);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObservePrimitiveRender(0d, 0, 0);
                         }
 
                         // Draw ground overlays (range circles, cones, etc.)
@@ -199,9 +229,19 @@ namespace Ludots.Adapter.Raylib
 
                         if (drawSkiaUi && uiRoot.IsDirty)
                         {
+                            long uiRenderStart = Stopwatch.GetTimestamp();
                             uiRenderer.Canvas.Clear(SKColors.Transparent);
                             uiRoot.Render(uiRenderer.Canvas);
+                            presentationTiming?.ObserveUiRender(ElapsedMs(uiRenderStart));
+
+                            long uiUploadStart = Stopwatch.GetTimestamp();
                             uiRenderer.UpdateTexture();
+                            presentationTiming?.ObserveUiUpload(ElapsedMs(uiUploadStart));
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveUiRender(0d);
+                            presentationTiming?.ObserveUiUpload(0d);
                         }
                         if (drawSkiaUi)
                         {
@@ -209,7 +249,9 @@ namespace Ludots.Adapter.Raylib
                         }
 
                         var res = viewController.Resolution;
+                        long overlayStart = Stopwatch.GetTimestamp();
                         DrawScreenOverlays(engine, (int)res.X, (int)res.Y);
+                        presentationTiming?.ObserveScreenOverlayDraw(ElapsedMs(overlayStart));
 
                         Rl.EndDrawing();
                     }
@@ -275,6 +317,11 @@ namespace Ludots.Adapter.Raylib
             }
 
             return _uiPointerCaptured;
+        }
+
+        private static double ElapsedMs(long startTicks)
+        {
+            return (Stopwatch.GetTimestamp() - startTicks) * 1000.0 / Stopwatch.Frequency;
         }
 
         private static void DrawInfiniteGrid(Vector3 anchor, int halfCount, float spacing, int majorEvery)

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Diagnostics;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Presentation.Hud;
@@ -27,10 +28,13 @@ namespace Ludots.Core.Presentation.Camera
         /// </summary>
         public CameraRenderState3D SmoothedRenderState { get; private set; }
 
-        public CameraPresenter(ISpatialCoordinateConverter coords, ICameraAdapter adapter)
+        private readonly PresentationTimingDiagnostics? _timingDiagnostics;
+
+        public CameraPresenter(ISpatialCoordinateConverter coords, ICameraAdapter adapter, PresentationTimingDiagnostics? timingDiagnostics = null)
         {
             _ = coords ?? throw new ArgumentNullException(nameof(coords));
             _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
+            _timingDiagnostics = timingDiagnostics;
         }
 
         /// <summary>
@@ -38,6 +42,7 @@ namespace Ludots.Core.Presentation.Camera
         /// </summary>
         public void Update(CameraManager cameraManager, float interpolationAlpha, RenderCameraDebugState cameraDebug = null)
         {
+            long start = Stopwatch.GetTimestamp();
             if (cameraManager == null)
             {
                 return;
@@ -47,6 +52,7 @@ namespace Ludots.Core.Presentation.Camera
             CurrentTargetPosition = new Vector3(WorldUnits.CmToM(state.TargetCm.X), 0f, WorldUnits.CmToM(state.TargetCm.Y));
             SmoothedRenderState = CameraViewportUtil.StateToRenderState(state, cameraDebug);
             _adapter.UpdateCamera(SmoothedRenderState);
+            _timingDiagnostics?.ObserveCameraPresenter((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
         }
     }
 }

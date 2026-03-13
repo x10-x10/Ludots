@@ -8,9 +8,7 @@ using Ludots.Core.Components;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Input.Selection;
-using Ludots.Core.Presentation.Components;
 using Ludots.Core.Scripting;
-using Ludots.Core.Systems;
 using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Reactive;
@@ -101,7 +99,8 @@ namespace CameraAcceptanceMod.UI
                 Ui.Text($"Selection: {state.SelectedName}").FontSize(13f).Color("#8EA2BD"),
                 Ui.Text($"Selected IDs: {state.SelectedIdsSummary}").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
                 Ui.Text($"Follow Target: {state.FollowTarget}").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text($"Viewport: {state.VisibleSummary}").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
+                Ui.Text("Viewport telemetry: top-right HUD").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
+                Ui.Text($"Projection Spawn Batch: {state.ProjectionSpawnCount}").FontSize(13f).Color("#8EA2BD"),
                 Ui.Text("Scenarios").FontSize(12f).Bold().Color("#F4C77D"),
                 Ui.Row(
                     BuildMapButton("Proj", state.MapId == CameraAcceptanceIds.ProjectionMapId, CameraAcceptanceIds.ProjectionMapId),
@@ -154,6 +153,11 @@ namespace CameraAcceptanceMod.UI
         {
             return state.MapId switch
             {
+                CameraAcceptanceIds.ProjectionMapId => Ui.Text(
+                        $"Left click ground to spawn a random scatter batch. Q/E adjusts the batch by {CameraAcceptanceIds.ProjectionSpawnCountStep}; current batch = {state.ProjectionSpawnCount}.")
+                    .FontSize(12f)
+                    .Color("#8EA2BD")
+                    .WhiteSpace(UiWhiteSpace.Normal),
                 CameraAcceptanceIds.BlendMapId => Ui.Row(
                     BuildActionButton("Cut", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendCutCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendCutCameraId)),
                     BuildActionButton("Linear", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendLinearCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendLinearCameraId)),
@@ -239,8 +243,8 @@ namespace CameraAcceptanceMod.UI
                 selectedIds.Length == 0 ? "none" : string.Join(", ", selectedIds),
                 selectedIds,
                 FormatVector(engine.GameSession.Camera.FollowTargetPositionCm),
-                ResolveVisibleEntitySummary(engine),
-                ResolveActiveBlendCameraId(engine));
+                ResolveActiveBlendCameraId(engine),
+                CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine));
         }
 
         private void LoadAcceptanceMap(string mapId)
@@ -338,8 +342,8 @@ namespace CameraAcceptanceMod.UI
                 !string.Equals(left.SelectedName, right.SelectedName, StringComparison.Ordinal) ||
                 !string.Equals(left.SelectedIdsSummary, right.SelectedIdsSummary, StringComparison.Ordinal) ||
                 !string.Equals(left.FollowTarget, right.FollowTarget, StringComparison.Ordinal) ||
-                !string.Equals(left.VisibleSummary, right.VisibleSummary, StringComparison.Ordinal) ||
-                !string.Equals(left.ActiveBlendCameraId, right.ActiveBlendCameraId, StringComparison.Ordinal))
+                !string.Equals(left.ActiveBlendCameraId, right.ActiveBlendCameraId, StringComparison.Ordinal) ||
+                left.ProjectionSpawnCount != right.ProjectionSpawnCount)
             {
                 return false;
             }
@@ -429,37 +433,6 @@ namespace CameraAcceptanceMod.UI
             return $"{value.Value.X:0},{value.Value.Y:0}";
         }
 
-        private static string ResolveVisibleEntitySummary(GameEngine engine)
-        {
-            int visibleCount = 0;
-            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.CameraCullingDebugState.Name, out var cullingObj) &&
-                cullingObj is CameraCullingDebugState cullingState)
-            {
-                visibleCount = cullingState.VisibleEntityCount;
-            }
-
-            string[] names = new string[6];
-            int nameCount = 0;
-            var query = new QueryDescription().WithAll<Name, CullState>();
-            engine.World.Query(in query, (Entity entity, ref Name name, ref CullState cull) =>
-            {
-                if (!cull.IsVisible || nameCount >= names.Length)
-                {
-                    return;
-                }
-
-                names[nameCount++] = name.Value;
-            });
-
-            if (nameCount == 0)
-            {
-                return visibleCount > 0 ? $"{visibleCount} visible" : "no visible entities";
-            }
-
-            string joined = string.Join(", ", names, 0, nameCount);
-            return visibleCount > 0 ? $"{visibleCount} visible: {joined}" : joined;
-        }
-
         private static Vector2 ToVector2(WorldPositionCm position)
         {
             var value = position.ToWorldCmInt2();
@@ -491,8 +464,8 @@ namespace CameraAcceptanceMod.UI
             string SelectedIdsSummary,
             string[] SelectedIds,
             string FollowTarget,
-            string VisibleSummary,
-            string ActiveBlendCameraId)
+            string ActiveBlendCameraId,
+            int ProjectionSpawnCount)
         {
             public static CameraAcceptancePanelState Empty { get; } = new(
                 string.Empty,
@@ -504,8 +477,8 @@ namespace CameraAcceptanceMod.UI
                 "none",
                 Array.Empty<string>(),
                 "none",
-                "no visible entities",
-                CameraAcceptanceIds.BlendSmoothCameraId);
+                CameraAcceptanceIds.BlendSmoothCameraId,
+                CameraAcceptanceIds.ProjectionSpawnCountDefault);
         }
     }
 }

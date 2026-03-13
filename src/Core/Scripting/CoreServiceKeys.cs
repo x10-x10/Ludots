@@ -149,6 +149,7 @@ namespace Ludots.Core.Scripting
         public static readonly ServiceKey<RenderDebugState> RenderDebugState = new("RenderDebugState");
         public static readonly ServiceKey<RenderCameraDebugState> RenderCameraDebugState = new("RenderCameraDebugState");
         public static readonly ServiceKey<CameraCullingDebugState> CameraCullingDebugState = new("CameraCullingDebugState");
+        public static readonly ServiceKey<PresentationTimingDiagnostics> PresentationTimingDiagnostics = new("PresentationTimingDiagnostics");
         public static readonly ServiceKey<PresentationFrameSetupSystem> PresentationFrameSetup = new("PresentationFrameSetup");
         public static readonly ServiceKey<TransientMarkerBuffer> TransientMarkerBuffer = new("TransientMarkerBuffer");
         public static readonly ServiceKey<GasPresentationEventBuffer> GasPresentationEventBuffer = new("GasPresentationEventBuffer");

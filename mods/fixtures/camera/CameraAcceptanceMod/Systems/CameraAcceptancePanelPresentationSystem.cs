@@ -1,6 +1,8 @@
 using Arch.System;
 using CameraAcceptanceMod.Runtime;
 using Ludots.Core.Engine;
+using Ludots.Core.Presentation.Hud;
+using System.Diagnostics;
 
 namespace CameraAcceptanceMod.Systems
 {
@@ -22,7 +24,12 @@ namespace CameraAcceptanceMod.Systems
 
         public void Update(in float t)
         {
+            long start = Stopwatch.GetTimestamp();
             _runtime.RefreshPanel(_engine);
+            if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState diagnostics)
+            {
+                diagnostics.ObservePanelSync((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
+            }
         }
     }
 }

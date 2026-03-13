@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Diagnostics;
 using Arch.Core;
 using Arch.System;
 using CameraAcceptanceMod.Runtime;
@@ -27,19 +28,30 @@ namespace CameraAcceptanceMod.Systems
 
         public void Update(in float dt)
         {
+            long start = Stopwatch.GetTimestamp();
             string? mapId = _engine.CurrentMapSession?.MapId.Value;
             if (!string.Equals(mapId, CameraAcceptanceIds.ProjectionMapId, StringComparison.OrdinalIgnoreCase))
             {
+                Observe(start);
                 return;
             }
 
             if (_engine.GetService(CoreServiceKeys.ScreenOverlayBuffer) is not ScreenOverlayBuffer overlay)
             {
+                Observe(start);
                 return;
             }
 
             if (_engine.GetService(CoreServiceKeys.ScreenProjector) is not IScreenProjector projector)
             {
+                Observe(start);
+                return;
+            }
+
+            if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is not CameraAcceptanceDiagnosticsState diagnostics ||
+                !diagnostics.TextEnabled)
+            {
+                Observe(start);
                 return;
             }
 
@@ -64,10 +76,20 @@ namespace CameraAcceptanceMod.Systems
                 int y = (int)MathF.Round(screen.Y) - 10;
                 overlay.AddText(x, y, label, 14, LabelColor);
             }
+
+            Observe(start);
         }
 
         public void BeforeUpdate(in float dt) { }
         public void AfterUpdate(in float dt) { }
         public void Dispose() { }
+
+        private void Observe(long startTicks)
+        {
+            if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState diagnostics)
+            {
+                diagnostics.ObserveTextBuild((Stopwatch.GetTimestamp() - startTicks) * 1000.0 / Stopwatch.Frequency);
+            }
+        }
     }
 }

@@ -9,6 +9,7 @@ using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Mathematics.FixedPoint;
 using Ludots.Core.Presentation.Assets;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Commands;
 using Ludots.Core.Scripting;
 using Ludots.UI;
@@ -17,9 +18,43 @@ namespace CameraAcceptanceMod.Runtime
 {
     internal sealed class CameraAcceptanceRuntime
     {
+        private const float TwoPiRadians = 6.2831855f;
+        private const float GoldenAngleRadians = 2.3999631f;
+        private const float ProjectionScatterSpacingCm = 120f;
+        private const float ProjectionScatterJitterCm = 42f;
+
         private readonly CameraAcceptancePanelController _panelController = new();
         private bool _selectionCallbacksInstalled;
         private int _cueMarkerPrefabId;
+
+        internal static void InitializeProjectionSpawnCount(GameEngine engine)
+        {
+            if (!engine.GlobalContext.ContainsKey(CameraAcceptanceIds.ProjectionSpawnCountKey))
+            {
+                engine.GlobalContext[CameraAcceptanceIds.ProjectionSpawnCountKey] = CameraAcceptanceIds.ProjectionSpawnCountDefault;
+            }
+        }
+
+        internal static int ResolveProjectionSpawnCount(GameEngine engine)
+        {
+            return engine.GlobalContext.TryGetValue(CameraAcceptanceIds.ProjectionSpawnCountKey, out var value) &&
+                   value is int count &&
+                   count >= 0
+                ? count
+                : CameraAcceptanceIds.ProjectionSpawnCountDefault;
+        }
+
+        internal static int AdjustProjectionSpawnCount(GameEngine engine, int delta)
+        {
+            int next = ResolveProjectionSpawnCount(engine) + delta;
+            if (next < 0)
+            {
+                next = 0;
+            }
+
+            engine.GlobalContext[CameraAcceptanceIds.ProjectionSpawnCountKey] = next;
+            return next;
+        }
 
         public void InstallSelectionCallbacks(GameEngine engine)
         {
@@ -70,6 +105,13 @@ namespace CameraAcceptanceMod.Runtime
                 return;
             }
 
+            if (engine.GetService(CoreServiceKeys.RenderDebugState) is RenderDebugState renderDebug &&
+                !renderDebug.DrawSkiaUi)
+            {
+                ClearPanelIfOwned(engine);
+                return;
+            }
+
             string? activeMapId = engine.CurrentMapSession?.MapId.Value;
             if (!CameraAcceptanceIds.IsAcceptanceMap(activeMapId))
             {
@@ -111,7 +153,7 @@ namespace CameraAcceptanceMod.Runtime
                     return;
                 }
 
-                EnqueueProjectionSpawn(engine, worldCm);
+                EnqueueProjectionSpawnBatch(engine, worldCm);
                 EmitCueMarker(engine, worldCm);
                 return;
             }
@@ -144,25 +186,69 @@ namespace CameraAcceptanceMod.Runtime
             });
         }
 
-        private static void EnqueueProjectionSpawn(GameEngine engine, in WorldCmInt2 worldCm)
+        private static void EnqueueProjectionSpawnBatch(GameEngine engine, in WorldCmInt2 worldCm)
         {
             if (engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is not RuntimeEntitySpawnQueue spawnQueue)
             {
                 throw new System.InvalidOperationException("RuntimeEntitySpawnQueue is required for projection verification.");
             }
 
-            var request = new RuntimeEntitySpawnRequest
+            int spawnCount = ResolveProjectionSpawnCount(engine);
+            for (int i = 0; i < spawnCount; i++)
             {
-                Kind = RuntimeEntitySpawnKind.Template,
-                TemplateId = CameraAcceptanceIds.ProjectionSpawnTemplateId,
-                WorldPositionCm = Fix64Vec2.FromInt(worldCm.X, worldCm.Y),
-                MapId = engine.CurrentMapSession?.MapId ?? default,
-            };
+                WorldCmInt2 spawnWorldCm = ResolveProjectionSpawnPosition(worldCm, i);
+                var request = new RuntimeEntitySpawnRequest
+                {
+                    Kind = RuntimeEntitySpawnKind.Template,
+                    TemplateId = CameraAcceptanceIds.ProjectionSpawnTemplateId,
+                    WorldPositionCm = Fix64Vec2.FromInt(spawnWorldCm.X, spawnWorldCm.Y),
+                    MapId = engine.CurrentMapSession?.MapId ?? default,
+                };
 
-            if (!spawnQueue.TryEnqueue(request))
-            {
-                throw new System.InvalidOperationException("Projection verification spawn queue is full.");
+                if (!spawnQueue.TryEnqueue(request))
+                {
+                    throw new System.InvalidOperationException("Projection verification spawn queue is full.");
+                }
             }
+        }
+
+        private static WorldCmInt2 ResolveProjectionSpawnPosition(in WorldCmInt2 center, int index)
+        {
+            if (index <= 0)
+            {
+                return center;
+            }
+
+            uint seed = Hash((uint)center.X) ^ RotateLeft(Hash((uint)center.Y), 13) ^ RotateLeft((uint)index * 0x9E3779B9u, 7);
+            float baseAngle = Hash01(seed ^ 0xA511E9B3u) * TwoPiRadians;
+            float jitterAngle = (Hash01(seed ^ 0x63D83595u) - 0.5f) * 0.42f;
+            float ringRadius = ProjectionScatterSpacingCm * MathF.Sqrt(index);
+            float jitterRadius = (Hash01(seed ^ 0xC2B2AE35u) - 0.5f) * ProjectionScatterJitterCm;
+            float radius = MathF.Max(ProjectionScatterSpacingCm * 0.4f, ringRadius + jitterRadius);
+            float angle = baseAngle + index * GoldenAngleRadians + jitterAngle;
+            int x = center.X + (int)MathF.Round(MathF.Cos(angle) * radius);
+            int y = center.Y + (int)MathF.Round(MathF.Sin(angle) * radius);
+            return new WorldCmInt2(x, y);
+        }
+
+        private static uint Hash(uint value)
+        {
+            value ^= value >> 16;
+            value *= 0x7FEB352Du;
+            value ^= value >> 15;
+            value *= 0x846CA68Bu;
+            value ^= value >> 16;
+            return value;
+        }
+
+        private static uint RotateLeft(uint value, int amount)
+        {
+            return (value << amount) | (value >> (32 - amount));
+        }
+
+        private static float Hash01(uint seed)
+        {
+            return (Hash(seed) & 0x00FFFFFFu) / 16777216f;
         }
 
         private int ResolveCueMarkerPrefabId(GameEngine engine)

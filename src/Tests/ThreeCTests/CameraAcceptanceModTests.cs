@@ -41,7 +41,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         };
 
         [Test]
-        public void CameraAcceptanceMod_ProjectionMap_ClickGround_SpawnsEntity_AndEmitsCueMarkerThenExpires()
+        public void CameraAcceptanceMod_ProjectionMap_ClickGround_SpawnsConfiguredRandomBatch_AndEmitsCueMarkerThenExpires()
         {
             using var engine = CreateEngine(AcceptanceMods);
             LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
@@ -49,12 +49,20 @@ namespace Ludots.Tests.ThreeC.Acceptance
             AssertProjectionViewportState(engine);
 
             var backend = GetInputBackend(engine);
+            int spawnBatch = GetProjectionSpawnCount(engine);
+            Assert.That(spawnBatch, Is.EqualTo(CameraAcceptanceIds.ProjectionSpawnCountDefault));
+
             int beforeDummyCount = CountEntitiesByName(engine.World, "Dummy");
             ClickGround(engine, backend, new Vector2(3200f, 2000f));
 
             int afterDummyCount = CountEntitiesByName(engine.World, "Dummy");
-            Assert.That(afterDummyCount, Is.EqualTo(beforeDummyCount + 1), "Ground click should enqueue a runtime entity spawn.");
-            Assert.That(HasNamedEntityAt(engine.World, "Dummy", new WorldCmInt2(3200, 2000)), Is.True, "Spawned entity should land on the raycast point.");
+            Assert.That(afterDummyCount, Is.EqualTo(beforeDummyCount + spawnBatch), "Ground click should enqueue the configured runtime spawn batch.");
+
+            List<WorldCmInt2> positions = GetNamedEntityPositions(engine.World, "Dummy");
+            Assert.That(positions.Count, Is.EqualTo(spawnBatch));
+            Assert.That(CountDistinctPositions(positions), Is.GreaterThan(spawnBatch / 2), "Projection batch should distribute entities across many distinct positions.");
+            Assert.That(HasNamedEntityAt(engine.World, "Dummy", new WorldCmInt2(3200, 2000)), Is.True, "Random scatter should still stay anchored to the clicked point.");
+            Assert.That(AllPositionsWithinRadius(positions, new WorldCmInt2(3200, 2000), 1800), Is.True, "Projection scatter should remain near the clicked point.");
 
             var primitives = engine.GetService(CoreServiceKeys.PresentationPrimitiveDrawBuffer);
             Assert.That(primitives, Is.Not.Null);
@@ -125,6 +133,140 @@ namespace Ludots.Tests.ThreeC.Acceptance
             var overlayText = ExtractOverlayText(overlay!);
             Assert.That(overlayText, Has.Some.Contains("clamped by Core"));
             Assert.That(string.Join(Environment.NewLine, overlayText), Does.Not.Contain("Fuse explicit-degrade"));
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_ProjectionMap_QEAdjustsSpawnBatch_ClampsAtZero_AndUpdatesReactivePanel()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
+            LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
+
+            UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Acceptance panel should mount when a UIRoot service is present.");
+            Assert.That(GetProjectionSpawnCount(engine), Is.EqualTo(CameraAcceptanceIds.ProjectionSpawnCountDefault));
+
+            var backend = GetInputBackend(engine);
+            PressButton(engine, backend, "<Keyboard>/q");
+            Assert.That(GetProjectionSpawnCount(engine), Is.EqualTo(0), "Spawn batch should clamp to zero when decreased below the floor.");
+
+            PressButton(engine, backend, "<Keyboard>/q");
+            Assert.That(GetProjectionSpawnCount(engine), Is.EqualTo(0), "Spawn batch should remain at zero when already clamped.");
+
+            PressButton(engine, backend, "<Keyboard>/e");
+            PressButton(engine, backend, "<Keyboard>/e");
+            Assert.That(GetProjectionSpawnCount(engine), Is.EqualTo(200), "Each E press should increase the spawn batch by 100.");
+
+            string sceneText = ExtractUiSceneText(scene);
+            Assert.That(sceneText, Does.Contain("Projection Spawn Batch: 200"));
+            Assert.That(sceneText, Does.Contain("Q/E adjusts the batch by 100"));
+
+            int beforeDummyCount = CountEntitiesByName(engine.World, "Dummy");
+            ClickGround(engine, backend, new Vector2(3200f, 2000f));
+            Assert.That(CountEntitiesByName(engine.World, "Dummy"), Is.EqualTo(beforeDummyCount + 200));
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_AcceptanceMaps_DrawFpsOverlayInTopRight()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
+
+            var overlay = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
+            Assert.That(overlay, Is.Not.Null);
+            Assert.That(TryFindOverlayTextItem(overlay!, text => text.Contains("FPS=", StringComparison.Ordinal), out ScreenOverlayItem fpsItem, out string? fpsText), Is.True,
+                "Acceptance overlay should expose FPS telemetry.");
+            Assert.That(fpsText, Does.Contain("Camera Acceptance"));
+            Assert.That(fpsItem.X, Is.GreaterThanOrEqualTo(1400), "FPS telemetry should render in the right-side HUD region.");
+            Assert.That(fpsItem.Y, Is.LessThanOrEqualTo(24), "FPS telemetry should render near the top edge.");
+            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("Core cull=", StringComparison.Ordinal), out _, out _), Is.True,
+                "Acceptance overlay should expose core camera/culling timing diagnostics.");
+            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("Terrain render=", StringComparison.Ordinal), out _, out _), Is.True,
+                "Acceptance overlay should expose terrain render/build timing diagnostics.");
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_ProjectionMap_DisablesEntityHudBarsAndNumbers_InWorldHudPipeline()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
+
+            var worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer);
+            Assert.That(worldHud, Is.Not.Null);
+
+            int barCount = 0;
+            int textCount = 0;
+            foreach (ref readonly var item in worldHud!.GetSpan())
+            {
+                if (item.Kind == WorldHudItemKind.Bar)
+                {
+                    barCount++;
+                }
+                else if (item.Kind == WorldHudItemKind.Text)
+                {
+                    textCount++;
+                }
+            }
+
+            Assert.That(barCount, Is.EqualTo(0),
+                "Camera acceptance should disable entity health bars at performer-config level so WorldHud bar items are not emitted.");
+            Assert.That(textCount, Is.EqualTo(0),
+                "Camera acceptance should disable entity health numbers at performer-config level so WorldHud text items are not emitted.");
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_DiagnosticsHotkeys_TogglePanelHud_AndSelectionText()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
+            LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
+
+            var overlay = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
+            var renderDebug = engine.GetService(CoreServiceKeys.RenderDebugState);
+            Assert.That(overlay, Is.Not.Null);
+            Assert.That(renderDebug, Is.Not.Null);
+            Assert.That(uiRoot.Scene, Is.Not.Null, "Projection acceptance should mount the reactive panel while Skia UI is enabled.");
+
+            var backend = GetInputBackend(engine);
+
+            PressButton(engine, backend, "<Keyboard>/f7");
+            overlay!.Clear();
+            Tick(engine, 1);
+            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("FPS=", StringComparison.Ordinal), out _, out _), Is.False,
+                "F7 should disable the acceptance HUD overlay.");
+
+            PressButton(engine, backend, "<Keyboard>/f6");
+            Assert.That(renderDebug!.DrawSkiaUi, Is.False, "F6 should disable the Skia panel path.");
+            Assert.That(uiRoot.Scene, Is.Null, "Disabling the panel should clear the mounted CameraAcceptance scene.");
+
+            PressButton(engine, backend, "<Keyboard>/f6");
+            Assert.That(renderDebug.DrawSkiaUi, Is.True, "Pressing F6 again should restore the Skia panel path.");
+            Assert.That(uiRoot.Scene, Is.Not.Null, "Re-enabling the panel should remount the reactive scene.");
+
+            Entity hero = FindEntityByName(engine.World, CameraAcceptanceIds.HeroName);
+            Entity captain = FindEntityByName(engine.World, CameraAcceptanceIds.CaptainName);
+            var projector = engine.GetService(CoreServiceKeys.ScreenProjector);
+            Assert.That(projector, Is.Not.Null);
+
+            Vector2 heroScreen = ProjectEntity(engine, projector!, hero);
+            Vector2 captainScreen = ProjectEntity(engine, projector, captain);
+            DragMouse(engine, backend, "<Mouse>/LeftButton", heroScreen - new Vector2(24f, 24f), captainScreen + new Vector2(24f, 24f));
+
+            overlay.Clear();
+            Tick(engine, 1);
+            var overlayText = ExtractOverlayText(overlay);
+            Assert.That(overlayText, Does.Contain($"#{hero.Id}"), "Selection overlay text should be present before toggling it off.");
+
+            PressButton(engine, backend, "<Keyboard>/f8");
+            overlay.Clear();
+            Tick(engine, 1);
+            overlayText = ExtractOverlayText(overlay);
+            Assert.That(overlayText, Does.Not.Contain($"#{hero.Id}"), "F8 should disable selection text overlays.");
         }
 
         [Test]
@@ -268,6 +410,29 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 "Camera acceptance panel must keep one mounted UiScene and update it reactively instead of remounting every presentation tick.");
             Assert.That(scene.Version, Is.EqualTo(initialVersion),
                 "Idle presentation ticks should not trigger unnecessary panel recomposition.");
+        }
+
+        [Test]
+        public void CameraAcceptanceMod_Panel_DoesNotRecompose_WhenOnlyViewportTelemetryChanges()
+        {
+            using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
+            LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
+
+            UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Acceptance panel should mount when a UIRoot service is present.");
+            long initialVersion = scene.Version;
+            var culling = engine.GetService(CoreServiceKeys.CameraCullingDebugState);
+            Assert.That(culling, Is.Not.Null);
+
+            culling!.VisibleEntityCount += 17;
+            Tick(engine, 1);
+
+            Assert.That(scene.Version, Is.EqualTo(initialVersion),
+                "Volatile viewport telemetry must stay out of the reactive acceptance panel so camera movement does not force panel recomposition.");
+            Assert.That(ExtractUiSceneText(scene), Does.Contain("Viewport telemetry: top-right HUD"));
         }
 
         [Test]
@@ -647,6 +812,50 @@ namespace Ludots.Tests.ThreeC.Acceptance
             return found;
         }
 
+        private static List<WorldCmInt2> GetNamedEntityPositions(World world, string name)
+        {
+            var positions = new List<WorldCmInt2>();
+            var query = new QueryDescription().WithAll<Name, WorldPositionCm>();
+            world.Query(in query, (ref Name entityName, ref WorldPositionCm position) =>
+            {
+                if (string.Equals(entityName.Value, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    positions.Add(position.Value.ToWorldCmInt2());
+                }
+            });
+
+            return positions;
+        }
+
+        private static int CountDistinctPositions(List<WorldCmInt2> positions)
+        {
+            var distinct = new HashSet<long>();
+            for (int i = 0; i < positions.Count; i++)
+            {
+                WorldCmInt2 position = positions[i];
+                distinct.Add(((long)position.X << 32) | (uint)position.Y);
+            }
+
+            return distinct.Count;
+        }
+
+        private static bool AllPositionsWithinRadius(List<WorldCmInt2> positions, in WorldCmInt2 center, int radiusCm)
+        {
+            long radiusSquared = (long)radiusCm * radiusCm;
+            for (int i = 0; i < positions.Count; i++)
+            {
+                int dx = positions[i].X - center.X;
+                int dy = positions[i].Y - center.Y;
+                long distanceSquared = ((long)dx * dx) + ((long)dy * dy);
+                if (distanceSquared > radiusSquared)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static Entity GetLocalPlayer(GameEngine engine)
         {
             return engine.GlobalContext.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localObj) &&
@@ -799,6 +1008,35 @@ namespace Ludots.Tests.ThreeC.Acceptance
             return count;
         }
 
+        private static bool TryFindOverlayTextItem(
+            ScreenOverlayBuffer overlay,
+            Func<string, bool> predicate,
+            out ScreenOverlayItem itemResult,
+            out string? textResult)
+        {
+            foreach (ScreenOverlayItem item in overlay.GetSpan())
+            {
+                if (item.Kind != ScreenOverlayItemKind.Text)
+                {
+                    continue;
+                }
+
+                string? text = overlay.GetString(item.StringId);
+                if (text == null || !predicate(text))
+                {
+                    continue;
+                }
+
+                itemResult = item;
+                textResult = text;
+                return true;
+            }
+
+            itemResult = default;
+            textResult = null;
+            return false;
+        }
+
         private static string ExtractUiSceneText(UiScene scene)
         {
             if (scene.Root == null)
@@ -850,6 +1088,14 @@ namespace Ludots.Tests.ThreeC.Acceptance
         {
             return engine.GlobalContext["Tests.CameraAcceptanceMod.InputBackend"] as TestInputBackend
                 ?? throw new InvalidOperationException("Test input backend is missing.");
+        }
+
+        private static int GetProjectionSpawnCount(GameEngine engine)
+        {
+            return engine.GlobalContext.TryGetValue(CameraAcceptanceIds.ProjectionSpawnCountKey, out var value) &&
+                   value is int count
+                ? count
+                : CameraAcceptanceIds.ProjectionSpawnCountDefault;
         }
 
         private static string FindRepoRoot()

@@ -626,6 +626,7 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.PresentationScreenHudBuffer, screenHudBuffer);
             SetService(CoreServiceKeys.ScreenOverlayBuffer, new ScreenOverlayBuffer());
             SetService(CoreServiceKeys.RenderDebugState, new RenderDebugState());
+            SetService(CoreServiceKeys.PresentationTimingDiagnostics, new PresentationTimingDiagnostics());
             SetService(CoreServiceKeys.TransientMarkerBuffer, transientMarkerBuffer);
             SetService(CoreServiceKeys.GasPresentationEventBuffer, gasPresentationEvents);
             SetService(CoreServiceKeys.GroundOverlayBuffer, groundOverlayBuffer);

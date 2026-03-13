@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Arch.Core;
 using Arch.System;
 using Ludots.Core.Presentation.Camera;
@@ -18,6 +19,7 @@ namespace Ludots.Core.Presentation.Systems
         private readonly IScreenProjector _projector;
         private readonly IViewController _view;
         private readonly ScreenHudBatchBuffer _screenHud;
+        private readonly PresentationTimingDiagnostics? _timingDiagnostics;
 
         private const int MaxBarDim = 512;
         private const int Margin = 200;
@@ -28,7 +30,8 @@ namespace Ludots.Core.Presentation.Systems
             WorldHudStringTable? strings,
             IScreenProjector projector,
             IViewController view,
-            ScreenHudBatchBuffer screenHud)
+            ScreenHudBatchBuffer screenHud,
+            PresentationTimingDiagnostics? timingDiagnostics = null)
             : base(world)
         {
             _worldHud = worldHud ?? throw new System.ArgumentNullException(nameof(worldHud));
@@ -36,10 +39,12 @@ namespace Ludots.Core.Presentation.Systems
             _projector = projector ?? throw new System.ArgumentNullException(nameof(projector));
             _view = view ?? throw new System.ArgumentNullException(nameof(view));
             _screenHud = screenHud ?? throw new System.ArgumentNullException(nameof(screenHud));
+            _timingDiagnostics = timingDiagnostics;
         }
 
         public override void Update(in float dt)
         {
+            long start = Stopwatch.GetTimestamp();
             _screenHud.Clear();
 
             var res = _view.Resolution;
@@ -87,6 +92,8 @@ namespace Ludots.Core.Presentation.Systems
                     FontSize = item.FontSize,
                 });
             }
+
+            _timingDiagnostics?.ObserveWorldHudProjection((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
         }
     }
 }

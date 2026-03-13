@@ -10,7 +10,12 @@
     { "id": "CameraAcceptanceTpsAimHold", "name": "CameraAcceptanceTpsAimHold", "type": "Button" },
     { "id": "CameraAcceptanceStackReveal", "name": "CameraAcceptanceStackReveal", "type": "Button" },
     { "id": "CameraAcceptanceStackAlert", "name": "CameraAcceptanceStackAlert", "type": "Button" },
-    { "id": "CameraAcceptanceStackClear", "name": "CameraAcceptanceStackClear", "type": "Button" }
+    { "id": "CameraAcceptanceStackClear", "name": "CameraAcceptanceStackClear", "type": "Button" },
+    { "id": "CameraAcceptanceProjectionSpawnCountDecrease", "name": "CameraAcceptanceProjectionSpawnCountDecrease", "type": "Button" },
+    { "id": "CameraAcceptanceProjectionSpawnCountIncrease", "name": "CameraAcceptanceProjectionSpawnCountIncrease", "type": "Button" },
+    { "id": "CameraAcceptanceTogglePanel", "name": "CameraAcceptanceTogglePanel", "type": "Button" },
+    { "id": "CameraAcceptanceToggleHud", "name": "CameraAcceptanceToggleHud", "type": "Button" },
+    { "id": "CameraAcceptanceToggleText", "name": "CameraAcceptanceToggleText", "type": "Button" }
   ],
   "contexts": [
     {
@@ -28,7 +33,12 @@
         { "actionId": "CameraAcceptanceTpsAimHold", "path": "<Mouse>/RightButton" },
         { "actionId": "CameraAcceptanceStackReveal", "path": "<Keyboard>/r" },
         { "actionId": "CameraAcceptanceStackAlert", "path": "<Keyboard>/t" },
-        { "actionId": "CameraAcceptanceStackClear", "path": "<Keyboard>/enter" }
+        { "actionId": "CameraAcceptanceStackClear", "path": "<Keyboard>/enter" },
+        { "actionId": "CameraAcceptanceProjectionSpawnCountDecrease", "path": "<Keyboard>/q" },
+        { "actionId": "CameraAcceptanceProjectionSpawnCountIncrease", "path": "<Keyboard>/e" },
+        { "actionId": "CameraAcceptanceTogglePanel", "path": "<Keyboard>/f6" },
+        { "actionId": "CameraAcceptanceToggleHud", "path": "<Keyboard>/f7" },
+        { "actionId": "CameraAcceptanceToggleText", "path": "<Keyboard>/f8" }
       ]
     }
   ]
