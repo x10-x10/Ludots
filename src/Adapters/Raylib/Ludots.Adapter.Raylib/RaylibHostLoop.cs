@@ -10,6 +10,7 @@ using Ludots.Core.Mathematics;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Assets;
+using Ludots.Core.Presentation.Config;
 using Ludots.Core.Presentation.DebugDraw;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Rendering;
@@ -390,28 +391,7 @@ namespace Ludots.Adapter.Raylib
                 {
                     int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
                     var col = ToRaylibColor(item.Color0);
-
-                    string? text = null;
-                    if (item.Id0 != 0 && strings != null)
-                    {
-                        text = strings.TryGet(item.Id0);
-                    }
-                    else
-                    {
-                        var mode = (Ludots.Core.Presentation.Hud.WorldHudValueMode)item.Id1;
-                        if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.AttributeCurrentOverBase)
-                        {
-                            text = $"{(int)item.Value0}/{(int)item.Value1}";
-                        }
-                        else if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.AttributeCurrent)
-                        {
-                            text = $"{(int)item.Value0}";
-                        }
-                        else if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.Constant)
-                        {
-                            text = $"{item.Value0}";
-                        }
-                    }
+                    string? text = ResolveScreenHudText(engine, strings, in item);
 
                     if (!string.IsNullOrEmpty(text))
                     {
@@ -624,7 +604,7 @@ namespace Ludots.Adapter.Raylib
                 {
                     case ScreenOverlayItemKind.Text:
                     {
-                        string? text = buffer.GetString(item.StringId);
+                        string? text = ResolveScreenOverlayText(engine, buffer, in item);
                         if (!string.IsNullOrEmpty(text))
                         {
                             int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
@@ -646,6 +626,71 @@ namespace Ludots.Adapter.Raylib
             }
 
             buffer.Clear();
+        }
+
+        private static string? ResolveScreenHudText(GameEngine engine, WorldHudStringTable? strings, in ScreenHudItem item)
+        {
+            if (TryFormatTextPacket(engine, in item.Text, out string? packetText))
+            {
+                return packetText;
+            }
+
+            if (item.Id0 != 0 && strings != null)
+            {
+                return strings.TryGet(item.Id0);
+            }
+
+            var mode = (WorldHudValueMode)item.Id1;
+            if (mode == WorldHudValueMode.AttributeCurrentOverBase)
+            {
+                return $"{(int)item.Value0}/{(int)item.Value1}";
+            }
+
+            if (mode == WorldHudValueMode.AttributeCurrent)
+            {
+                return $"{(int)item.Value0}";
+            }
+
+            if (mode == WorldHudValueMode.Constant)
+            {
+                return $"{item.Value0}";
+            }
+
+            return null;
+        }
+
+        private static string? ResolveScreenOverlayText(GameEngine engine, ScreenOverlayBuffer buffer, in ScreenOverlayItem item)
+        {
+            if (TryFormatTextPacket(engine, in item.Text, out string? packetText))
+            {
+                return packetText;
+            }
+
+            return buffer.GetString(item.StringId);
+        }
+
+        private static bool TryFormatTextPacket(GameEngine engine, in PresentationTextPacket packet, out string? text)
+        {
+            text = null;
+            if (!packet.HasValue)
+            {
+                return false;
+            }
+
+            PresentationTextCatalog? catalog = engine.GetService(CoreServiceKeys.PresentationTextCatalog);
+            PresentationTextLocaleSelection? localeSelection = engine.GetService(CoreServiceKeys.PresentationTextLocaleSelection);
+            if (catalog == null || localeSelection == null)
+            {
+                return false;
+            }
+
+            if (!PresentationTextFormatter.TryFormat(catalog, localeSelection.ActiveLocaleId, in packet, out string formatted))
+            {
+                return false;
+            }
+
+            text = formatted;
+            return true;
         }
     }
 }

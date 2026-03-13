@@ -399,6 +399,82 @@ namespace Ludots.Tests.Presentation
         }
 
         [Test]
+        public void PresentationTextFormatter_FormatsPacketAgainstLocaleTemplate()
+        {
+            WriteFile("Core", "config_catalog.json",
+                @"[
+  { ""Path"": ""Presentation/text_tokens.json"", ""Policy"": ""ArrayById"", ""IdField"": ""id"" },
+  { ""Path"": ""Presentation/text_locales.json"", ""Policy"": ""DeepObject"" }
+]");
+            WriteFile("Core", "Presentation/text_tokens.json",
+                @"[
+  { ""id"": ""hud.damage"", ""argCount"": 2 }
+]");
+            WriteFile("Core", "Presentation/text_locales.json",
+                @"{
+  ""defaultLocale"": ""en-US"",
+  ""locales"": {
+    ""en-US"": {
+      ""hud.damage"": ""DMG {0} / {1}""
+    },
+    ""zh-CN"": {
+      ""hud.damage"": ""伤害 {0} / {1}""
+    }
+  }
+}");
+
+            var (_, _, pipeline, catalog) = BuildPipeline(_root);
+            var loader = new PresentationTextCatalogLoader(pipeline);
+            PresentationTextCatalog textCatalog = loader.Load(catalog);
+            int tokenId = textCatalog.GetTokenId("hud.damage");
+
+            var packet = PresentationTextPacket.FromToken(tokenId);
+            packet.SetArg(0, PresentationTextArg.FromInt32(42));
+            packet.SetArg(1, PresentationTextArg.FromFloat32(3.5f, PresentationTextArgFormat.Fixed1));
+
+            Assert.That(PresentationTextFormatter.TryFormat(textCatalog, textCatalog.DefaultLocaleId, in packet, out string enText), Is.True);
+            Assert.That(enText, Is.EqualTo("DMG 42 / 3.5"));
+
+            int zhLocaleId = textCatalog.GetLocaleId("zh-CN");
+            Assert.That(PresentationTextFormatter.TryFormat(textCatalog, zhLocaleId, in packet, out string zhText), Is.True);
+            Assert.That(zhText, Is.EqualTo("伤害 42 / 3.5"));
+        }
+
+        [Test]
+        public void PresentationTextFormatter_PreservesEscapedBraces()
+        {
+            WriteFile("Core", "config_catalog.json",
+                @"[
+  { ""Path"": ""Presentation/text_tokens.json"", ""Policy"": ""ArrayById"", ""IdField"": ""id"" },
+  { ""Path"": ""Presentation/text_locales.json"", ""Policy"": ""DeepObject"" }
+]");
+            WriteFile("Core", "Presentation/text_tokens.json",
+                @"[
+  { ""id"": ""hud.literal"", ""argCount"": 1 }
+]");
+            WriteFile("Core", "Presentation/text_locales.json",
+                @"{
+  ""defaultLocale"": ""en-US"",
+  ""locales"": {
+    ""en-US"": {
+      ""hud.literal"": ""{{{0}}}""
+    }
+  }
+}");
+
+            var (_, _, pipeline, catalog) = BuildPipeline(_root);
+            var loader = new PresentationTextCatalogLoader(pipeline);
+            PresentationTextCatalog textCatalog = loader.Load(catalog);
+            int tokenId = textCatalog.GetTokenId("hud.literal");
+
+            var packet = PresentationTextPacket.FromToken(tokenId);
+            packet.SetArg(0, PresentationTextArg.FromInt32(99));
+
+            Assert.That(PresentationTextFormatter.TryFormat(textCatalog, textCatalog.DefaultLocaleId, in packet, out string text), Is.True);
+            Assert.That(text, Is.EqualTo("{99}"));
+        }
+
+        [Test]
         public void GameEngine_RegistersPresentationTextCatalogServices()
         {
             using var engine = CreateEngine("LudotsCoreMod", "CoreInputMod");
