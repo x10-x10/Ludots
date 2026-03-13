@@ -199,6 +199,7 @@ namespace Ludots.Tests.Presentation
                 new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(100, 200) },
                 VisualTransform.Default,
                 new FacingDirection { AngleRad = MathF.PI * 0.5f },
+                new VisualTemplateRef { TemplateId = 42 },
                 VisualRuntimeState.Create(
                     meshAssetId: 7,
                     materialId: 9,
@@ -219,6 +220,7 @@ namespace Ludots.Tests.Presentation
 
             var item = snapshotBuffer.GetSpan()[0];
             Assert.That(item.StableId, Is.EqualTo(501));
+            Assert.That(item.TemplateId, Is.EqualTo(42));
             Assert.That(item.Visibility, Is.EqualTo(VisualVisibility.Visible));
             Assert.That(item.Position.X, Is.EqualTo(2.5f).Within(0.001f));
             Assert.That(item.Position.Y, Is.EqualTo(0f).Within(0.001f));
@@ -239,6 +241,7 @@ namespace Ludots.Tests.Presentation
 
             world.Create(
                 new PresentationStableId { Value = 101 },
+                new VisualTemplateRef { TemplateId = 1001 },
                 new VisualTransform
                 {
                     Position = new Vector3(1f, 2f, 3f),
@@ -253,6 +256,7 @@ namespace Ludots.Tests.Presentation
 
             world.Create(
                 new PresentationStableId { Value = 202 },
+                new VisualTemplateRef { TemplateId = 2002 },
                 new VisualTransform
                 {
                     Position = new Vector3(4f, 5f, 6f),
@@ -268,6 +272,7 @@ namespace Ludots.Tests.Presentation
 
             world.Create(
                 new PresentationStableId { Value = 303 },
+                new VisualTemplateRef { TemplateId = 3003 },
                 new VisualTransform
                 {
                     Position = new Vector3(7f, 8f, 9f),
@@ -294,14 +299,17 @@ namespace Ludots.Tests.Presentation
             }
 
             Assert.That(snapshotsByStableId[101].Visibility, Is.EqualTo(VisualVisibility.Visible));
+            Assert.That(snapshotsByStableId[101].TemplateId, Is.EqualTo(1001));
             Assert.That(snapshotsByStableId[101].Scale, Is.EqualTo(new Vector3(3f, 4.5f, 6f)));
             AssertQuaternionEquivalent(snapshotsByStableId[101].Rotation, visibleRotation);
 
             Assert.That(snapshotsByStableId[202].Visibility, Is.EqualTo(VisualVisibility.Hidden));
+            Assert.That(snapshotsByStableId[202].TemplateId, Is.EqualTo(2002));
             Assert.That(snapshotsByStableId[202].Scale, Is.EqualTo(new Vector3(2f, 4f, 6f)));
             AssertQuaternionEquivalent(snapshotsByStableId[202].Rotation, hiddenRotation);
 
             Assert.That(snapshotsByStableId[303].Visibility, Is.EqualTo(VisualVisibility.Culled));
+            Assert.That(snapshotsByStableId[303].TemplateId, Is.EqualTo(3003));
             Assert.That(snapshotsByStableId[303].Scale, Is.EqualTo(new Vector3(1.5f, 1f, 0.5f)));
             AssertQuaternionEquivalent(snapshotsByStableId[303].Rotation, culledRotation);
 
@@ -309,6 +317,73 @@ namespace Ludots.Tests.Presentation
             Assert.That(drawnItem.StableId, Is.EqualTo(101));
             Assert.That(drawnItem.Visibility, Is.EqualTo(VisualVisibility.Visible));
             AssertQuaternionEquivalent(drawnItem.Rotation, visibleRotation);
+        }
+
+        [Test]
+        public void EntityVisualEmitSystem_Throws_WhenRenderableVisualIsMissingPresentationStableId()
+        {
+            using var world = World.Create();
+            var drawBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer();
+            var snapshotBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer();
+
+            world.Create(
+                new VisualTransform
+                {
+                    Position = new Vector3(1f, 2f, 3f),
+                    Rotation = Quaternion.Identity,
+                    Scale = Vector3.One,
+                },
+                VisualRuntimeState.Create(
+                    meshAssetId: 10,
+                    materialId: 20,
+                    baseScale: 1f,
+                    renderPath: VisualRenderPath.StaticMesh));
+
+            using var system = new EntityVisualEmitSystem(world, drawBuffer, snapshotBuffer);
+
+            var ex = Assert.Throws<InvalidOperationException>(() => system.Update(0.016f));
+            Assert.That(ex!.Message, Does.Contain("PresentationStableId"));
+        }
+
+        [Test]
+        public void EntityVisualEmitSystem_Throws_WhenSnapshotBufferOverflows()
+        {
+            using var world = World.Create();
+            var drawBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer();
+            var snapshotBuffer = new Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer(capacity: 1);
+
+            world.Create(
+                new PresentationStableId { Value = 1 },
+                new VisualTransform
+                {
+                    Position = new Vector3(1f, 2f, 3f),
+                    Rotation = Quaternion.Identity,
+                    Scale = Vector3.One,
+                },
+                VisualRuntimeState.Create(
+                    meshAssetId: 10,
+                    materialId: 20,
+                    baseScale: 1f,
+                    renderPath: VisualRenderPath.StaticMesh));
+
+            world.Create(
+                new PresentationStableId { Value = 2 },
+                new VisualTransform
+                {
+                    Position = new Vector3(4f, 5f, 6f),
+                    Rotation = Quaternion.Identity,
+                    Scale = Vector3.One,
+                },
+                VisualRuntimeState.Create(
+                    meshAssetId: 11,
+                    materialId: 21,
+                    baseScale: 1f,
+                    renderPath: VisualRenderPath.StaticMesh));
+
+            using var system = new EntityVisualEmitSystem(world, drawBuffer, snapshotBuffer);
+
+            var ex = Assert.Throws<InvalidOperationException>(() => system.Update(0.016f));
+            Assert.That(ex!.Message, Does.Contain("overflowed"));
         }
 
         private static void AssertQuaternionEquivalent(Quaternion actual, Quaternion expected, float epsilon = 0.0001f)

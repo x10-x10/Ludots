@@ -83,6 +83,7 @@ namespace Ludots.Tests.Presentation
             foreach (ref readonly var item in snapshot.GetSpan())
             {
                 Assert.That(expectedVisuals.TryGetValue(item.StableId, out var expected), Is.True, $"Snapshot item stableId={item.StableId} must map to a live entity visual.");
+                Assert.That(item.TemplateId, Is.EqualTo(expected.TemplateId));
                 Assert.That(item.Position, Is.EqualTo(expected.Position));
                 Assert.That(item.Scale, Is.EqualTo(expected.Scale));
                 Assert.That(item.Visibility, Is.EqualTo(expected.Visibility));
@@ -214,7 +215,9 @@ namespace Ludots.Tests.Presentation
             {
                 bool cullVisible = !engine.World.Has<CullState>(entity) || engine.World.Get<CullState>(entity).IsVisible;
                 float baseScale = visual.BaseScale <= 0f ? 1f : visual.BaseScale;
+                int templateId = engine.World.Has<VisualTemplateRef>(entity) ? engine.World.Get<VisualTemplateRef>(entity).TemplateId : 0;
                 expected[stableId.Value] = new ExpectedEntityVisual(
+                    templateId,
                     transform.Position,
                     transform.Rotation,
                     transform.Scale * baseScale,
@@ -234,6 +237,7 @@ namespace Ludots.Tests.Presentation
         }
 
         private readonly record struct ExpectedEntityVisual(
+            int TemplateId,
             Vector3 Position,
             Quaternion Rotation,
             Vector3 Scale,

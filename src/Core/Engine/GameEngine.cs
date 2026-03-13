@@ -99,6 +99,9 @@ namespace Ludots.Core.Engine
 
     public class GameEngine : IDisposable // Implement IDisposable
     {
+        private const int PrimitiveDrawBufferCapacity = 8192;
+        private const int VisualSnapshotBufferCapacity = 131072;
+
         private bool _isRunning;
         private EffectTemplateLoader _effectTemplateLoader;
         private GraphProgramLoader _graphProgramLoader;
@@ -473,8 +476,8 @@ namespace Ludots.Core.Engine
             var visualTemplates = new VisualTemplateRegistry();
             var animatorControllers = new AnimatorControllerRegistry();
             var presentationStableIds = new PresentationStableIdAllocator();
-            var primitiveDrawBuffer = new PrimitiveDrawBuffer();
-            var visualSnapshotBuffer = new PrimitiveDrawBuffer();
+            var primitiveDrawBuffer = new PrimitiveDrawBuffer(PrimitiveDrawBufferCapacity);
+            var visualSnapshotBuffer = new PrimitiveDrawBuffer(VisualSnapshotBufferCapacity);
             var transientMarkerBuffer = new TransientMarkerBuffer();
             var groundOverlayBuffer = new GroundOverlayBuffer();
             var worldHudBuffer = new WorldHudBatchBuffer();

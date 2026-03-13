@@ -33,6 +33,9 @@ namespace PerformanceVisualizationMod.Triggers
             
             var world = context.GetWorld();
             if (world == null) return Task.CompletedTask;
+            var stableIds = context.Get(CoreServiceKeys.PresentationStableIdAllocator);
+            if (stableIds == null)
+                throw new InvalidOperationException("Visual benchmark requires PresentationStableIdAllocator for renderable visuals.");
 
             var engine = context.GetEngine();
             var gameSession = context.Get(CoreServiceKeys.GameSession);
@@ -82,6 +85,7 @@ namespace PerformanceVisualizationMod.Triggers
                 typeof(Position),
                 typeof(WorldPositionCm),
                 typeof(VisualTransform), // Core will sync this
+                typeof(PresentationStableId),
                 typeof(VisualRuntimeState), // Core will use this for culling/rendering
                 typeof(CullState),       // Core updates this
                 typeof(AttributeBuffer),
@@ -100,6 +104,7 @@ namespace PerformanceVisualizationMod.Triggers
                 int yCm = rng.Next(0, 100000);
                 world.Set(e, new WorldPositionCm { Value = Ludots.Core.Mathematics.FixedPoint.Fix64Vec2.FromInt(xCm, yCm) });
                 world.Set(e, new Position { GridPos = new IntVector2(xCm / 100, yCm / 100) });
+                world.Set(e, new PresentationStableId { Value = stableIds.Allocate() });
                 
                 // Visual Model (Primitive ID 1 = Cube/Sphere)
                 world.Set(e, VisualRuntimeState.Create(
