@@ -99,6 +99,9 @@ namespace Ludots.Core.Engine
 
     public class GameEngine : IDisposable // Implement IDisposable
     {
+        private const int PrimitiveDrawBufferCapacity = 8192;
+        private const int VisualSnapshotBufferCapacity = 131072;
+
         private bool _isRunning;
         private EffectTemplateLoader _effectTemplateLoader;
         private GraphProgramLoader _graphProgramLoader;
@@ -158,6 +161,7 @@ namespace Ludots.Core.Engine
         private List<ISystem<float>> _presentationSystems = new List<ISystem<float>>();
         private ISystem<float> _inputRuntimeSystem;
         private Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer _primitiveDrawBuffer;
+        private Ludots.Core.Presentation.Rendering.PrimitiveDrawBuffer _visualSnapshotBuffer;
         private GasPresentationEventBuffer _gasPresentationEvents;
         private Ludots.Core.Presentation.Rendering.GroundOverlayBuffer _groundOverlayBuffer;
         private Ludots.Core.Presentation.Hud.WorldHudBatchBuffer _worldHudBuffer;
@@ -472,7 +476,8 @@ namespace Ludots.Core.Engine
             var visualTemplates = new VisualTemplateRegistry();
             var animatorControllers = new AnimatorControllerRegistry();
             var presentationStableIds = new PresentationStableIdAllocator();
-            var primitiveDrawBuffer = new PrimitiveDrawBuffer();
+            var primitiveDrawBuffer = new PrimitiveDrawBuffer(PrimitiveDrawBufferCapacity);
+            var visualSnapshotBuffer = new PrimitiveDrawBuffer(VisualSnapshotBufferCapacity);
             var transientMarkerBuffer = new TransientMarkerBuffer();
             var groundOverlayBuffer = new GroundOverlayBuffer();
             var worldHudBuffer = new WorldHudBatchBuffer();
@@ -481,12 +486,19 @@ namespace Ludots.Core.Engine
             var performerGraphApi = new GasGraphRuntimeApi(World, spatialQueries: null, coords: null, eventBus: null);
             new MeshAssetConfigLoader(ConfigPipeline, meshAssets, presentationPrefabs).Load();
             new VisualTemplateConfigLoader(ConfigPipeline, visualTemplates, meshAssets, animatorControllers).Load();
-            BuiltinPerformerDefinitions.Register(performerDefinitions, meshAssets);
+            var presentationTextCatalog = new PresentationTextCatalogLoader(ConfigPipeline).Load(ConfigCatalog, ConfigConflictReport);
+            var presentationTextLocaleSelection = new PresentationTextLocaleSelection(presentationTextCatalog);
+            BuiltinPerformerDefinitions.Register(performerDefinitions, meshAssets, presentationTextCatalog.GetTokenId);
             var performerRuleSystem = new PerformerRuleSystem(World, presentationEventStream, presentationCommandBuffer, performerDefinitions, graphProgramRegistry, performerGraphApi, GlobalContext);
             var performerRuntimeSystem = new PerformerRuntimeSystem(World, presentationPrefabs, presentationCommandBuffer, primitiveDrawBuffer, transientMarkerBuffer, performerInstances, presentationStableIds);
             var performerEmitSystem = new PerformerEmitSystem(World, performerInstances, performerDefinitions, groundOverlayBuffer, primitiveDrawBuffer, worldHudBuffer, graphProgramRegistry, performerGraphApi, GlobalContext,
                 entityColorResolver: (world, entity) => Ludots.Core.Presentation.Utils.TeamColorResolver.Resolve(world, entity));
-            new PerformerDefinitionConfigLoader(ConfigPipeline, performerDefinitions, Ludots.Core.Gameplay.GAS.Registry.AttributeRegistry.Register, meshAssets.GetId).Load();
+            new PerformerDefinitionConfigLoader(
+                ConfigPipeline,
+                performerDefinitions,
+                Ludots.Core.Gameplay.GAS.Registry.AttributeRegistry.Register,
+                meshAssets.GetId,
+                presentationTextCatalog.GetTokenId).Load();
             var presentationAuthoring = new PresentationAuthoringContext(visualTemplates, performerDefinitions, animatorControllers, presentationStableIds);
             MapLoader.PresentationAuthoringContext = presentationAuthoring;
 
@@ -497,7 +509,7 @@ namespace Ludots.Core.Engine
                 meshAssets.TryGetDescriptor(meshAssets.GetId(WellKnownMeshKeys.Sphere), out var _sphereDbg) && _sphereDbg.Type == MeshAssetType.Primitive,
                 "MeshAssetRegistry: 'sphere' descriptor missing or invalid after config load");
 
-            var worldHudStrings = new WorldHudStringTable();
+            var worldHudStrings = new WorldHudStringTable(presentationTextCatalog, presentationTextLocaleSelection);
             new AttributeConstraintsLoader(ConfigPipeline).Load();
 
             var abilitySystem = new AbilitySystem(World, effectRequestQueue, abilityDefinitions, tagOps, graphProgramRegistry, gasGraphApi);
@@ -616,12 +628,16 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.AnimatorControllerRegistry, animatorControllers);
             SetService(CoreServiceKeys.PresentationStableIdAllocator, presentationStableIds);
             _primitiveDrawBuffer = primitiveDrawBuffer;
+            _visualSnapshotBuffer = visualSnapshotBuffer;
             _gasPresentationEvents = gasPresentationEvents;
             _groundOverlayBuffer = groundOverlayBuffer;
             _worldHudBuffer = worldHudBuffer;
             SetService(CoreServiceKeys.PresentationPrimitiveDrawBuffer, primitiveDrawBuffer);
+            SetService(CoreServiceKeys.PresentationVisualSnapshotBuffer, visualSnapshotBuffer);
             SetService(CoreServiceKeys.PresentationWorldHudBuffer, worldHudBuffer);
             SetService(CoreServiceKeys.PresentationWorldHudStrings, worldHudStrings);
+            SetService(CoreServiceKeys.PresentationTextCatalog, presentationTextCatalog);
+            SetService(CoreServiceKeys.PresentationTextLocaleSelection, presentationTextLocaleSelection);
             var screenHudBuffer = new ScreenHudBatchBuffer();
             SetService(CoreServiceKeys.PresentationScreenHudBuffer, screenHudBuffer);
             SetService(CoreServiceKeys.ScreenOverlayBuffer, new ScreenOverlayBuffer());
@@ -735,7 +751,7 @@ namespace Ludots.Core.Engine
             RegisterPresentationSystem(new WorldToVisualSyncSystem(World));
             // TerrainHeightSyncSystem: 采样地形高度写入 VisualTransform.Y，使实体贴附地表
             RegisterPresentationSystem(new TerrainHeightSyncSystem(World, GlobalContext));
-            RegisterPresentationSystem(new EntityVisualEmitSystem(World, primitiveDrawBuffer));
+            RegisterPresentationSystem(new EntityVisualEmitSystem(World, primitiveDrawBuffer, visualSnapshotBuffer));
             RegisterPresentationSystem(new PresentationStartupPerformerSystem(World, presentationCommandBuffer));
             
             RegisterPresentationSystem(new ResponseChainDirectorSystem(World, orderRequestQueue, responseChainTelemetry, responseChainUiState, presentationCommandBuffer, presentationPrefabs));
@@ -1601,6 +1617,7 @@ namespace Ludots.Core.Engine
         private void Update(float dt)
         {
             _primitiveDrawBuffer?.Clear();
+            _visualSnapshotBuffer?.Clear();
             _groundOverlayBuffer?.Clear();
             _worldHudBuffer?.Clear();
             for (int i = 0; i < _presentationSystems.Count; i++)

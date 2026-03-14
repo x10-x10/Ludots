@@ -4,20 +4,16 @@
   "Boards": [
     {
       "Name": "default",
-      "SpatialType": "HexGrid",
-      "WidthInTiles": 12,
-      "HeightInTiles": 10,
-      "GridCellSizeCm": 100,
-      "HexEdgeLengthCm": 400,
-      "ChunkSizeCells": 64,
-      "DataFile": "camera_acceptance_hotpath.vtxm",
-      "NavigationEnabled": false
+      "SpatialType": "Grid",
+      "WidthInTiles": 2,
+      "HeightInTiles": 2,
+      "GridCellSizeCm": 100
     }
   ],
   "DefaultCamera": {
     "VirtualCameraId": "Camera.Acceptance.Profile.RtsMoba",
-    "TargetXCm": 7200,
-    "TargetYCm": 7200
+    "TargetXCm": 3200,
+    "TargetYCm": 2000
   },
   "Entities": [
     {

@@ -20,6 +20,7 @@ namespace Ludots.Core.Presentation.Hud
         public int StringId;
         public Vector4 Color;
         public Vector4 BackgroundColor;
+        public PresentationTextPacket Text;
     }
 
     /// <summary>
@@ -66,6 +67,22 @@ namespace Ludots.Core.Presentation.Hud
                 FontSize = fontSize,
                 StringId = stringId,
                 Color = color
+            };
+            return true;
+        }
+
+        public bool AddText(int x, int y, in PresentationTextPacket text, int fontSize, Vector4 color)
+        {
+            if (_count >= MaxItems) return false;
+
+            _items[_count++] = new ScreenOverlayItem
+            {
+                Kind = ScreenOverlayItemKind.Text,
+                X = x,
+                Y = y,
+                FontSize = fontSize,
+                Color = color,
+                Text = text,
             };
             return true;
         }

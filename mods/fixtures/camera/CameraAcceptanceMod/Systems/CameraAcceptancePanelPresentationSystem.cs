@@ -31,10 +31,15 @@ namespace CameraAcceptanceMod.Systems
             }
 
             long start = Stopwatch.GetTimestamp();
-            _runtime.RefreshPanel(_engine);
             if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState diagnostics)
             {
-                diagnostics.ObservePanelSync((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
+                diagnostics.ObserveFrameTime(t * 1000.0);
+            }
+
+            _runtime.RefreshPanel(_engine);
+            if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState diagnosticsAfter)
+            {
+                diagnosticsAfter.ObservePanelSync((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
             }
         }
     }

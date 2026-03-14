@@ -1,4 +1,5 @@
-using System;
+using Ludots.UI.Reactive;
+using Ludots.UI.Runtime;
 
 namespace CameraAcceptanceMod.Runtime
 {
@@ -19,7 +20,6 @@ namespace CameraAcceptanceMod.Runtime
         public float HotpathBarBuildMs { get; private set; }
         public float HotpathHudTextBuildMs { get; private set; }
         public float HotpathPrimitiveBuildMs { get; private set; }
-        public float HotpathVisibleSampleMs { get; private set; }
 
         public int HotpathCrowdCount { get; private set; }
         public int HotpathVisibleCrowdCount { get; private set; }
@@ -27,11 +27,15 @@ namespace CameraAcceptanceMod.Runtime
         public int HotpathHudTextItemCount { get; private set; }
         public int HotpathPrimitiveItemCount { get; private set; }
         public int HotpathSelectionLabelCount { get; private set; }
-        public int HotpathVisibleSampleStride { get; private set; } = 1;
-        public int HotpathSweepCycle { get; private set; }
-        public string HotpathSweepPhase { get; private set; } = "inactive";
-        public string HotpathSweepTarget { get; private set; } = "none";
-        public string[] HotpathVisibleSampleWindow { get; private set; } = Array.Empty<string>();
+        public ReactiveApplyMode PanelLastApplyMode { get; private set; }
+        public int PanelLastPatchedNodes { get; private set; }
+        public int PanelLastSelectionRowsTouched { get; private set; }
+        public int PanelRowPoolSize { get; private set; }
+        public long PanelFullRecomposeCount { get; private set; }
+        public long PanelIncrementalPatchCount { get; private set; }
+        public int PanelVirtualizedWindowCount { get; private set; }
+        public int PanelVirtualizedTotalItems { get; private set; }
+        public int PanelVirtualizedComposedItems { get; private set; }
 
         public float SmoothedFps => SmoothedFrameMs > 0.001f ? 1000f / SmoothedFrameMs : 0f;
 
@@ -42,7 +46,6 @@ namespace CameraAcceptanceMod.Runtime
         public void ObserveHotpathBars(double sampleMs) => HotpathBarBuildMs = Smooth(HotpathBarBuildMs, (float)sampleMs);
         public void ObserveHotpathHudText(double sampleMs) => HotpathHudTextBuildMs = Smooth(HotpathHudTextBuildMs, (float)sampleMs);
         public void ObserveHotpathPrimitives(double sampleMs) => HotpathPrimitiveBuildMs = Smooth(HotpathPrimitiveBuildMs, (float)sampleMs);
-        public void ObserveHotpathVisibleSample(double sampleMs) => HotpathVisibleSampleMs = Smooth(HotpathVisibleSampleMs, (float)sampleMs);
 
         public void PublishHotpathLaneCounts(int crowdCount, int visibleCrowdCount, int barItemCount, int hudTextItemCount, int primitiveItemCount)
         {
@@ -58,29 +61,27 @@ namespace CameraAcceptanceMod.Runtime
             HotpathSelectionLabelCount = selectionLabelCount < 0 ? 0 : selectionLabelCount;
         }
 
-        public void PublishHotpathVisibleSample(string[] lines, int stride)
+        public void ResetHotpathLaneCounts()
         {
-            HotpathVisibleSampleWindow = lines ?? Array.Empty<string>();
-            HotpathVisibleSampleStride = stride <= 0 ? 1 : stride;
+            HotpathCrowdCount = 0;
+            HotpathVisibleCrowdCount = 0;
+            HotpathBarItemCount = 0;
+            HotpathHudTextItemCount = 0;
+            HotpathPrimitiveItemCount = 0;
+            HotpathSelectionLabelCount = 0;
         }
 
-        public void PublishHotpathSweep(string phase, int cycle, string target)
+        public void ObservePanelUpdate(ReactiveUpdateStats stats, UiReactiveUpdateMetrics metrics, int selectionRowsTouched, int rowPoolSize, long fullRecomposeCount, long incrementalPatchCount)
         {
-            HotpathSweepPhase = string.IsNullOrWhiteSpace(phase) ? "inactive" : phase;
-            HotpathSweepCycle = cycle < 0 ? 0 : cycle;
-            HotpathSweepTarget = string.IsNullOrWhiteSpace(target) ? "none" : target;
-        }
-
-        public void ResetHotpathState()
-        {
-            ObserveHotpathBars(0d);
-            ObserveHotpathHudText(0d);
-            ObserveHotpathPrimitives(0d);
-            ObserveHotpathVisibleSample(0d);
-            PublishHotpathLaneCounts(0, 0, 0, 0, 0);
-            PublishHotpathSelectionLabelCount(0);
-            PublishHotpathVisibleSample(Array.Empty<string>(), 1);
-            PublishHotpathSweep("inactive", 0, "none");
+            PanelLastApplyMode = stats.Mode;
+            PanelLastPatchedNodes = stats.PatchedNodes;
+            PanelLastSelectionRowsTouched = selectionRowsTouched;
+            PanelRowPoolSize = rowPoolSize;
+            PanelFullRecomposeCount = fullRecomposeCount;
+            PanelIncrementalPatchCount = incrementalPatchCount;
+            PanelVirtualizedWindowCount = metrics.VirtualizedWindowCount;
+            PanelVirtualizedTotalItems = metrics.VirtualizedTotalItems;
+            PanelVirtualizedComposedItems = metrics.VirtualizedComposedItems;
         }
 
         private static float Smooth(float current, float sampleMs)

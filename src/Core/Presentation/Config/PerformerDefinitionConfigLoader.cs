@@ -20,6 +20,7 @@ namespace Ludots.Core.Presentation.Config
         private readonly PerformerDefinitionRegistry _registry;
         private readonly Func<string, int> _resolveAttributeName;
         private readonly Func<string, int> _resolveMeshId;
+        private readonly Func<string, int> _resolveTextTokenId;
 
         /// <param name="resolveMeshId">
         /// Resolves a mesh asset key (e.g. "cube") to its int ID.
@@ -29,12 +30,14 @@ namespace Ludots.Core.Presentation.Config
             ConfigPipeline configs,
             PerformerDefinitionRegistry registry,
             Func<string, int> resolveAttributeName = null,
-            Func<string, int> resolveMeshId = null)
+            Func<string, int> resolveMeshId = null,
+            Func<string, int> resolveTextTokenId = null)
         {
             _configs = configs;
             _registry = registry;
             _resolveAttributeName = resolveAttributeName ?? (_ => 0);
             _resolveMeshId = resolveMeshId ?? (_ => 0);
+            _resolveTextTokenId = resolveTextTokenId ?? (_ => 0);
         }
 
         public void Load(
@@ -179,8 +182,26 @@ namespace Ludots.Core.Presentation.Config
                 "attributebase" => ValueRef.FromAttributeBase(ResolveAttributeId(node)),
                 "graph" => ValueRef.FromGraph(node["sourceId"]?.GetValue<int>() ?? 0),
                 "entitycolor" => ValueRef.FromEntityColor(node["sourceId"]?.GetValue<int>() ?? 0),
+                "texttoken" => ValueRef.FromConstant(ResolveTextTokenId(node)),
                 _ => ValueRef.FromConstant(node["constantValue"]?.GetValue<float>() ?? 0f),
             };
+        }
+
+        private int ResolveTextTokenId(JsonNode node)
+        {
+            string tokenKey = node["textToken"]?.GetValue<string>() ?? node["sourceKey"]?.GetValue<string>() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(tokenKey))
+            {
+                throw new InvalidOperationException("Performer WorldText textToken binding requires a non-empty 'textToken'.");
+            }
+
+            int tokenId = _resolveTextTokenId(tokenKey);
+            if (tokenId <= 0)
+            {
+                throw new InvalidOperationException($"Performer WorldText references unknown text token '{tokenKey}'.");
+            }
+
+            return tokenId;
         }
 
         private int ResolveAttributeId(JsonNode node)

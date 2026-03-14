@@ -1,6 +1,6 @@
 using System;
-using System.Diagnostics;
 using System.Numerics;
+using System.Diagnostics;
 using Arch.Core;
 using Arch.System;
 using CameraAcceptanceMod.Runtime;
@@ -29,17 +29,13 @@ namespace CameraAcceptanceMod.Systems
         }
 
         public void Initialize() { }
-        public void BeforeUpdate(in float dt) { }
-        public void AfterUpdate(in float dt) { }
-        public void Dispose() { }
 
         public void Update(in float dt)
         {
             long start = Stopwatch.GetTimestamp();
             string? mapId = _engine.CurrentMapSession?.MapId.Value;
-            bool projectionMap = string.Equals(mapId, CameraAcceptanceIds.ProjectionMapId, StringComparison.OrdinalIgnoreCase);
-            bool hotpathMap = string.Equals(mapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase);
-            if (!projectionMap && !hotpathMap)
+            if (!string.Equals(mapId, CameraAcceptanceIds.ProjectionMapId, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(mapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
             {
                 PublishHotpathSelectionCount(0);
                 Observe(start);
@@ -66,11 +62,11 @@ namespace CameraAcceptanceMod.Systems
                 return;
             }
 
-            if (hotpathMap)
+            if (string.Equals(mapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
             {
                 MapId currentMapId = _engine.CurrentMapSession?.MapId ?? default;
                 int labelCount = 0;
-                _engine.World.Query(in HotpathCrowdQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity, ref VisualTransform transform, ref CullState cull) =>
+                _engine.World.Query(in HotpathCrowdQuery, (Entity entity, ref MapEntity mapEntity, ref VisualTransform transform, ref CullState cull) =>
                 {
                     if (!MatchesMap(mapEntity, currentMapId) ||
                         !cull.IsVisible ||
@@ -107,6 +103,10 @@ namespace CameraAcceptanceMod.Systems
 
             Observe(start);
         }
+
+        public void BeforeUpdate(in float dt) { }
+        public void AfterUpdate(in float dt) { }
+        public void Dispose() { }
 
         private void Observe(long startTicks)
         {

@@ -65,7 +65,7 @@ namespace Ludots.Adapter.Web.Streaming
             WriteWorldHud(worldHud);
             WriteScreenHud(screenHud, worldHudStrings);
             WriteDebugDraw(debugDraw);
-            WriteScreenOverlay(screenOverlay);
+            WriteScreenOverlay(screenOverlay, worldHudStrings);
             WriteUiScene(uiSceneJson);
 
             EnsureCapacity(1);
@@ -157,6 +157,7 @@ namespace Ludots.Adapter.Web.Streaming
                 WriteInt32(item.Id0);
                 WriteInt32(item.Id1);
                 WriteInt32(item.FontSize);
+                WriteTextPacket(in item.Text);
             }
         }
 
@@ -185,28 +186,15 @@ namespace Ludots.Adapter.Web.Streaming
                 WriteInt32(item.Id0);
                 WriteInt32(item.Id1);
                 WriteInt32(item.FontSize);
+                WriteTextPacket(in item.Text);
                 if (item.Id0 > maxStringId)
                 {
                     maxStringId = item.Id0;
                 }
             }
 
-            int stringCount = maxStringId > 0 ? maxStringId + 1 : 0;
-            EnsureCapacity(2);
-            BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)stringCount);
-            _pos += 2;
-
-            for (int i = 0; i < stringCount; i++)
-            {
-                string? text = strings?.TryGet(i);
-                if (text == null) text = string.Empty;
-                int byteCount = Encoding.UTF8.GetByteCount(text);
-                EnsureCapacity(2 + byteCount);
-                BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)byteCount);
-                _pos += 2;
-                Encoding.UTF8.GetBytes(text, _buffer.AsSpan(_pos));
-                _pos += byteCount;
-            }
+            WriteLegacyStringTable(maxStringId > 0 ? maxStringId + 1 : 0, strings);
+            WriteTextTemplateTable(span, strings);
 
             int totalBytes = _pos - startPos - FrameProtocol.SectionHeaderSize;
             BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(startPos + 3), totalBytes);
@@ -279,7 +267,7 @@ namespace Ludots.Adapter.Web.Streaming
             }
         }
 
-        private void WriteScreenOverlay(ScreenOverlayBuffer? buf)
+        private void WriteScreenOverlay(ScreenOverlayBuffer? buf, WorldHudStringTable? strings)
         {
             if (buf == null || buf.Count == 0) return;
 
@@ -292,7 +280,7 @@ namespace Ludots.Adapter.Web.Streaming
             for (int i = 0; i < count; i++)
             {
                 ref readonly var item = ref span[i];
-                EnsureCapacity(55);
+                EnsureCapacity(WireScreenOverlayItem.SizeInBytes);
                 _buffer[_pos++] = (byte)item.Kind;
                 WriteInt32(item.X);
                 WriteInt32(item.Y);
@@ -304,6 +292,7 @@ namespace Ludots.Adapter.Web.Streaming
                 EnsureCapacity(2);
                 BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)item.StringId);
                 _pos += 2;
+                WriteTextPacket(in item.Text);
             }
 
             int stringCount = 0;
@@ -314,14 +303,68 @@ namespace Ludots.Adapter.Web.Streaming
                     stringCount = Math.Max(stringCount, item.StringId + 1);
             }
 
+            WriteOverlayStringTable(buf, stringCount);
+            WriteTextTemplateTable(span, strings);
+
+            int totalBytes = _pos - startPos - FrameProtocol.SectionHeaderSize;
+            BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(startPos + 3), totalBytes);
+        }
+
+        private void WriteTextPacket(in PresentationTextPacket packet)
+        {
+            EnsureCapacity(WirePresentationTextPacket.SizeInBytes);
+
+            WriteInt32(packet.TokenId);
+            _buffer[_pos++] = packet.ArgCount;
+            _buffer[_pos++] = packet.Reserved0;
+            BinaryPrimitives.WriteInt16LittleEndian(_buffer.AsSpan(_pos), packet.Reserved1);
+            _pos += 2;
+
+            WriteTextArg(in packet.Arg0);
+            WriteTextArg(in packet.Arg1);
+            WriteTextArg(in packet.Arg2);
+            WriteTextArg(in packet.Arg3);
+        }
+
+        private void WriteTextArg(in PresentationTextArg arg)
+        {
+            EnsureCapacity(WirePresentationTextPacket.ArgSizeInBytes);
+            _buffer[_pos++] = (byte)arg.Type;
+            _buffer[_pos++] = (byte)arg.Format;
+            BinaryPrimitives.WriteInt16LittleEndian(_buffer.AsSpan(_pos), arg.Reserved);
+            _pos += 2;
+            WriteInt32(arg.Raw32);
+        }
+
+        private void WriteLegacyStringTable(int stringCount, WorldHudStringTable? strings)
+        {
             EnsureCapacity(2);
             BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)stringCount);
             _pos += 2;
 
             for (int i = 0; i < stringCount; i++)
             {
-                string? s = buf.GetString(i);
-                if (s == null) s = "";
+                string? text = strings?.TryGet(i);
+                if (text == null) text = string.Empty;
+                int byteCount = Encoding.UTF8.GetByteCount(text);
+                EnsureCapacity(2 + byteCount);
+                BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)byteCount);
+                _pos += 2;
+                Encoding.UTF8.GetBytes(text, _buffer.AsSpan(_pos));
+                _pos += byteCount;
+            }
+        }
+
+        private void WriteOverlayStringTable(ScreenOverlayBuffer buffer, int stringCount)
+        {
+            EnsureCapacity(2);
+            BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)stringCount);
+            _pos += 2;
+
+            for (int i = 0; i < stringCount; i++)
+            {
+                string? s = buffer.GetString(i);
+                if (s == null) s = string.Empty;
                 int byteCount = Encoding.UTF8.GetByteCount(s);
                 EnsureCapacity(2 + byteCount);
                 BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)byteCount);
@@ -329,9 +372,112 @@ namespace Ludots.Adapter.Web.Streaming
                 Encoding.UTF8.GetBytes(s, _buffer.AsSpan(_pos));
                 _pos += byteCount;
             }
+        }
 
-            int totalBytes = _pos - startPos - FrameProtocol.SectionHeaderSize;
-            BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(startPos + 3), totalBytes);
+        private void WriteTextTemplateTable(ReadOnlySpan<ScreenHudItem> items, WorldHudStringTable? strings)
+        {
+            Span<int> tokenIds = items.Length <= 128 ? stackalloc int[items.Length] : new int[items.Length];
+            int tokenCount = CollectUniqueTokenIds(items, strings, tokenIds);
+
+            EnsureCapacity(2);
+            BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)tokenCount);
+            _pos += 2;
+
+            for (int i = 0; i < tokenCount; i++)
+            {
+                int tokenId = tokenIds[i];
+                string template = strings!.TryGet(tokenId) ?? string.Empty;
+                int byteCount = Encoding.UTF8.GetByteCount(template);
+                EnsureCapacity(6 + byteCount);
+                WriteInt32(tokenId);
+                BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)byteCount);
+                _pos += 2;
+                Encoding.UTF8.GetBytes(template, _buffer.AsSpan(_pos));
+                _pos += byteCount;
+            }
+        }
+
+        private void WriteTextTemplateTable(ReadOnlySpan<ScreenOverlayItem> items, WorldHudStringTable? strings)
+        {
+            Span<int> tokenIds = items.Length <= 128 ? stackalloc int[items.Length] : new int[items.Length];
+            int tokenCount = CollectUniqueTokenIds(items, strings, tokenIds);
+
+            EnsureCapacity(2);
+            BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)tokenCount);
+            _pos += 2;
+
+            for (int i = 0; i < tokenCount; i++)
+            {
+                int tokenId = tokenIds[i];
+                string template = strings!.TryGet(tokenId) ?? string.Empty;
+                int byteCount = Encoding.UTF8.GetByteCount(template);
+                EnsureCapacity(6 + byteCount);
+                WriteInt32(tokenId);
+                BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), (ushort)byteCount);
+                _pos += 2;
+                Encoding.UTF8.GetBytes(template, _buffer.AsSpan(_pos));
+                _pos += byteCount;
+            }
+        }
+
+        private static int CollectUniqueTokenIds(ReadOnlySpan<ScreenHudItem> items, WorldHudStringTable? strings, Span<int> tokenIds)
+        {
+            int tokenCount = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                int tokenId = items[i].Text.TokenId;
+                if (tokenId <= 0 || strings?.TryGet(tokenId) == null)
+                {
+                    continue;
+                }
+
+                bool exists = false;
+                for (int tokenIndex = 0; tokenIndex < tokenCount; tokenIndex++)
+                {
+                    if (tokenIds[tokenIndex] == tokenId)
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (!exists)
+                {
+                    tokenIds[tokenCount++] = tokenId;
+                }
+            }
+
+            return tokenCount;
+        }
+
+        private static int CollectUniqueTokenIds(ReadOnlySpan<ScreenOverlayItem> items, WorldHudStringTable? strings, Span<int> tokenIds)
+        {
+            int tokenCount = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                int tokenId = items[i].Text.TokenId;
+                if (tokenId <= 0 || strings?.TryGet(tokenId) == null)
+                {
+                    continue;
+                }
+
+                bool exists = false;
+                for (int tokenIndex = 0; tokenIndex < tokenCount; tokenIndex++)
+                {
+                    if (tokenIds[tokenIndex] == tokenId)
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (!exists)
+                {
+                    tokenIds[tokenCount++] = tokenId;
+                }
+            }
+
+            return tokenCount;
         }
 
         private void WriteUiScene(string? sceneJson)

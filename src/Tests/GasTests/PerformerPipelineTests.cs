@@ -638,7 +638,10 @@ namespace Ludots.Tests.Presentation
         {
             var meshes = new MeshAssetRegistry();
             var registry = new PerformerDefinitionRegistry();
-            BuiltinPerformerDefinitions.Register(registry, meshes);
+            BuiltinPerformerDefinitions.Register(
+                registry,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
             Assert.That(registry.TryGet(registry.GetId(WellKnownPerformerKeys.CastCommittedMarker), out _), Is.True);
             Assert.That(registry.TryGet(registry.GetId(WellKnownPerformerKeys.CastFailedMarker), out _), Is.True);
@@ -651,7 +654,10 @@ namespace Ludots.Tests.Presentation
         {
             var meshes = new MeshAssetRegistry();
             var registry = new PerformerDefinitionRegistry();
-            BuiltinPerformerDefinitions.Register(registry, meshes);
+            BuiltinPerformerDefinitions.Register(
+                registry,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
             registry.TryGet(registry.GetId(WellKnownPerformerKeys.FloatingCombatText), out var def);
 
             Assert.That(def.PositionYDriftPerSecond, Is.GreaterThan(0f));
@@ -664,7 +670,10 @@ namespace Ludots.Tests.Presentation
         {
             var meshes = new MeshAssetRegistry();
             var registry = new PerformerDefinitionRegistry();
-            BuiltinPerformerDefinitions.Register(registry, meshes);
+            BuiltinPerformerDefinitions.Register(
+                registry,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
             registry.TryGet(registry.GetId(WellKnownPerformerKeys.EntityHealthBar), out var def);
 
             Assert.That(def.EntityScope, Is.EqualTo(EntityScopeFilter.AllWithAttributes));

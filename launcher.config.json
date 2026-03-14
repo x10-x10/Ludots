@@ -18,6 +18,14 @@
       }
     },
     {
+      "name": "camera_acceptance_hotpath",
+      "target": {
+        "type": "path",
+        "value": "mods/fixtures/camera/CameraAcceptanceHotpathEntryMod",
+        "projectPath": "CameraAcceptanceHotpathEntryMod.csproj"
+      }
+    },
+    {
       "name": "nav_playground",
       "target": {
         "type": "path",

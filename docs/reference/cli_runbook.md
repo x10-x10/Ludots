@@ -20,6 +20,9 @@ If you only need to run mods, use these product commands:
 # Single mod on raylib
 .\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib
 
+# Direct hotpath acceptance on raylib
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance_hotpath --adapter raylib
+
 # Single mod on web
 .\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter web
 
@@ -78,6 +81,7 @@ Supported selectors:
 
 ```text
 $camera_acceptance
+camera_acceptance_hotpath
 camera_acceptance
 mod:CameraAcceptanceMod
 path:mods/fixtures/camera/CameraAcceptanceMod
@@ -105,6 +109,7 @@ A single `resolve` or `launch` command may accept multiple selectors.
 
 ```powershell
 .\scripts\run-mod-launcher.cmd cli resolve camera_acceptance --adapter raylib
+.\scripts\run-mod-launcher.cmd cli resolve camera_acceptance_hotpath --adapter raylib
 .\scripts\run-mod-launcher.cmd cli resolve camera_acceptance nav_playground --adapter web
 .\scripts\run-mod-launcher.cmd cli resolve --mod CameraAcceptanceMod --mod Navigation2DPlaygroundMod --adapter raylib --json
 ```
@@ -122,6 +127,7 @@ If multiple root mods define `startupMapId`, only one startup map is selected at
 
 ```powershell
 .\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance_hotpath --adapter raylib
 .\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter web
 .\scripts\run-mod-launcher.cmd cli launch nav_playground --adapter raylib
 .\scripts\run-mod-launcher.cmd cli launch nav_playground --adapter web
@@ -156,6 +162,7 @@ Rules:
 
 .\scripts\run-mod-launcher.cmd cli binding list
 .\scripts\run-mod-launcher.cmd cli binding set camera_acceptance --path mods/fixtures/camera/CameraAcceptanceMod --project CameraAcceptanceMod.csproj
+.\scripts\run-mod-launcher.cmd cli binding set camera_acceptance_hotpath --path mods/fixtures/camera/CameraAcceptanceHotpathEntryMod --project CameraAcceptanceHotpathEntryMod.csproj
 .\scripts\run-mod-launcher.cmd cli binding set nav_playground --path mods/Navigation2DPlaygroundMod --project Navigation2DPlaygroundMod.csproj
 ```
 
@@ -171,6 +178,7 @@ Notes:
 ```powershell
 .\scripts\run-mod-launcher.cmd cli preset list
 .\scripts\run-mod-launcher.cmd cli preset save --name camera-web camera_acceptance --adapter web
+.\scripts\run-mod-launcher.cmd cli preset save --name camera-hotpath-raylib camera_acceptance_hotpath --adapter raylib
 .\scripts\run-mod-launcher.cmd cli preset save --name camera-nav-raylib camera_acceptance nav_playground --adapter raylib
 .\scripts\run-mod-launcher.cmd cli preset select preset_camera-nav-raylib
 .\scripts\run-mod-launcher.cmd cli launch --adapter raylib

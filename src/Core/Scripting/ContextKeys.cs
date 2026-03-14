@@ -65,6 +65,8 @@ namespace Ludots.Core.Scripting
         public const string PresentationPrimitiveDrawBuffer = "PresentationPrimitiveDrawBuffer";
         public const string PresentationWorldHudBuffer = "PresentationWorldHudBuffer";
         public const string PresentationWorldHudStrings = "PresentationWorldHudStrings";
+        public const string PresentationTextCatalog = "PresentationTextCatalog";
+        public const string PresentationTextLocaleSelection = "PresentationTextLocaleSelection";
         public const string PresentationScreenHudBuffer = "PresentationScreenHudBuffer";
         public const string ScreenOverlayBuffer = "ScreenOverlayBuffer";
         public const string RenderDebugState = "RenderDebugState";

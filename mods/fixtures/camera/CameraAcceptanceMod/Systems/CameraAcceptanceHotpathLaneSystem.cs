@@ -21,6 +21,8 @@ namespace CameraAcceptanceMod.Systems
 {
     internal sealed class CameraAcceptanceHotpathLaneSystem : ISystem<float>
     {
+        private const string CrowdRequestedKey = "CameraAcceptance.HotpathCrowdRequested";
+
         private static readonly QueryDescription UntaggedDummyQuery = new QueryDescription()
             .WithAll<Name, MapEntity>()
             .WithNone<CameraAcceptanceHotpathCrowdTag>();
@@ -28,30 +30,25 @@ namespace CameraAcceptanceMod.Systems
         private static readonly QueryDescription TaggedCrowdQuery = new QueryDescription()
             .WithAll<CameraAcceptanceHotpathCrowdTag, MapEntity>();
 
-        private static readonly QueryDescription TaggedVisibleCrowdQuery = new QueryDescription()
-            .WithAll<CameraAcceptanceHotpathCrowdTag, MapEntity, CullState>();
+        private static readonly QueryDescription TaggedCrowdVisibleQuery = new QueryDescription()
+            .WithAll<CameraAcceptanceHotpathCrowdTag, CullState, MapEntity>();
 
-        private static readonly QueryDescription TaggedVisibleCrowdPositionQuery = new QueryDescription()
-            .WithAll<CameraAcceptanceHotpathCrowdTag, MapEntity, WorldPositionCm, CullState>();
-
-        private static readonly QueryDescription TaggedVisibleCrowdVisualQuery = new QueryDescription()
+        private static readonly QueryDescription TaggedCrowdVisualQuery = new QueryDescription()
             .WithAll<CameraAcceptanceHotpathCrowdTag, MapEntity, VisualTransform, CullState>();
+
+        private static readonly QueryDescription TaggedCrowdDestroyQuery = new QueryDescription()
+            .WithAll<CameraAcceptanceHotpathCrowdTag>();
 
         private static readonly Vector4 BarBackground = new(0.14f, 0.18f, 0.24f, 0.92f);
         private static readonly Vector4 BarForeground = new(0.12f, 0.84f, 0.62f, 0.96f);
         private static readonly Vector4 TextColor = new(0.96f, 0.92f, 0.68f, 1f);
 
         private readonly GameEngine _engine;
-        private readonly List<Entity> _tagBuffer = new(2048);
-        private readonly List<Entity> _crowdBuffer = new(CameraAcceptanceIds.HotpathCrowdTargetCount);
-        private readonly List<VisibleSampleEntry> _visibleSampleBuffer = new(4096);
-        private string[] _frozenVisibleSampleWindow = Array.Empty<string>();
-        private string _frozenVisibleSamplePhase = string.Empty;
-        private string _frozenVisibleSampleTarget = string.Empty;
-        private int _frozenVisibleSampleCycle = -1;
-        private int _frozenVisibleSampleStride = 1;
+        private readonly List<Entity> _tagBuffer = new(CameraAcceptanceIds.HotpathCrowdTargetCount);
+        private readonly List<Entity> _destroyBuffer = new(CameraAcceptanceIds.HotpathCrowdTargetCount);
         private int _cubeMeshAssetId;
         private int _sphereMeshAssetId;
+        private bool _crowdRequested;
 
         public CameraAcceptanceHotpathLaneSystem(GameEngine engine)
         {
@@ -79,48 +76,64 @@ namespace CameraAcceptanceMod.Systems
 
             TagExistingCrowd(currentMapId);
 
-            int crowdCount = CountCrowd(currentMapId);
+            int crowdCount = CountTaggedCrowd(currentMapId);
+            int visibleCrowdCount = CountVisibleTaggedCrowd(currentMapId);
             if (!diagnostics.HotpathCullCrowdEnabled)
             {
                 if (crowdCount > 0)
                 {
-                    DestroyCrowd(currentMapId);
+                    DestroyTaggedCrowd(currentMapId);
                 }
 
-                ResetFrozenVisibleSample();
-                diagnostics.PublishHotpathLaneCounts(0, 0, 0, 0, 0);
-                diagnostics.PublishHotpathVisibleSample(Array.Empty<string>(), 1);
+                SetCrowdRequested(false);
                 diagnostics.ObserveHotpathBars(0d);
                 diagnostics.ObserveHotpathHudText(0d);
                 diagnostics.ObserveHotpathPrimitives(0d);
-                diagnostics.ObserveHotpathVisibleSample(0d);
+                diagnostics.PublishHotpathLaneCounts(0, 0, 0, 0, 0);
                 return;
             }
 
             if (crowdCount > CameraAcceptanceIds.HotpathCrowdTargetCount)
             {
-                crowdCount = TrimCrowdToTarget(currentMapId);
+                crowdCount = TrimTaggedCrowdToTarget(currentMapId);
+                visibleCrowdCount = CountVisibleTaggedCrowd(currentMapId);
+                if (_engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is RuntimeEntitySpawnQueue spawnQueue)
+                {
+                    spawnQueue.Clear();
+                }
+
+                SetCrowdRequested(true);
             }
-            else if (crowdCount < CameraAcceptanceIds.HotpathCrowdTargetCount)
+            else if (!IsCrowdRequested())
             {
-                EnqueueCrowdSpawns(currentMapId, crowdCount);
+                int requestedCount = crowdCount;
+                if (_engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is RuntimeEntitySpawnQueue spawnQueue)
+                {
+                    requestedCount += spawnQueue.Count;
+                }
+
+                int enqueued = EnsureCrowdSpawned(currentMapId, requestedCount);
+                SetCrowdRequested(requestedCount + enqueued >= CameraAcceptanceIds.HotpathCrowdTargetCount);
             }
 
-            int visibleCrowdCount = CountVisibleCrowd(currentMapId);
-            int barCount = EmitBars(diagnostics, currentMapId);
-            int textCount = EmitHudText(diagnostics, currentMapId);
+            (int barCount, int textCount) = EmitHudLanes(diagnostics, currentMapId);
             int primitiveCount = EmitPrimitives(diagnostics, currentMapId);
-            PublishVisibleEntitySample(diagnostics, currentMapId, visibleCrowdCount);
             diagnostics.PublishHotpathLaneCounts(crowdCount, visibleCrowdCount, barCount, textCount, primitiveCount);
         }
 
         private void ResetHotpathState()
         {
-            ResetFrozenVisibleSample();
-            if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState diagnostics)
+            if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is not CameraAcceptanceDiagnosticsState diagnostics)
             {
-                diagnostics.ResetHotpathState();
+                return;
             }
+
+            diagnostics.ObserveHotpathBars(0d);
+            diagnostics.ObserveHotpathHudText(0d);
+            diagnostics.ObserveHotpathPrimitives(0d);
+            diagnostics.PublishHotpathSelectionLabelCount(0);
+            diagnostics.ResetHotpathLaneCounts();
+            SetCrowdRequested(false);
         }
 
         private void TagExistingCrowd(MapId currentMapId)
@@ -145,7 +158,7 @@ namespace CameraAcceptanceMod.Systems
             }
         }
 
-        private int CountCrowd(MapId currentMapId)
+        private int CountTaggedCrowd(MapId currentMapId)
         {
             int crowdCount = 0;
             _engine.World.Query(in TaggedCrowdQuery, (ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity) =>
@@ -159,12 +172,13 @@ namespace CameraAcceptanceMod.Systems
             return crowdCount;
         }
 
-        private int CountVisibleCrowd(MapId currentMapId)
+        private int CountVisibleTaggedCrowd(MapId currentMapId)
         {
             int visibleCount = 0;
-            _engine.World.Query(in TaggedVisibleCrowdQuery, (ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity, ref CullState cull) =>
+            _engine.World.Query(in TaggedCrowdVisibleQuery, (ref CameraAcceptanceHotpathCrowdTag _, ref CullState cull, ref MapEntity mapEntity) =>
             {
-                if (MatchesMap(mapEntity, currentMapId) && cull.IsVisible)
+                if (MatchesMap(mapEntity, currentMapId) &&
+                    cull.IsVisible)
                 {
                     visibleCount++;
                 }
@@ -173,60 +187,67 @@ namespace CameraAcceptanceMod.Systems
             return visibleCount;
         }
 
-        private void DestroyCrowd(MapId currentMapId)
+        private void DestroyTaggedCrowd(MapId currentMapId)
         {
-            _crowdBuffer.Clear();
-            _engine.World.Query(in TaggedCrowdQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity) =>
+            _destroyBuffer.Clear();
+            _engine.World.Query(in TaggedCrowdDestroyQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _) =>
             {
-                if (MatchesMap(mapEntity, currentMapId))
+                if (_engine.World.TryGet(entity, out MapEntity mapEntity) &&
+                    MatchesMap(mapEntity, currentMapId))
                 {
-                    _crowdBuffer.Add(entity);
+                    _destroyBuffer.Add(entity);
                 }
             });
 
-            for (int i = 0; i < _crowdBuffer.Count; i++)
+            for (int i = 0; i < _destroyBuffer.Count; i++)
             {
-                if (_engine.World.IsAlive(_crowdBuffer[i]))
+                Entity entity = _destroyBuffer[i];
+                if (_engine.World.IsAlive(entity))
                 {
-                    _engine.World.Destroy(_crowdBuffer[i]);
+                    _engine.World.Destroy(entity);
                 }
             }
         }
 
-        private int TrimCrowdToTarget(MapId currentMapId)
+        private int TrimTaggedCrowdToTarget(MapId currentMapId)
         {
-            _crowdBuffer.Clear();
-            _engine.World.Query(in TaggedCrowdQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity) =>
+            _destroyBuffer.Clear();
+            _engine.World.Query(in TaggedCrowdDestroyQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _) =>
             {
-                if (MatchesMap(mapEntity, currentMapId))
+                if (_engine.World.TryGet(entity, out MapEntity mapEntity) &&
+                    MatchesMap(mapEntity, currentMapId))
                 {
-                    _crowdBuffer.Add(entity);
+                    _destroyBuffer.Add(entity);
                 }
             });
 
-            for (int i = _crowdBuffer.Count - 1; i >= CameraAcceptanceIds.HotpathCrowdTargetCount; i--)
+            for (int i = _destroyBuffer.Count - 1; i >= CameraAcceptanceIds.HotpathCrowdTargetCount; i--)
             {
-                Entity entity = _crowdBuffer[i];
+                Entity entity = _destroyBuffer[i];
                 if (_engine.World.IsAlive(entity))
                 {
                     _engine.World.Destroy(entity);
                 }
             }
 
-            return Math.Min(_crowdBuffer.Count, CameraAcceptanceIds.HotpathCrowdTargetCount);
+            return Math.Min(_destroyBuffer.Count, CameraAcceptanceIds.HotpathCrowdTargetCount);
         }
 
-        private void EnqueueCrowdSpawns(MapId currentMapId, int crowdCount)
+        private int EnsureCrowdSpawned(MapId currentMapId, int crowdCount)
         {
-            if (_engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is not RuntimeEntitySpawnQueue spawnQueue)
+            if (crowdCount >= CameraAcceptanceIds.HotpathCrowdTargetCount)
             {
-                throw new InvalidOperationException("RuntimeEntitySpawnQueue is required for the camera hotpath acceptance scenario.");
+                return 0;
             }
 
+            if (_engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is not RuntimeEntitySpawnQueue spawnQueue)
+            {
+                throw new InvalidOperationException("RuntimeEntitySpawnQueue is required for the presentation hotpath harness.");
+            }
+
+            int enqueued = 0;
             int remaining = CameraAcceptanceIds.HotpathCrowdTargetCount - crowdCount;
-            int available = spawnQueue.Capacity - spawnQueue.Count;
-            int toEnqueue = Math.Min(remaining, available);
-            for (int i = 0; i < toEnqueue; i++)
+            for (int i = 0; i < remaining; i++)
             {
                 WorldCmInt2 spawnWorldCm = ResolveCrowdPosition(crowdCount + i);
                 var request = new RuntimeEntitySpawnRequest
@@ -241,66 +262,73 @@ namespace CameraAcceptanceMod.Systems
                 {
                     break;
                 }
+
+                enqueued++;
             }
+
+            return enqueued;
         }
 
-        private int EmitBars(CameraAcceptanceDiagnosticsState diagnostics, MapId currentMapId)
+        private bool IsCrowdRequested()
+        {
+            if (_crowdRequested)
+            {
+                return true;
+            }
+
+            return _engine.GlobalContext.TryGetValue(CrowdRequestedKey, out object? value) &&
+                   value is bool requested &&
+                   requested;
+        }
+
+        private void SetCrowdRequested(bool requested)
+        {
+            _crowdRequested = requested;
+            _engine.GlobalContext[CrowdRequestedKey] = requested;
+        }
+
+        private (int BarCount, int TextCount) EmitHudLanes(CameraAcceptanceDiagnosticsState diagnostics, MapId currentMapId)
         {
             long start = Stopwatch.GetTimestamp();
-            int emitted = 0;
-
-            if (diagnostics.HotpathBarsEnabled &&
+            int barCount = 0;
+            int textCount = 0;
+            bool emitBars = diagnostics.HotpathBarsEnabled;
+            bool emitText = diagnostics.HotpathHudTextEnabled;
+            if ((emitBars || emitText) &&
                 _engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer) is WorldHudBatchBuffer worldHud)
             {
-                _engine.World.Query(in TaggedVisibleCrowdVisualQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity, ref VisualTransform transform, ref CullState cull) =>
+                _engine.World.Query(in TaggedCrowdVisualQuery, (Entity entity, ref MapEntity mapEntity, ref VisualTransform transform, ref CullState cull) =>
                 {
                     if (!MatchesMap(mapEntity, currentMapId) || !cull.IsVisible)
                     {
                         return;
                     }
 
-                    float fill = 0.28f + ((entity.Id % 9) * 0.07f);
-                    if (fill > 0.98f)
+                    if (emitBars)
                     {
-                        fill = 0.98f;
+                        float fill = 0.28f + ((entity.Id % 9) * 0.07f);
+                        if (fill > 0.98f)
+                        {
+                            fill = 0.98f;
+                        }
+
+                        if (worldHud.TryAdd(new WorldHudItem
+                        {
+                            Kind = WorldHudItemKind.Bar,
+                            WorldPosition = transform.Position + new Vector3(0f, 1.65f, 0f),
+                            Width = 56f,
+                            Height = 7f,
+                            Value0 = fill,
+                            Color0 = BarBackground,
+                            Color1 = BarForeground,
+                        }))
+                        {
+                            barCount++;
+                        }
                     }
 
-                    if (worldHud.TryAdd(new WorldHudItem
-                    {
-                        Kind = WorldHudItemKind.Bar,
-                        WorldPosition = transform.Position + new Vector3(0f, 1.65f, 0f),
-                        Width = 56f,
-                        Height = 7f,
-                        Value0 = fill,
-                        Color0 = BarBackground,
-                        Color1 = BarForeground,
-                    }))
-                    {
-                        emitted++;
-                    }
-                });
-            }
-
-            diagnostics.ObserveHotpathBars((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
-            return emitted;
-        }
-
-        private int EmitHudText(CameraAcceptanceDiagnosticsState diagnostics, MapId currentMapId)
-        {
-            long start = Stopwatch.GetTimestamp();
-            int emitted = 0;
-
-            if (diagnostics.HotpathHudTextEnabled &&
-                _engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer) is WorldHudBatchBuffer worldHud)
-            {
-                _engine.World.Query(in TaggedVisibleCrowdVisualQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity, ref VisualTransform transform, ref CullState cull) =>
-                {
-                    if (!MatchesMap(mapEntity, currentMapId) || !cull.IsVisible)
-                    {
-                        return;
-                    }
-
-                    if (worldHud.TryAdd(new WorldHudItem
+                    if (emitText &&
+                        worldHud.TryAdd(new WorldHudItem
                     {
                         Kind = WorldHudItemKind.Text,
                         WorldPosition = transform.Position + new Vector3(0f, 2.15f, 0f),
@@ -310,20 +338,21 @@ namespace CameraAcceptanceMod.Systems
                         Id1 = (int)WorldHudValueMode.Constant,
                     }))
                     {
-                        emitted++;
+                        textCount++;
                     }
                 });
             }
 
-            diagnostics.ObserveHotpathHudText((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
-            return emitted;
+            double elapsedMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+            diagnostics.ObserveHotpathBars(emitBars ? elapsedMs : 0d);
+            diagnostics.ObserveHotpathHudText(emitText ? elapsedMs : 0d);
+            return (barCount, textCount);
         }
 
         private int EmitPrimitives(CameraAcceptanceDiagnosticsState diagnostics, MapId currentMapId)
         {
             long start = Stopwatch.GetTimestamp();
             int emitted = 0;
-
             if (_engine.GetService(CoreServiceKeys.RenderDebugState) is RenderDebugState renderDebug &&
                 renderDebug.DrawPrimitives &&
                 _engine.GetService(CoreServiceKeys.PresentationPrimitiveDrawBuffer) is PrimitiveDrawBuffer primitives &&
@@ -331,7 +360,7 @@ namespace CameraAcceptanceMod.Systems
             {
                 ResolvePrimitiveMeshIds(meshes);
 
-                _engine.World.Query(in TaggedVisibleCrowdVisualQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity, ref VisualTransform transform, ref CullState cull) =>
+                _engine.World.Query(in TaggedCrowdVisualQuery, (Entity entity, ref MapEntity mapEntity, ref VisualTransform transform, ref CullState cull) =>
                 {
                     if (!MatchesMap(mapEntity, currentMapId) || !cull.IsVisible)
                     {
@@ -366,61 +395,9 @@ namespace CameraAcceptanceMod.Systems
             return emitted;
         }
 
-        private void PublishVisibleEntitySample(CameraAcceptanceDiagnosticsState diagnostics, MapId currentMapId, int visibleCrowdCount)
+        private static bool MatchesMap(in MapEntity mapEntity, in MapId currentMapId)
         {
-            long start = Stopwatch.GetTimestamp();
-            bool freezeHoldSample = IsHoldPhase(diagnostics.HotpathSweepPhase);
-
-            if (!freezeHoldSample)
-            {
-                ResetFrozenVisibleSample();
-            }
-            else if (HasFrozenVisibleSample(diagnostics))
-            {
-                diagnostics.PublishHotpathVisibleSample(_frozenVisibleSampleWindow, _frozenVisibleSampleStride);
-                diagnostics.ObserveHotpathVisibleSample((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
-                return;
-            }
-
-            if (_engine.GetService(CoreServiceKeys.RenderDebugState) is not RenderDebugState renderDebug || !renderDebug.DrawSkiaUi || visibleCrowdCount <= 0)
-            {
-                diagnostics.PublishHotpathVisibleSample(Array.Empty<string>(), 1);
-                diagnostics.ObserveHotpathVisibleSample((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
-                return;
-            }
-
-            int sampleLimit = CameraAcceptanceIds.HotpathVisibleSampleLimit;
-            _visibleSampleBuffer.Clear();
-
-            _engine.World.Query(in TaggedVisibleCrowdPositionQuery, (Entity entity, ref CameraAcceptanceHotpathCrowdTag _, ref MapEntity mapEntity, ref WorldPositionCm position, ref CullState cull) =>
-            {
-                if (!MatchesMap(mapEntity, currentMapId) || !cull.IsVisible)
-                {
-                    return;
-                }
-
-                WorldCmInt2 worldCm = position.Value.ToWorldCmInt2();
-                _visibleSampleBuffer.Add(new VisibleSampleEntry(entity.Id, $"#{entity.Id} @ {worldCm.X},{worldCm.Y}"));
-            });
-
-            _visibleSampleBuffer.Sort((left, right) => left.Id.CompareTo(right.Id));
-
-            int stableVisibleCount = _visibleSampleBuffer.Count;
-            int stride = Math.Max(1, (stableVisibleCount + sampleLimit - 1) / sampleLimit);
-            var lines = new List<string>(sampleLimit);
-            for (int i = 0; i < stableVisibleCount && lines.Count < sampleLimit; i += stride)
-            {
-                lines.Add(_visibleSampleBuffer[i].Line);
-            }
-
-            string[] sampleLines = lines.ToArray();
-            if (freezeHoldSample)
-            {
-                FreezeVisibleSample(diagnostics, sampleLines, stride);
-            }
-
-            diagnostics.PublishHotpathVisibleSample(sampleLines, stride);
-            diagnostics.ObserveHotpathVisibleSample((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
+            return string.Equals(mapEntity.MapId.Value, currentMapId.Value, StringComparison.OrdinalIgnoreCase);
         }
 
         private void ResolvePrimitiveMeshIds(MeshAssetRegistry meshes)
@@ -442,52 +419,18 @@ namespace CameraAcceptanceMod.Systems
             return new Vector4(0.22f + (tint * 0.58f), 0.38f + (tint * 0.27f), 0.86f - (tint * 0.31f), 0.94f);
         }
 
-        private static bool MatchesMap(in MapEntity mapEntity, in MapId currentMapId)
+        private static WorldCmInt2 ResolveCrowdPosition(int index)
         {
-            return string.Equals(mapEntity.MapId.Value, currentMapId.Value, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsHoldPhase(string phase)
-        {
-            return phase.StartsWith("hold-", StringComparison.Ordinal);
-        }
-
-        private bool HasFrozenVisibleSample(CameraAcceptanceDiagnosticsState diagnostics)
-        {
-            return _frozenVisibleSampleWindow.Length > 0 &&
-                   string.Equals(_frozenVisibleSamplePhase, diagnostics.HotpathSweepPhase, StringComparison.Ordinal) &&
-                   string.Equals(_frozenVisibleSampleTarget, diagnostics.HotpathSweepTarget, StringComparison.Ordinal) &&
-                   _frozenVisibleSampleCycle == diagnostics.HotpathSweepCycle;
-        }
-
-        private void FreezeVisibleSample(CameraAcceptanceDiagnosticsState diagnostics, string[] sampleLines, int stride)
-        {
-            _frozenVisibleSampleWindow = sampleLines;
-            _frozenVisibleSamplePhase = diagnostics.HotpathSweepPhase;
-            _frozenVisibleSampleTarget = diagnostics.HotpathSweepTarget;
-            _frozenVisibleSampleCycle = diagnostics.HotpathSweepCycle;
-            _frozenVisibleSampleStride = stride <= 0 ? 1 : stride;
-        }
-
-        private void ResetFrozenVisibleSample()
-        {
-            _frozenVisibleSampleWindow = Array.Empty<string>();
-            _frozenVisibleSamplePhase = string.Empty;
-            _frozenVisibleSampleTarget = string.Empty;
-            _frozenVisibleSampleCycle = -1;
-            _frozenVisibleSampleStride = 1;
-        }
-
-        internal static WorldCmInt2 ResolveCrowdPosition(int index)
-        {
-            int row = index / CameraAcceptanceIds.HotpathCrowdColumns;
-            int column = index % CameraAcceptanceIds.HotpathCrowdColumns;
-            int x = CameraAcceptanceIds.HotpathCrowdBaseX + (column * CameraAcceptanceIds.HotpathCrowdSpacingX);
-            int y = CameraAcceptanceIds.HotpathCrowdBaseY + (row * CameraAcceptanceIds.HotpathCrowdSpacingY) +
-                    (((column & 1) == 0) ? 0 : CameraAcceptanceIds.HotpathCrowdOddColumnOffsetY);
+            const int columns = 64;
+            const int baseX = 1440;
+            const int baseY = 960;
+            const int spacingX = 150;
+            const int spacingY = 132;
+            int row = index / columns;
+            int column = index % columns;
+            int x = baseX + (column * spacingX);
+            int y = baseY + (row * spacingY) + ((column & 1) == 0 ? 0 : 36);
             return new WorldCmInt2(x, y);
         }
-
-        private readonly record struct VisibleSampleEntry(int Id, string Line);
     }
 }

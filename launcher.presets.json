@@ -20,6 +20,15 @@
       "buildMode": "auto"
     },
     {
+      "id": "camera_acceptance_hotpath_raylib",
+      "name": "Camera Acceptance Hotpath Raylib",
+      "selectors": [
+        "$camera_acceptance_hotpath"
+      ],
+      "adapterId": "raylib",
+      "buildMode": "auto"
+    },
+    {
       "id": "nav_playground_raylib",
       "name": "Navigation Playground Raylib",
       "selectors": [

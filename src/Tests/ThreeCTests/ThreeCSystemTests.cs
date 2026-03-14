@@ -723,7 +723,7 @@ namespace Ludots.Tests.ThreeC
         }
 
         [Test]
-        public void VisualSync_CullInvisible_SkipsUpdate()
+        public void VisualSync_CullInvisible_StillUpdatesPositionForSnapshotContract()
         {
             using var world = World.Create();
 
@@ -744,7 +744,36 @@ namespace Ludots.Tests.ThreeC
             system.Update(0.016f);
 
             ref var visual = ref world.Get<VisualTransform>(entity);
-            That(visual.Position, Is.EqualTo(sentinel), "Invisible entity should not have VisualTransform updated");
+            That(visual.Position.X, Is.EqualTo(1f).Within(0.05f));
+            That(visual.Position.Y, Is.EqualTo(0f).Within(0.01f));
+            That(visual.Position.Z, Is.EqualTo(2f).Within(0.05f));
+        }
+
+        [Test]
+        public void VisualSync_CullInvisibleFacing_StillUpdatesRotationForSnapshotContract()
+        {
+            using var world = World.Create();
+
+            world.Create(
+                new PresentationFrameState { InterpolationAlpha = 1f, Enabled = true },
+                new PresentationFrameStateTag()
+            );
+
+            var entity = world.Create(
+                WorldPositionCm.FromCm(100, 200),
+                new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(100, 200) },
+                new VisualTransform { Position = Vector3.Zero, Rotation = Quaternion.Identity, Scale = Vector3.One },
+                new FacingDirection { AngleRad = MathF.PI * 0.5f },
+                new CullState { IsVisible = false, LOD = LODLevel.Culled }
+            );
+
+            var system = new WorldToVisualSyncSystem(world);
+            system.Update(0.016f);
+
+            ref var visual = ref world.Get<VisualTransform>(entity);
+            Quaternion expected = Quaternion.CreateFromAxisAngle(Vector3.UnitY, -MathF.PI * 0.5f);
+            float similarity = MathF.Abs(Quaternion.Dot(Quaternion.Normalize(visual.Rotation), Quaternion.Normalize(expected)));
+            That(similarity, Is.GreaterThanOrEqualTo(0.9999f));
         }
 
         [Test]
