@@ -24,6 +24,12 @@ namespace CameraAcceptanceMod.Systems
 
         public void Update(in float t)
         {
+            if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState frameDiagnostics &&
+                t > 0f)
+            {
+                frameDiagnostics.ObserveFrameTime(t * 1000.0);
+            }
+
             long start = Stopwatch.GetTimestamp();
             _runtime.RefreshPanel(_engine);
             if (_engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState diagnostics)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using Arch.Core;
 using CameraAcceptanceMod.Runtime;
@@ -8,6 +9,8 @@ using Ludots.Core.Components;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Input.Selection;
+using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Scripting;
 using Ludots.UI;
 using Ludots.UI.Compose;
@@ -18,7 +21,7 @@ namespace CameraAcceptanceMod.UI
 {
     internal sealed class CameraAcceptancePanelController
     {
-        private const float PanelWidth = 500f;
+        private const float PanelWidth = 520f;
         private static readonly Vector2 CaptainOriginCm = new(3400f, 2200f);
         private static readonly Vector2 CaptainMovedCm = new(4200f, 2800f);
 
@@ -74,7 +77,6 @@ namespace CameraAcceptanceMod.UI
         private UiElementBuilder BuildRoot(ReactiveContext<CameraAcceptancePanelState> context)
         {
             CameraAcceptancePanelState state = context.State;
-
             if (string.IsNullOrWhiteSpace(state.MapId))
             {
                 return Ui.Card(
@@ -99,41 +101,134 @@ namespace CameraAcceptanceMod.UI
                 Ui.Text($"Selection: {state.SelectedName}").FontSize(13f).Color("#8EA2BD"),
                 Ui.Text($"Selected IDs: {state.SelectedIdsSummary}").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
                 Ui.Text($"Follow Target: {state.FollowTarget}").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text("Viewport telemetry: top-right HUD").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
-                Ui.Text($"Projection Spawn Batch: {state.ProjectionSpawnCount}").FontSize(13f).Color("#8EA2BD"),
+                Ui.Text("Viewport telemetry: native retained diagnostics card").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
                 Ui.Text("Scenarios").FontSize(12f).Bold().Color("#F4C77D"),
                 Ui.Row(
-                    BuildMapButton("Proj", state.MapId == CameraAcceptanceIds.ProjectionMapId, CameraAcceptanceIds.ProjectionMapId),
-                    BuildMapButton("RTS", state.MapId == CameraAcceptanceIds.RtsMapId, CameraAcceptanceIds.RtsMapId),
-                    BuildMapButton("TPS", state.MapId == CameraAcceptanceIds.TpsMapId, CameraAcceptanceIds.TpsMapId),
-                    BuildMapButton("Blend", state.MapId == CameraAcceptanceIds.BlendMapId, CameraAcceptanceIds.BlendMapId),
-                    BuildMapButton("Follow", state.MapId == CameraAcceptanceIds.FollowMapId, CameraAcceptanceIds.FollowMapId),
-                    BuildMapButton("Stack", state.MapId == CameraAcceptanceIds.StackMapId, CameraAcceptanceIds.StackMapId))
+                        BuildMapButton("Proj", state.MapId == CameraAcceptanceIds.ProjectionMapId, CameraAcceptanceIds.ProjectionMapId),
+                        BuildMapButton("Hotpath", state.MapId == CameraAcceptanceIds.HotpathMapId, CameraAcceptanceIds.HotpathMapId),
+                        BuildMapButton("RTS", state.MapId == CameraAcceptanceIds.RtsMapId, CameraAcceptanceIds.RtsMapId),
+                        BuildMapButton("TPS", state.MapId == CameraAcceptanceIds.TpsMapId, CameraAcceptanceIds.TpsMapId),
+                        BuildMapButton("Blend", state.MapId == CameraAcceptanceIds.BlendMapId, CameraAcceptanceIds.BlendMapId),
+                        BuildMapButton("Follow", state.MapId == CameraAcceptanceIds.FollowMapId, CameraAcceptanceIds.FollowMapId),
+                        BuildMapButton("Stack", state.MapId == CameraAcceptanceIds.StackMapId, CameraAcceptanceIds.StackMapId))
                     .Wrap()
                     .Gap(8f),
                 Ui.Text("Actions").FontSize(12f).Bold().Color("#F4C77D"),
-                BuildScenarioActions(state),
-                BuildSelectedIdsSection(state.SelectedIds),
-                Ui.Text("How To Verify").FontSize(12f).Bold().Color("#F4C77D"),
-                Ui.Text(state.ControlsDescription).FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
+                BuildScenarioActions(state)
             };
 
-            return Ui.Card(children.ToArray()).Width(PanelWidth)
+            if (string.Equals(state.MapId, CameraAcceptanceIds.ProjectionMapId, StringComparison.OrdinalIgnoreCase))
+            {
+                children.Add(Ui.Text($"Projection Spawn Batch: {state.ProjectionSpawnCount}").FontSize(13f).Color("#8EA2BD"));
+            }
+
+            if (string.Equals(state.MapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
+            {
+                children.Add(BuildHotpathControls(state));
+                children.Add(BuildHotpathVisibleWindow(state));
+            }
+
+            children.Add(BuildSelectedIdsSection(state.SelectedIds));
+            children.Add(Ui.Text("How To Verify").FontSize(12f).Bold().Color("#F4C77D"));
+            children.Add(Ui.Text(state.ControlsDescription).FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal));
+
+            UiElementBuilder mainPanel = Ui.Card(children.ToArray()).Width(PanelWidth)
                 .Padding(16f)
                 .Gap(10f)
                 .Radius(18f)
                 .Background("#101A29")
                 .Absolute(16f, 16f)
                 .ZIndex(20);
+
+            if (state.DiagnosticsLines.Length != 0)
+            {
+                mainPanel.Child(
+                    BuildDiagnosticsSection(state)
+                        .Absolute(PanelWidth + 16f, 0f)
+                        .ZIndex(50));
+            }
+
+            return mainPanel;
+        }
+
+        private static UiElementBuilder BuildDiagnosticsSection(CameraAcceptancePanelState state)
+        {
+            var children = new List<UiElementBuilder>
+            {
+                Ui.Text("Native Diagnostics").FontSize(14f).Bold().Color("#F7FAFF")
+            };
+
+            for (int i = 0; i < state.DiagnosticsLines.Length; i++)
+            {
+                children.Add(
+                    Ui.Text(state.DiagnosticsLines[i])
+                        .FontSize(i == 0 ? 14f : 12f)
+                        .Color(i == 0 ? "#F7FAFF" : "#C7D3E1")
+                        .WhiteSpace(UiWhiteSpace.Normal));
+            }
+
+            return Ui.Card(children.ToArray())
+                .Padding(14f)
+                .Gap(6f)
+                .Radius(16f)
+                .Background("#08111BE8")
+                .ZIndex(30);
+        }
+
+        private UiElementBuilder BuildHotpathControls(CameraAcceptancePanelState state)
+        {
+            return Ui.Column(
+                    Ui.Text("Presentation Hotpath").FontSize(12f).Bold().Color("#F4C77D"),
+                    Ui.Text($"HUD {OnOff(state.DiagnosticsHudEnabled)} | Labels {OnOff(state.SelectionTextEnabled)} | Bars {OnOff(state.HotpathBarsEnabled)} | Text {OnOff(state.HotpathHudTextEnabled)}")
+                        .FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
+                    Ui.Text($"Terrain {OnOff(state.TerrainEnabled)} | Prims {OnOff(state.PrimitivesEnabled)} | Crowd {OnOff(state.HotpathCullCrowdEnabled)}")
+                        .FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
+                    Ui.Text($"Crowd {state.HotpathCrowdCount} | Visible {state.HotpathVisibleCrowdCount} | Labels {state.HotpathSelectionLabelCount} | Bars {state.HotpathBarItemCount} | Text {state.HotpathHudTextItemCount}")
+                        .FontSize(12f).Color("#C7D3E1").WhiteSpace(UiWhiteSpace.Normal),
+                    Ui.Text($"Sweep {state.HotpathSweepPhase} | Cycle {state.HotpathSweepCycle} | Target {state.HotpathSweepTarget} | Sample stride {state.HotpathVisibleSampleStride}")
+                        .FontSize(12f).Color("#C7D3E1").WhiteSpace(UiWhiteSpace.Normal),
+                    Ui.Row(
+                            BuildActionButton("Panel", state.PanelEnabled, TogglePanel),
+                            BuildActionButton("HUD", state.DiagnosticsHudEnabled, ToggleDiagnosticsHud),
+                            BuildActionButton("Labels", state.SelectionTextEnabled, ToggleSelectionText),
+                            BuildActionButton("Bars", state.HotpathBarsEnabled, ToggleHotpathBars))
+                        .Wrap().Gap(8f),
+                    Ui.Row(
+                            BuildActionButton("Text", state.HotpathHudTextEnabled, ToggleHotpathHudText),
+                            BuildActionButton("Terrain", state.TerrainEnabled, ToggleTerrain),
+                            BuildActionButton("Prims", state.PrimitivesEnabled, TogglePrimitives),
+                            BuildActionButton("Crowd", state.HotpathCullCrowdEnabled, ToggleHotpathCullCrowd))
+                        .Wrap().Gap(8f))
+                .Gap(8f);
+        }
+
+        private static UiElementBuilder BuildHotpathVisibleWindow(CameraAcceptancePanelState state)
+        {
+            var children = new List<UiElementBuilder>
+            {
+                Ui.Text("Visible Sample Window").FontSize(12f).Bold().Color("#F4C77D"),
+                Ui.Text($"Showing {state.HotpathVisibleSampleWindow.Length} sampled rows out of {state.HotpathVisibleCrowdCount} visible entities (stride {state.HotpathVisibleSampleStride}).")
+                    .FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
+            };
+
+            if (state.HotpathVisibleSampleWindow.Length == 0)
+            {
+                children.Add(Ui.Text("No visible crowd entities in the current sweep window.").FontSize(12f).Color("#8EA2BD"));
+            }
+            else
+            {
+                for (int i = 0; i < state.HotpathVisibleSampleWindow.Length; i++)
+                {
+                    children.Add(Ui.Text(state.HotpathVisibleSampleWindow[i]).FontSize(12f).Color("#D0D8E6"));
+                }
+            }
+
+            return Ui.Column(children.ToArray()).Gap(4f).Padding(10f).Radius(12f).Background("#121B29");
         }
 
         private static UiElementBuilder BuildSelectedIdsSection(IReadOnlyList<string> selectedIds)
         {
-            var children = new List<UiElementBuilder>
-            {
-                Ui.Text("Selection Buffer").FontSize(12f).Bold().Color("#F4C77D")
-            };
-
+            var children = new List<UiElementBuilder> { Ui.Text("Selection Buffer").FontSize(12f).Bold().Color("#F4C77D") };
             if (selectedIds.Count == 0)
             {
                 children.Add(Ui.Text("none").FontSize(12f).Color("#8EA2BD"));
@@ -158,35 +253,37 @@ namespace CameraAcceptanceMod.UI
                     .FontSize(12f)
                     .Color("#8EA2BD")
                     .WhiteSpace(UiWhiteSpace.Normal),
+                CameraAcceptanceIds.HotpathMapId => Ui.Text(
+                        $"This scene deterministically fills {CameraAcceptanceIds.HotpathCrowdTargetCount} dummies over multiple frames, then sweeps the camera back and forth automatically while the panel samples visible entities.")
+                    .FontSize(12f)
+                    .Color("#8EA2BD")
+                    .WhiteSpace(UiWhiteSpace.Normal),
                 CameraAcceptanceIds.BlendMapId => Ui.Row(
-                    BuildActionButton("Cut", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendCutCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendCutCameraId)),
-                    BuildActionButton("Linear", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendLinearCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendLinearCameraId)),
-                    BuildActionButton("Smooth", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendSmoothCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendSmoothCameraId)))
+                        BuildActionButton("Cut", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendCutCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendCutCameraId)),
+                        BuildActionButton("Linear", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendLinearCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendLinearCameraId)),
+                        BuildActionButton("Smooth", state.ActiveBlendCameraId == CameraAcceptanceIds.BlendSmoothCameraId, () => SetBlendCamera(CameraAcceptanceIds.BlendSmoothCameraId)))
                     .Wrap()
                     .Gap(8f),
                 CameraAcceptanceIds.FollowMapId => Ui.Column(
-                    Ui.Row(
-                        BuildActionButton("Close", state.ActiveModeId == CameraAcceptanceIds.FollowCloseModeId, () => SwitchViewMode(CameraAcceptanceIds.FollowCloseModeId)),
-                        BuildActionButton("Wide", state.ActiveModeId == CameraAcceptanceIds.FollowWideModeId, () => SwitchViewMode(CameraAcceptanceIds.FollowWideModeId)))
-                        .Wrap()
-                        .Gap(8f),
-                    Ui.Row(
-                        BuildActionButton("Move Captain", false, ToggleCaptainPosition))
-                        .Wrap()
-                        .Gap(8f))
+                        Ui.Row(
+                                BuildActionButton("Close", state.ActiveModeId == CameraAcceptanceIds.FollowCloseModeId, () => SwitchViewMode(CameraAcceptanceIds.FollowCloseModeId)),
+                                BuildActionButton("Wide", state.ActiveModeId == CameraAcceptanceIds.FollowWideModeId, () => SwitchViewMode(CameraAcceptanceIds.FollowWideModeId)))
+                            .Wrap()
+                            .Gap(8f),
+                        Ui.Row(BuildActionButton("Move Captain", false, ToggleCaptainPosition))
+                            .Wrap()
+                            .Gap(8f))
                     .Gap(8f),
                 CameraAcceptanceIds.StackMapId => Ui.Row(
-                    BuildActionButton("Reveal", false, () => RequestVirtualCamera(CameraAcceptanceIds.StackRevealShotId, clear: false)),
-                    BuildActionButton("Alert", false, () => RequestVirtualCamera(CameraAcceptanceIds.StackAlertShotId, clear: false)),
-                    BuildActionButton("Clear", false, () => RequestVirtualCamera(id: null, clear: true)))
+                        BuildActionButton("Reveal", false, () => RequestVirtualCamera(CameraAcceptanceIds.StackRevealShotId, clear: false)),
+                        BuildActionButton("Alert", false, () => RequestVirtualCamera(CameraAcceptanceIds.StackAlertShotId, clear: false)),
+                        BuildActionButton("Clear", false, () => RequestVirtualCamera(id: null, clear: true)))
                     .Wrap()
                     .Gap(8f),
-                CameraAcceptanceIds.RtsMapId => Ui.Row(
-                    BuildActionButton("RTS Mode", state.ActiveModeId == CameraAcceptanceIds.RtsModeId, () => SwitchViewMode(CameraAcceptanceIds.RtsModeId)))
+                CameraAcceptanceIds.RtsMapId => Ui.Row(BuildActionButton("RTS Mode", state.ActiveModeId == CameraAcceptanceIds.RtsModeId, () => SwitchViewMode(CameraAcceptanceIds.RtsModeId)))
                     .Wrap()
                     .Gap(8f),
-                CameraAcceptanceIds.TpsMapId => Ui.Row(
-                    BuildActionButton("TPS Mode", state.ActiveModeId == CameraAcceptanceIds.TpsModeId, () => SwitchViewMode(CameraAcceptanceIds.TpsModeId)))
+                CameraAcceptanceIds.TpsMapId => Ui.Row(BuildActionButton("TPS Mode", state.ActiveModeId == CameraAcceptanceIds.TpsModeId, () => SwitchViewMode(CameraAcceptanceIds.TpsModeId)))
                     .Wrap()
                     .Gap(8f),
                 _ => Ui.Text("Interact directly in world view for this scenario.").FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
@@ -233,6 +330,10 @@ namespace CameraAcceptanceMod.UI
             }
 
             string[] selectedIds = ResolveSelectedEntityIds(engine);
+            CameraAcceptanceDiagnosticsState? diagnostics = engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState);
+            RenderDebugState? renderDebug = engine.GetService(CoreServiceKeys.RenderDebugState);
+            string[] diagnosticsLines = BuildDiagnosticsLines(engine, mapId, diagnostics, renderDebug);
+
             return new CameraAcceptancePanelState(
                 mapId,
                 CameraAcceptanceIds.DescribeMap(mapId),
@@ -244,7 +345,75 @@ namespace CameraAcceptanceMod.UI
                 selectedIds,
                 FormatVector(engine.GameSession.Camera.FollowTargetPositionCm),
                 ResolveActiveBlendCameraId(engine),
-                CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine));
+                CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine),
+                renderDebug?.DrawSkiaUi ?? true,
+                diagnostics?.HudEnabled ?? true,
+                diagnostics?.TextEnabled ?? true,
+                diagnostics?.HotpathBarsEnabled ?? true,
+                diagnostics?.HotpathHudTextEnabled ?? true,
+                renderDebug?.DrawTerrain ?? true,
+                renderDebug?.DrawPrimitives ?? true,
+                diagnostics?.HotpathCullCrowdEnabled ?? true,
+                diagnostics?.HotpathCrowdCount ?? 0,
+                diagnostics?.HotpathVisibleCrowdCount ?? 0,
+                diagnostics?.HotpathBarItemCount ?? 0,
+                diagnostics?.HotpathHudTextItemCount ?? 0,
+                diagnostics?.HotpathSelectionLabelCount ?? 0,
+                diagnostics?.HotpathVisibleSampleStride ?? 1,
+                diagnostics?.HotpathSweepPhase ?? "inactive",
+                diagnostics?.HotpathSweepCycle ?? 0,
+                diagnostics?.HotpathSweepTarget ?? "none",
+                diagnostics?.HotpathVisibleSampleWindow ?? Array.Empty<string>(),
+                diagnosticsLines);
+        }
+
+        private static string[] BuildDiagnosticsLines(
+            GameEngine engine,
+            string mapId,
+            CameraAcceptanceDiagnosticsState? diagnostics,
+            RenderDebugState? renderDebug)
+        {
+            if (diagnostics == null || renderDebug == null || !diagnostics.HudEnabled)
+            {
+                return Array.Empty<string>();
+            }
+
+            long start = Stopwatch.GetTimestamp();
+            var lines = new List<string>(10)
+            {
+                $"Camera Acceptance | FPS={diagnostics.SmoothedFps:F1} | Frame={diagnostics.SmoothedFrameMs:F2}ms",
+                $"F6 Panel[{OnOff(renderDebug.DrawSkiaUi)}]  F7 HUD[{OnOff(diagnostics.HudEnabled)}]  F8 Labels[{OnOff(diagnostics.TextEnabled)}]"
+            };
+
+            if (string.Equals(mapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
+            {
+                lines.Add($"Build panel={diagnostics.PanelSyncMs:F2}ms  diagHud={diagnostics.HudBuildMs:F2}ms  labels={diagnostics.TextBuildMs:F2}ms  sample={diagnostics.HotpathVisibleSampleMs:F2}ms");
+                lines.Add($"Build bars={diagnostics.HotpathBarBuildMs:F2}ms  hudText={diagnostics.HotpathHudTextBuildMs:F2}ms  prims={diagnostics.HotpathPrimitiveBuildMs:F2}ms");
+                lines.Add($"F9 Bars[{OnOff(diagnostics.HotpathBarsEnabled)}]  F10 Text[{OnOff(diagnostics.HotpathHudTextEnabled)}]  F11 Terrain[{OnOff(renderDebug.DrawTerrain)}]  F12 Prim[{OnOff(renderDebug.DrawPrimitives)}]  C Crowd[{OnOff(diagnostics.HotpathCullCrowdEnabled)}]");
+                lines.Add($"Hotpath crowd={diagnostics.HotpathCrowdCount}  visible={diagnostics.HotpathVisibleCrowdCount}  bars={diagnostics.HotpathBarItemCount}  hudText={diagnostics.HotpathHudTextItemCount}  labels={diagnostics.HotpathSelectionLabelCount}  stride={diagnostics.HotpathVisibleSampleStride}");
+                lines.Add($"Sweep phase={diagnostics.HotpathSweepPhase}  cycle={diagnostics.HotpathSweepCycle}  target={diagnostics.HotpathSweepTarget}");
+            }
+            else
+            {
+                lines.Add($"Build panel={diagnostics.PanelSyncMs:F2}ms  hud={diagnostics.HudBuildMs:F2}ms  text={diagnostics.TextBuildMs:F2}ms");
+            }
+
+            if (engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics) is PresentationTimingDiagnostics timings)
+            {
+                lines.Add($"Adapter uiIn={timings.UiInputMs:F2}ms  uiRender={timings.UiRenderMs:F2}ms  uiUpload={timings.UiUploadMs:F2}ms");
+                lines.Add($"Adapter overlayDraw={timings.ScreenOverlayDrawMs:F2}ms");
+                lines.Add($"Core cull={timings.CameraCullingMs:F2}ms  vis={timings.VisibleEntitiesLastFrame}  cam={timings.CameraPresenterMs:F2}ms  hudProj={timings.WorldHudProjectionMs:F2}ms");
+                lines.Add($"Terrain render={timings.TerrainRenderMs:F2}ms  build={timings.TerrainChunkBuildMs:F2}ms  chunks={timings.TerrainChunksDrawnLastFrame}  built={timings.TerrainChunksBuiltLastFrame}");
+                lines.Add($"Primitive draw={timings.PrimitiveRenderMs:F2}ms  instances={timings.PrimitiveInstancesLastFrame}  batches={timings.PrimitiveBatchesLastFrame}");
+            }
+
+            if (string.Equals(mapId, CameraAcceptanceIds.ProjectionMapId, StringComparison.OrdinalIgnoreCase))
+            {
+                lines.Add($"Spawn Batch={CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine)} | Q/E +/-{CameraAcceptanceIds.ProjectionSpawnCountStep}");
+            }
+
+            diagnostics.ObserveHudBuild((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
+            return lines.ToArray();
         }
 
         private void LoadAcceptanceMap(string mapId)
@@ -290,6 +459,89 @@ namespace CameraAcceptanceMod.UI
                 Id = id ?? string.Empty,
                 Clear = clear
             });
+        }
+
+        private void TogglePanel()
+        {
+            GameEngine engine = RequireEngine();
+            if (engine.GetService(CoreServiceKeys.RenderDebugState) is not RenderDebugState renderDebug)
+            {
+                return;
+            }
+
+            renderDebug.DrawSkiaUi = !renderDebug.DrawSkiaUi;
+            if (!renderDebug.DrawSkiaUi && engine.GetService(CoreServiceKeys.UIRoot) is UIRoot root)
+            {
+                ClearIfOwned(root);
+                return;
+            }
+
+            SyncMountedRoot();
+        }
+
+        private void ToggleDiagnosticsHud()
+        {
+            if (TryGetDiagnosticsState(RequireEngine(), out var diagnostics))
+            {
+                diagnostics.HudEnabled = !diagnostics.HudEnabled;
+                SyncMountedRoot();
+            }
+        }
+
+        private void ToggleSelectionText()
+        {
+            if (TryGetDiagnosticsState(RequireEngine(), out var diagnostics))
+            {
+                diagnostics.TextEnabled = !diagnostics.TextEnabled;
+                SyncMountedRoot();
+            }
+        }
+
+        private void ToggleHotpathBars()
+        {
+            if (TryGetDiagnosticsState(RequireEngine(), out var diagnostics))
+            {
+                diagnostics.HotpathBarsEnabled = !diagnostics.HotpathBarsEnabled;
+                SyncMountedRoot();
+            }
+        }
+
+        private void ToggleHotpathHudText()
+        {
+            if (TryGetDiagnosticsState(RequireEngine(), out var diagnostics))
+            {
+                diagnostics.HotpathHudTextEnabled = !diagnostics.HotpathHudTextEnabled;
+                SyncMountedRoot();
+            }
+        }
+
+        private void ToggleTerrain()
+        {
+            GameEngine engine = RequireEngine();
+            if (engine.GetService(CoreServiceKeys.RenderDebugState) is RenderDebugState renderDebug)
+            {
+                renderDebug.DrawTerrain = !renderDebug.DrawTerrain;
+                SyncMountedRoot();
+            }
+        }
+
+        private void TogglePrimitives()
+        {
+            GameEngine engine = RequireEngine();
+            if (engine.GetService(CoreServiceKeys.RenderDebugState) is RenderDebugState renderDebug)
+            {
+                renderDebug.DrawPrimitives = !renderDebug.DrawPrimitives;
+                SyncMountedRoot();
+            }
+        }
+
+        private void ToggleHotpathCullCrowd()
+        {
+            if (TryGetDiagnosticsState(RequireEngine(), out var diagnostics))
+            {
+                diagnostics.HotpathCullCrowdEnabled = !diagnostics.HotpathCullCrowdEnabled;
+                SyncMountedRoot();
+            }
         }
 
         private void ToggleCaptainPosition()
@@ -343,12 +595,31 @@ namespace CameraAcceptanceMod.UI
                 !string.Equals(left.SelectedIdsSummary, right.SelectedIdsSummary, StringComparison.Ordinal) ||
                 !string.Equals(left.FollowTarget, right.FollowTarget, StringComparison.Ordinal) ||
                 !string.Equals(left.ActiveBlendCameraId, right.ActiveBlendCameraId, StringComparison.Ordinal) ||
-                left.ProjectionSpawnCount != right.ProjectionSpawnCount)
+                left.ProjectionSpawnCount != right.ProjectionSpawnCount ||
+                left.PanelEnabled != right.PanelEnabled ||
+                left.DiagnosticsHudEnabled != right.DiagnosticsHudEnabled ||
+                left.SelectionTextEnabled != right.SelectionTextEnabled ||
+                left.HotpathBarsEnabled != right.HotpathBarsEnabled ||
+                left.HotpathHudTextEnabled != right.HotpathHudTextEnabled ||
+                left.TerrainEnabled != right.TerrainEnabled ||
+                left.PrimitivesEnabled != right.PrimitivesEnabled ||
+                left.HotpathCullCrowdEnabled != right.HotpathCullCrowdEnabled ||
+                left.HotpathCrowdCount != right.HotpathCrowdCount ||
+                left.HotpathVisibleCrowdCount != right.HotpathVisibleCrowdCount ||
+                left.HotpathBarItemCount != right.HotpathBarItemCount ||
+                left.HotpathHudTextItemCount != right.HotpathHudTextItemCount ||
+                left.HotpathSelectionLabelCount != right.HotpathSelectionLabelCount ||
+                left.HotpathVisibleSampleStride != right.HotpathVisibleSampleStride ||
+                left.HotpathSweepCycle != right.HotpathSweepCycle ||
+                !string.Equals(left.HotpathSweepPhase, right.HotpathSweepPhase, StringComparison.Ordinal) ||
+                !string.Equals(left.HotpathSweepTarget, right.HotpathSweepTarget, StringComparison.Ordinal) ||
+                left.DiagnosticsLines.Length != right.DiagnosticsLines.Length)
             {
                 return false;
             }
 
-            if (left.SelectedIds.Length != right.SelectedIds.Length)
+            if (left.SelectedIds.Length != right.SelectedIds.Length ||
+                left.HotpathVisibleSampleWindow.Length != right.HotpathVisibleSampleWindow.Length)
             {
                 return false;
             }
@@ -356,6 +627,22 @@ namespace CameraAcceptanceMod.UI
             for (int i = 0; i < left.SelectedIds.Length; i++)
             {
                 if (!string.Equals(left.SelectedIds[i], right.SelectedIds[i], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < left.HotpathVisibleSampleWindow.Length; i++)
+            {
+                if (!string.Equals(left.HotpathVisibleSampleWindow[i], right.HotpathVisibleSampleWindow[i], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < left.DiagnosticsLines.Length; i++)
+            {
+                if (!string.Equals(left.DiagnosticsLines[i], right.DiagnosticsLines[i], StringComparison.Ordinal))
                 {
                     return false;
                 }
@@ -423,6 +710,18 @@ namespace CameraAcceptanceMod.UI
             return lines;
         }
 
+        private static bool TryGetDiagnosticsState(GameEngine engine, out CameraAcceptanceDiagnosticsState diagnostics)
+        {
+            if (engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState) is CameraAcceptanceDiagnosticsState state)
+            {
+                diagnostics = state;
+                return true;
+            }
+
+            diagnostics = null!;
+            return false;
+        }
+
         private static string FormatVector(Vector2? value)
         {
             if (!value.HasValue)
@@ -454,6 +753,8 @@ namespace CameraAcceptanceMod.UI
             return result;
         }
 
+        private static string OnOff(bool value) => value ? "ON" : "OFF";
+
         private sealed record CameraAcceptancePanelState(
             string MapId,
             string MapDescription,
@@ -465,7 +766,26 @@ namespace CameraAcceptanceMod.UI
             string[] SelectedIds,
             string FollowTarget,
             string ActiveBlendCameraId,
-            int ProjectionSpawnCount)
+            int ProjectionSpawnCount,
+            bool PanelEnabled,
+            bool DiagnosticsHudEnabled,
+            bool SelectionTextEnabled,
+            bool HotpathBarsEnabled,
+            bool HotpathHudTextEnabled,
+            bool TerrainEnabled,
+            bool PrimitivesEnabled,
+            bool HotpathCullCrowdEnabled,
+            int HotpathCrowdCount,
+            int HotpathVisibleCrowdCount,
+            int HotpathBarItemCount,
+            int HotpathHudTextItemCount,
+            int HotpathSelectionLabelCount,
+            int HotpathVisibleSampleStride,
+            string HotpathSweepPhase,
+            int HotpathSweepCycle,
+            string HotpathSweepTarget,
+            string[] HotpathVisibleSampleWindow,
+            string[] DiagnosticsLines)
         {
             public static CameraAcceptancePanelState Empty { get; } = new(
                 string.Empty,
@@ -478,7 +798,26 @@ namespace CameraAcceptanceMod.UI
                 Array.Empty<string>(),
                 "none",
                 CameraAcceptanceIds.BlendSmoothCameraId,
-                CameraAcceptanceIds.ProjectionSpawnCountDefault);
+                CameraAcceptanceIds.ProjectionSpawnCountDefault,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                "inactive",
+                0,
+                "none",
+                Array.Empty<string>(),
+                Array.Empty<string>());
         }
     }
 }

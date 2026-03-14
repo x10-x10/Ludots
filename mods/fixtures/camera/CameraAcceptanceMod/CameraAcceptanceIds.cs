@@ -5,6 +5,7 @@ namespace CameraAcceptanceMod
         public const string InputContextId = "CameraAcceptance.Controls";
 
         public const string ProjectionMapId = "camera_acceptance_projection";
+        public const string HotpathMapId = "camera_acceptance_hotpath";
         public const string RtsMapId = "camera_acceptance_rts";
         public const string TpsMapId = "camera_acceptance_tps";
         public const string BlendMapId = "camera_acceptance_blend";
@@ -45,9 +46,30 @@ namespace CameraAcceptanceMod
         public const string TogglePanelActionId = "CameraAcceptanceTogglePanel";
         public const string ToggleHudActionId = "CameraAcceptanceToggleHud";
         public const string ToggleTextActionId = "CameraAcceptanceToggleText";
+        public const string ToggleHotpathBarsActionId = "CameraAcceptanceToggleHotpathBars";
+        public const string ToggleHotpathHudTextActionId = "CameraAcceptanceToggleHotpathHudText";
+        public const string ToggleTerrainActionId = "CameraAcceptanceToggleTerrain";
+        public const string TogglePrimitiveActionId = "CameraAcceptanceTogglePrimitives";
+        public const string ToggleHotpathCullCrowdActionId = "CameraAcceptanceToggleHotpathCullCrowd";
         public const string ProjectionSpawnCountKey = "CameraAcceptance.ProjectionSpawnCount";
         public const int ProjectionSpawnCountDefault = 100;
         public const int ProjectionSpawnCountStep = 100;
+        public const int HotpathCrowdTargetCount = 10240;
+        public const int HotpathCrowdColumns = 128;
+        public const int HotpathCrowdBaseX = 4800;
+        public const int HotpathCrowdBaseY = 1600;
+        public const int HotpathCrowdSpacingX = 240;
+        public const int HotpathCrowdSpacingY = 180;
+        public const int HotpathCrowdOddColumnOffsetY = 70;
+        public const int HotpathVisibleSampleLimit = 24;
+        public const int HotpathSelectionLabelLimit = 24;
+        public const string HotpathCrowdTemplateId = "moba_dummy";
+        public const int HotpathSweepTravelFrames = 180;
+        public const int HotpathSweepHoldFrames = 30;
+        public const int HotpathSweepLeftX = 7200;
+        public const int HotpathSweepRightX = 30000;
+        public const int HotpathSweepCenterY = 7200;
+        public const int HotpathSweepAmplitudeY = 2200;
 
         public const string HeroName = "CameraAcceptanceHero";
         public const string ScoutName = "CameraAcceptanceScout";
@@ -59,6 +81,7 @@ namespace CameraAcceptanceMod
         public static bool IsAcceptanceMap(string? mapId)
         {
             return string.Equals(mapId, ProjectionMapId, System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mapId, HotpathMapId, System.StringComparison.OrdinalIgnoreCase)
                 || string.Equals(mapId, RtsMapId, System.StringComparison.OrdinalIgnoreCase)
                 || string.Equals(mapId, TpsMapId, System.StringComparison.OrdinalIgnoreCase)
                 || string.Equals(mapId, BlendMapId, System.StringComparison.OrdinalIgnoreCase)
@@ -71,6 +94,7 @@ namespace CameraAcceptanceMod
             return mapId switch
             {
                 ProjectionMapId => "Projection and raycast acceptance. Left click empty ground to spawn a random-scatter batch and a transient performer marker.",
+                HotpathMapId => "10k+ camera sweep acceptance. A scripted sweep traverses a deterministic crowd while the panel exposes visible entities, HUD text, HUD bars, and lane timings in one reproducible scene.",
                 RtsMapId => "RTS/MOBA behavior composition. Validate middle-drag, edge scroll, WASD pan, and wheel zoom.",
                 TpsMapId => "TPS behavior composition. Hold right mouse to aim/look, then use wheel zoom.",
                 BlendMapId => "Blend acceptance. Pick a curve, then left click ground to move the camera there smoothly.",
@@ -85,13 +109,14 @@ namespace CameraAcceptanceMod
             return mapId switch
             {
                 ProjectionMapId => "Use the panel to move between scenarios. On this map, press Q/E to decrease/increase the left-click spawn batch by 100 with a floor of 0, then left click empty ground and verify a random-scatter batch appears around the raycast point while the cue marker still appears then expires.",
+                HotpathMapId => "The camera sweep is scripted and deterministic. F6 toggles the visible-entity panel, F7 toggles the diagnostics HUD, F8 toggles visible-entity labels, F9 toggles HUD bars, F10 toggles HUD text, F11 toggles terrain, F12 toggles primitives, and C removes/restores the culling crowd.",
                 RtsMapId => "Keyboard: WASD pan. Mouse: move to screen edge for edge-scroll, hold middle mouse to drag-pan, wheel to zoom.",
                 TpsMapId => "Hold right mouse and drag to rotate. Wheel zooms. This map stays on the follow target while you aim.",
                 BlendMapId => "Pick Cut / Linear / Smooth in the panel, then left click a ground point to trigger the blend.",
                 FollowMapId => "Click Hero or Captain in world to select, click empty ground to clear selection, move Captain deterministically, and switch Follow Close/Wide to verify no fallback.",
                 StackMapId => "Use panel buttons: Reveal -> Alert -> Clear -> Clear, and verify the stack walks back to the base follow camera.",
                 _ => "Use the panel to switch acceptance scenarios."
-            } + " Perf toggles: F6 panel, F7 HUD, F8 selection text.";
+            };
         }
     }
 }

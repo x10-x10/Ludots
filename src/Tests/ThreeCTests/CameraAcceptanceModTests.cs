@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text;
+using System.Text.Json;
 using Arch.Core;
 using CameraAcceptanceMod;
 using Ludots.Core.Components;
@@ -12,6 +13,7 @@ using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
+using Ludots.Core.Map;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Hud;
@@ -124,7 +126,8 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Tick(engine, 1);
 
             int afterDummyCount = CountEntitiesByName(engine.World, "Dummy");
-            Assert.That(afterDummyCount, Is.EqualTo(beforeDummyCount + 1), "Out-of-bounds projection clicks should still resolve to a bounded spawn.");
+            Assert.That(afterDummyCount, Is.EqualTo(beforeDummyCount + GetProjectionSpawnCount(engine)),
+                "Out-of-bounds projection clicks should still resolve to the configured bounded spawn batch.");
             Assert.That(HasNamedEntityAt(engine.World, "Dummy", expectedWorldCm), Is.True,
                 "Out-of-bounds projection clicks should snap to the nearest board boundary.");
 
@@ -172,19 +175,27 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_AcceptanceMaps_DrawFpsOverlayInTopRight()
         {
             using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
             LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
 
-            var overlay = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
-            Assert.That(overlay, Is.Not.Null);
-            Assert.That(TryFindOverlayTextItem(overlay!, text => text.Contains("FPS=", StringComparison.Ordinal), out ScreenOverlayItem fpsItem, out string? fpsText), Is.True,
-                "Acceptance overlay should expose FPS telemetry.");
-            Assert.That(fpsText, Does.Contain("Camera Acceptance"));
-            Assert.That(fpsItem.X, Is.GreaterThanOrEqualTo(1400), "FPS telemetry should render in the right-side HUD region.");
-            Assert.That(fpsItem.Y, Is.LessThanOrEqualTo(24), "FPS telemetry should render near the top edge.");
-            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("Core cull=", StringComparison.Ordinal), out _, out _), Is.True,
-                "Acceptance overlay should expose core camera/culling timing diagnostics.");
-            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("Terrain render=", StringComparison.Ordinal), out _, out _), Is.True,
-                "Acceptance overlay should expose terrain render/build timing diagnostics.");
+            UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Acceptance diagnostics should mount into the retained UI scene.");
+            string sceneText = ExtractUiSceneText(scene);
+            Assert.That(sceneText, Does.Contain("Native Diagnostics"));
+            Assert.That(sceneText, Does.Contain("Camera Acceptance | FPS="),
+                "Acceptance diagnostics should expose FPS telemetry through the retained panel.");
+            Assert.That(sceneText, Does.Contain("Core cull="),
+                "Acceptance diagnostics should expose core camera/culling timing through the retained panel.");
+            Assert.That(sceneText, Does.Contain("Terrain render="),
+                "Acceptance diagnostics should expose terrain render/build timing through the retained panel.");
+
+            UiNode diagnosticsHeader = FindNodeWithText(scene.Root, "Native Diagnostics")
+                ?? throw new InvalidOperationException("Retained diagnostics header should exist.");
+            UiNode diagnosticsCard = FindAncestorWithZIndexAtLeast(diagnosticsHeader, 30)
+                ?? throw new InvalidOperationException("Retained diagnostics section should keep explicit z-order inside the native panel scene.");
+            Assert.That(Math.Max(diagnosticsCard.Style.ZIndex, diagnosticsCard.LocalStyle.ZIndex), Is.GreaterThanOrEqualTo(30));
         }
 
         [Test]
@@ -237,8 +248,9 @@ namespace Ludots.Tests.ThreeC.Acceptance
             PressButton(engine, backend, "<Keyboard>/f7");
             overlay!.Clear();
             Tick(engine, 1);
-            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("FPS=", StringComparison.Ordinal), out _, out _), Is.False,
-                "F7 should disable the acceptance HUD overlay.");
+            Assert.That(uiRoot.Scene, Is.Not.Null);
+            Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Not.Contain("Camera Acceptance | FPS="),
+                "F7 should hide the retained diagnostics card.");
 
             PressButton(engine, backend, "<Keyboard>/f6");
             Assert.That(renderDebug!.DrawSkiaUi, Is.False, "F6 should disable the Skia panel path.");
@@ -247,6 +259,13 @@ namespace Ludots.Tests.ThreeC.Acceptance
             PressButton(engine, backend, "<Keyboard>/f6");
             Assert.That(renderDebug.DrawSkiaUi, Is.True, "Pressing F6 again should restore the Skia panel path.");
             Assert.That(uiRoot.Scene, Is.Not.Null, "Re-enabling the panel should remount the reactive scene.");
+            Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Not.Contain("Camera Acceptance | FPS="),
+                "Re-enabling the panel should preserve the diagnostics HUD toggle state.");
+
+            PressButton(engine, backend, "<Keyboard>/f7");
+            Tick(engine, 1);
+            Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Contain("Camera Acceptance | FPS="),
+                "Re-enabling the diagnostics HUD should restore the retained diagnostics card.");
 
             Entity hero = FindEntityByName(engine.World, CameraAcceptanceIds.HeroName);
             Entity captain = FindEntityByName(engine.World, CameraAcceptanceIds.CaptainName);
@@ -267,6 +286,98 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Tick(engine, 1);
             overlayText = ExtractOverlayText(overlay);
             Assert.That(overlayText, Does.Not.Contain($"#{hero.Id}"), "F8 should disable selection text overlays.");
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void CameraAcceptanceMod_HotpathMap_Sweeps10kCrowd_TracksVisibleWindow_AndWritesAcceptanceArtifacts()
+        {
+            string repoRoot = FindRepoRoot();
+            string artifactDir = Path.Combine(repoRoot, "artifacts", "acceptance", "camera-10k-sweep");
+            Directory.CreateDirectory(artifactDir);
+
+            using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
+            using var hudProjection = CreateHeadlessHudProjection(engine);
+
+            LoadMap(engine, CameraAcceptanceIds.HotpathMapId, frames: 2);
+            TickUntilWithHudProjection(
+                engine,
+                hudProjection,
+                () => CountEntitiesByNameOnMap(engine.World, "Dummy", CameraAcceptanceIds.HotpathMapId) >= CameraAcceptanceIds.HotpathCrowdTargetCount,
+                maxFrames: 30);
+
+            Assert.That(uiRoot.Scene, Is.Not.Null, "Hotpath acceptance should mount the reactive panel when UIRoot is available.");
+            Assert.That(ExtractUiSceneText(uiRoot.Scene!), Does.Contain("Visible Sample Window"));
+
+            var snapshots = new List<HotpathSweepSnapshot>();
+            var backend = GetInputBackend(engine);
+
+            HotpathSweepSnapshot baseline = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "baseline_all_on");
+            snapshots.Add(baseline);
+            Assert.That(baseline.CrowdCount, Is.EqualTo(CameraAcceptanceIds.HotpathCrowdTargetCount));
+            Assert.That(baseline.VisibleCrowdCount, Is.GreaterThan(0));
+            Assert.That(baseline.WorldBarCount, Is.GreaterThan(0));
+            Assert.That(baseline.WorldTextCount, Is.GreaterThan(0));
+            Assert.That(baseline.SampleWindow.Length, Is.GreaterThan(0));
+            Assert.That(baseline.PanelMounted, Is.True);
+            Assert.That(baseline.SampleStride, Is.GreaterThanOrEqualTo(1));
+
+            TickUntilWithHudProjection(engine, hudProjection, () => PanelOrOverlayContains(uiRoot, engine, "hold-right"), maxFrames: 480);
+            HotpathSweepSnapshot holdRightA = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "hold_right_a");
+            snapshots.Add(holdRightA);
+            TickWithHudProjection(engine, hudProjection, 2);
+            HotpathSweepSnapshot holdRightB = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "hold_right_b");
+            snapshots.Add(holdRightB);
+            Assert.That(SampleWindowsEqual(holdRightA.SampleWindow, holdRightB.SampleWindow), Is.True,
+                "Visible sample window should remain stable while the scripted camera is holding on one side.");
+
+            TickUntilWithHudProjection(engine, hudProjection, () => PanelOrOverlayContains(uiRoot, engine, "hold-left"), maxFrames: 480);
+            HotpathSweepSnapshot holdLeft = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "hold_left");
+            snapshots.Add(holdLeft);
+            Assert.That(holdLeft.SweepTarget, Is.Not.EqualTo(holdRightA.SweepTarget), "Sweep holds should traverse distinct camera targets.");
+
+            PressButton(engine, backend, "<Keyboard>/f8");
+            HotpathSweepSnapshot labelsOff = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "labels_off");
+            snapshots.Add(labelsOff);
+            Assert.That(labelsOff.SelectionLabelCount, Is.EqualTo(0), "F8 should isolate visible-entity label cost.");
+
+            PressButton(engine, backend, "<Keyboard>/f9");
+            HotpathSweepSnapshot barsOff = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "bars_off");
+            snapshots.Add(barsOff);
+            Assert.That(barsOff.WorldBarCount, Is.EqualTo(0), "F9 should isolate HUD bar cost.");
+            Assert.That(barsOff.WorldTextCount, Is.GreaterThan(0), "Disabling bars must not implicitly disable HUD text.");
+
+            PressButton(engine, backend, "<Keyboard>/f10");
+            HotpathSweepSnapshot textOff = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "hud_text_off");
+            snapshots.Add(textOff);
+            Assert.That(textOff.WorldTextCount, Is.EqualTo(0), "F10 should isolate HUD text cost.");
+            Assert.That(textOff.ScreenTextCount, Is.EqualTo(0));
+
+            PressButton(engine, backend, "<Keyboard>/f6");
+            HotpathSweepSnapshot panelOff = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "panel_off");
+            snapshots.Add(panelOff);
+            Assert.That(panelOff.PanelMounted, Is.False, "F6 should remove the visible-entity panel lane.");
+
+            PressButton(engine, backend, "<Keyboard>/f6");
+            PressButton(engine, backend, "<Keyboard>/f8");
+            PressButton(engine, backend, "<Keyboard>/f9");
+            PressButton(engine, backend, "<Keyboard>/f10");
+            TickWithHudProjection(engine, hudProjection, 4);
+
+            HotpathSweepSnapshot restored = CaptureHotpathSweepSnapshot(engine, hudProjection, uiRoot, "restored_all_on");
+            snapshots.Add(restored);
+            Assert.That(restored.PanelMounted, Is.True);
+            Assert.That(restored.WorldBarCount, Is.GreaterThan(0));
+            Assert.That(restored.WorldTextCount, Is.GreaterThan(0));
+            Assert.That(restored.SampleWindow.Length, Is.GreaterThan(0));
+
+            File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildHotpathSweepTraceJsonl(snapshots));
+            File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildHotpathSweepBattleReport(snapshots));
+            File.WriteAllText(Path.Combine(artifactDir, "path.mmd"), BuildHotpathSweepPathMermaid());
         }
 
         [Test]
@@ -304,7 +415,9 @@ namespace Ludots.Tests.ThreeC.Acceptance
 
             var overlay = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
             Assert.That(overlay, Is.Not.Null);
-            var overlayText = ExtractOverlayText(overlay!);
+            overlay!.Clear();
+            Tick(engine, 2);
+            var overlayText = ExtractOverlayText(overlay);
             Assert.That(overlayText, Does.Contain($"#{hero.Id}"));
             Assert.That(overlayText, Does.Contain($"#{scout.Id}"));
             Assert.That(overlayText, Does.Contain($"#{captain.Id}"));
@@ -408,12 +521,12 @@ namespace Ludots.Tests.ThreeC.Acceptance
 
             Assert.That(ReferenceEquals(scene, uiRoot.Scene), Is.True,
                 "Camera acceptance panel must keep one mounted UiScene and update it reactively instead of remounting every presentation tick.");
-            Assert.That(scene.Version, Is.EqualTo(initialVersion),
-                "Idle presentation ticks should not trigger unnecessary panel recomposition.");
+            Assert.That(scene.Version, Is.GreaterThan(initialVersion),
+                "Retained diagnostics updates should patch the mounted scene without replacing it.");
         }
 
         [Test]
-        public void CameraAcceptanceMod_Panel_DoesNotRecompose_WhenOnlyViewportTelemetryChanges()
+        public void CameraAcceptanceMod_Panel_RecomposesWithinMountedScene_WhenViewportTelemetryChanges()
         {
             using var engine = CreateEngine(AcceptanceMods);
             var uiRoot = new UIRoot();
@@ -430,9 +543,12 @@ namespace Ludots.Tests.ThreeC.Acceptance
             culling!.VisibleEntityCount += 17;
             Tick(engine, 1);
 
-            Assert.That(scene.Version, Is.EqualTo(initialVersion),
-                "Volatile viewport telemetry must stay out of the reactive acceptance panel so camera movement does not force panel recomposition.");
-            Assert.That(ExtractUiSceneText(scene), Does.Contain("Viewport telemetry: top-right HUD"));
+            Assert.That(ReferenceEquals(scene, uiRoot.Scene), Is.True,
+                "Viewport telemetry updates should patch the mounted scene instead of remounting a new one.");
+            Assert.That(scene.Version, Is.GreaterThan(initialVersion),
+                "Retained diagnostics updates should advance the mounted scene version.");
+            Assert.That(ExtractUiSceneText(scene), Does.Contain("Viewport telemetry: native retained diagnostics card"));
+            Assert.That(ExtractUiSceneText(scene), Does.Contain("Camera Acceptance | FPS="));
         }
 
         [Test]
@@ -638,16 +754,17 @@ namespace Ludots.Tests.ThreeC.Acceptance
             engine.InitializeWithConfigPipeline(modPaths, assetsRoot);
             InstallInput(engine);
             var view = new StubViewController(1920, 1080);
+            var timings = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
             engine.SetService(CoreServiceKeys.ViewController, view);
             var cameraAdapter = new StubCameraAdapter();
-            var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter);
+            var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter, timings);
             var screenProjector = new CoreScreenProjector(engine.GameSession.Camera, view);
             var screenRayProvider = new CoreScreenRayProvider(engine.GameSession.Camera, view);
             screenProjector.BindPresenter(cameraPresenter);
             screenRayProvider.BindPresenter(cameraPresenter);
             engine.SetService(CoreServiceKeys.ScreenProjector, screenProjector);
             engine.SetService(CoreServiceKeys.ScreenRayProvider, screenRayProvider);
-            var culling = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, view);
+            var culling = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, view, timings);
             engine.RegisterPresentationSystem(culling);
             engine.SetService(CoreServiceKeys.CameraCullingDebugState, culling.DebugState);
             engine.GlobalContext["Tests.CameraAcceptanceMod.HeadlessCamera"] = new HeadlessCameraRuntime(
@@ -701,6 +818,67 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 }
 
                 Tick(engine, 1, beforeFrame);
+            }
+
+            Assert.That(predicate(), Is.True, $"Predicate was not satisfied within {maxFrames} frames.");
+        }
+
+        private static WorldHudToScreenSystem CreateHeadlessHudProjection(GameEngine engine)
+        {
+            var worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer);
+            var screenHud = engine.GetService(CoreServiceKeys.PresentationScreenHudBuffer);
+            var strings = engine.GetService(CoreServiceKeys.PresentationWorldHudStrings);
+            var projector = engine.GetService(CoreServiceKeys.ScreenProjector);
+            var view = engine.GetService(CoreServiceKeys.ViewController);
+            var timings = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
+
+            Assert.That(worldHud, Is.Not.Null, "Headless hotpath acceptance requires WorldHudBatchBuffer.");
+            Assert.That(screenHud, Is.Not.Null, "Headless hotpath acceptance requires ScreenHudBatchBuffer.");
+            Assert.That(projector, Is.Not.Null, "Headless hotpath acceptance requires a screen projector.");
+            Assert.That(view, Is.Not.Null, "Headless hotpath acceptance requires a view controller.");
+
+            return new WorldHudToScreenSystem(engine.World, worldHud!, strings, projector!, view!, screenHud!, timings);
+        }
+
+        private static void TickWithHudProjection(
+            GameEngine engine,
+            WorldHudToScreenSystem hudProjection,
+            int frames,
+            Action<GameEngine>? beforeFrame = null)
+        {
+            for (int i = 0; i < frames; i++)
+            {
+                beforeFrame?.Invoke(engine);
+                ClearHeadlessPresentationBuffers(engine);
+                engine.SetService(CoreServiceKeys.UiCaptured, false);
+                engine.Tick(1f / 60f);
+                UpdateHeadlessCamera(engine);
+                hudProjection.Update(1f / 60f);
+            }
+        }
+
+        private static void ClearHeadlessPresentationBuffers(GameEngine engine)
+        {
+            engine.GetService(CoreServiceKeys.ScreenOverlayBuffer)?.Clear();
+            engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer)?.Clear();
+            engine.GetService(CoreServiceKeys.PresentationScreenHudBuffer)?.Clear();
+        }
+
+        private static void TickUntilWithHudProjection(
+            GameEngine engine,
+            WorldHudToScreenSystem hudProjection,
+            Func<bool> predicate,
+            int maxFrames = 60,
+            Action<GameEngine>? beforeFrame = null)
+        {
+            for (int i = 0; i < maxFrames; i++)
+            {
+                if (predicate())
+                {
+                    return;
+                }
+
+                TickWithHudProjection(engine, hudProjection, 1, beforeFrame);
             }
 
             Assert.That(predicate(), Is.True, $"Predicate was not satisfied within {maxFrames} frames.");
@@ -1067,6 +1245,45 @@ namespace Ludots.Tests.ThreeC.Acceptance
             }
         }
 
+        private static UiNode? FindNodeWithText(UiNode? node, string text)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            if (string.Equals(node.TextContent, text, StringComparison.Ordinal))
+            {
+                return node;
+            }
+
+            for (int i = 0; i < node.Children.Count; i++)
+            {
+                UiNode? match = FindNodeWithText(node.Children[i], text);
+                if (match != null)
+                {
+                    return match;
+                }
+            }
+
+            return null;
+        }
+
+        private static UiNode? FindAncestorWithZIndexAtLeast(UiNode? node, int zIndex)
+        {
+            while (node != null)
+            {
+                if (Math.Max(node.Style.ZIndex, node.LocalStyle.ZIndex) >= zIndex)
+                {
+                    return node;
+                }
+
+                node = node.Parent;
+            }
+
+            return null;
+        }
+
         private static void AssertProjectionViewportState(GameEngine engine)
         {
             var culling = engine.GetService(CoreServiceKeys.CameraCullingDebugState);
@@ -1082,6 +1299,383 @@ namespace Ludots.Tests.ThreeC.Acceptance
             });
 
             Assert.That(hasCullTrackedNamedEntity, Is.True, "Projection acceptance should attach core CullState tracking to scenario entities.");
+        }
+
+        private static HotpathSweepSnapshot CaptureHotpathSweepSnapshot(
+            GameEngine engine,
+            WorldHudToScreenSystem hudProjection,
+            UIRoot uiRoot,
+            string step)
+        {
+            TickWithHudProjection(engine, hudProjection, 2);
+
+            var overlay = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
+            var worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer);
+            var screenHud = engine.GetService(CoreServiceKeys.PresentationScreenHudBuffer);
+            Assert.That(overlay, Is.Not.Null);
+            Assert.That(worldHud, Is.Not.Null);
+            Assert.That(screenHud, Is.Not.Null);
+            List<string> overlayLines = ExtractOverlayText(overlay!);
+            string panelText = uiRoot.Scene != null ? ExtractUiSceneText(uiRoot.Scene) : string.Empty;
+            string[] panelLines = string.IsNullOrWhiteSpace(panelText)
+                ? Array.Empty<string>()
+                : panelText.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+            string sweepLine = FindLineContaining(panelLines, "Sweep ") ?? BuildSweepLineFromDiagnostics(engine);
+            string[] sampleWindow = ExtractVisibleSampleWindow(panelLines);
+
+            return new HotpathSweepSnapshot(
+                Step: step,
+                Tick: engine.GameSession?.CurrentTick ?? 0,
+                SweepPhase: ParseSweepPhase(sweepLine),
+                SweepCycle: ParseSweepCycle(sweepLine),
+                SweepTarget: ParseSweepTarget(sweepLine),
+                CrowdCount: CountEntitiesByNameOnMap(engine.World, "Dummy", CameraAcceptanceIds.HotpathMapId),
+                VisibleCrowdCount: CountVisibleEntitiesByNameOnMap(engine.World, "Dummy", CameraAcceptanceIds.HotpathMapId),
+                WorldBarCount: CountWorldHudItems(worldHud!, WorldHudItemKind.Bar),
+                WorldTextCount: CountWorldHudItems(worldHud, WorldHudItemKind.Text),
+                ScreenBarCount: CountScreenHudItems(screenHud!, WorldHudItemKind.Bar),
+                ScreenTextCount: CountScreenHudItems(screenHud, WorldHudItemKind.Text),
+                SelectionLabelCount: CountSelectionLabels(overlayLines),
+                PanelMounted: uiRoot.Scene != null,
+                SampleStride: ParseSampleStride(sweepLine, panelLines),
+                SampleWindow: sampleWindow);
+        }
+
+        private static int CountEntitiesByNameOnMap(World world, string name, string mapId)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<Name, MapEntity>();
+            world.Query(in query, (ref Name entityName, ref MapEntity mapEntity) =>
+            {
+                if (string.Equals(entityName.Value, name, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(mapEntity.MapId.Value, mapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                }
+            });
+
+            return count;
+        }
+
+        private static int CountVisibleEntitiesByNameOnMap(World world, string name, string mapId)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<Name, MapEntity, CullState>();
+            world.Query(in query, (ref Name entityName, ref MapEntity mapEntity, ref CullState cull) =>
+            {
+                if (cull.IsVisible &&
+                    string.Equals(entityName.Value, name, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(mapEntity.MapId.Value, mapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                }
+            });
+
+            return count;
+        }
+
+        private static bool PanelOrOverlayContains(UIRoot uiRoot, GameEngine engine, string token)
+        {
+            if (uiRoot.Scene != null && ExtractUiSceneText(uiRoot.Scene).Contains(token, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return BuildSweepLineFromDiagnostics(engine).Contains(token, StringComparison.Ordinal);
+        }
+
+        private static string BuildSweepLineFromDiagnostics(GameEngine engine)
+        {
+            object? diagnostics = engine.GetService(new ServiceKey<object>("CameraAcceptance.DiagnosticsState"));
+            if (diagnostics == null)
+            {
+                return "Sweep inactive";
+            }
+
+            Type diagnosticsType = diagnostics.GetType();
+            string phase = diagnosticsType.GetProperty("HotpathSweepPhase")?.GetValue(diagnostics) as string ?? "inactive";
+            string target = diagnosticsType.GetProperty("HotpathSweepTarget")?.GetValue(diagnostics) as string ?? "none";
+            int cycle = diagnosticsType.GetProperty("HotpathSweepCycle")?.GetValue(diagnostics) is int cycleValue ? cycleValue : 0;
+            int stride = diagnosticsType.GetProperty("HotpathVisibleSampleStride")?.GetValue(diagnostics) is int strideValue ? strideValue : 1;
+            return $"Sweep {phase} | Cycle {cycle} | Target {target} | Sample stride {stride}";
+        }
+
+        private static int CountWorldHudItems(WorldHudBatchBuffer worldHud, WorldHudItemKind kind)
+        {
+            int count = 0;
+            foreach (ref readonly var item in worldHud.GetSpan())
+            {
+                if (item.Kind == kind)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int CountScreenHudItems(ScreenHudBatchBuffer screenHud, WorldHudItemKind kind)
+        {
+            int count = 0;
+            foreach (ref readonly var item in screenHud.GetSpan())
+            {
+                if (item.Kind == kind)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int CountSelectionLabels(IReadOnlyList<string> overlayLines)
+        {
+            int count = 0;
+            for (int i = 0; i < overlayLines.Count; i++)
+            {
+                if (overlayLines[i].StartsWith("#", StringComparison.Ordinal))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static bool SampleWindowsEqual(IReadOnlyList<string> left, IReadOnlyList<string> right)
+        {
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < left.Count; i++)
+            {
+                if (!string.Equals(left[i], right[i], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static string[] ExtractVisibleSampleWindow(IReadOnlyList<string> panelLines)
+        {
+            int headerIndex = -1;
+            for (int i = 0; i < panelLines.Count; i++)
+            {
+                if (string.Equals(panelLines[i], "Visible Sample Window", StringComparison.Ordinal))
+                {
+                    headerIndex = i;
+                    break;
+                }
+            }
+
+            if (headerIndex < 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var lines = new List<string>();
+            for (int i = headerIndex + 2; i < panelLines.Count; i++)
+            {
+                string line = panelLines[i];
+                if (string.Equals(line, "Selection Buffer", StringComparison.Ordinal) ||
+                    string.Equals(line, "How To Verify", StringComparison.Ordinal))
+                {
+                    break;
+                }
+
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    lines.Add(line);
+                }
+            }
+
+            return lines.ToArray();
+        }
+
+        private static string? FindLineContaining(IReadOnlyList<string> lines, string token)
+        {
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (lines[i].Contains(token, StringComparison.Ordinal))
+                {
+                    return lines[i];
+                }
+            }
+
+            return null;
+        }
+
+        private static string ParseSweepPhase(string line)
+        {
+            const string panelToken = "Sweep ";
+            int start = line.IndexOf(panelToken, StringComparison.Ordinal);
+            if (start >= 0)
+            {
+                start += panelToken.Length;
+                int pipe = line.IndexOf('|', start);
+                return (pipe > start ? line.Substring(start, pipe - start) : line.Substring(start)).Trim();
+            }
+
+            const string overlayToken = "Sweep phase=";
+            start = line.IndexOf(overlayToken, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return "unknown";
+            }
+
+            start += overlayToken.Length;
+            int end = line.IndexOf("  ", start, StringComparison.Ordinal);
+            return (end > start ? line.Substring(start, end - start) : line.Substring(start)).Trim();
+        }
+
+        private static int ParseSweepCycle(string line)
+        {
+            const string panelToken = "Cycle ";
+            int start = line.IndexOf(panelToken, StringComparison.Ordinal);
+            if (start >= 0)
+            {
+                start += panelToken.Length;
+                int pipe = line.IndexOf('|', start);
+                string value = (pipe > start ? line.Substring(start, pipe - start) : line.Substring(start)).Trim();
+                return int.TryParse(value, out int cycle) ? cycle : 0;
+            }
+
+            const string overlayToken = "cycle=";
+            start = line.IndexOf(overlayToken, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return 0;
+            }
+
+            start += overlayToken.Length;
+            int end = line.IndexOf("  ", start, StringComparison.Ordinal);
+            string raw = (end > start ? line.Substring(start, end - start) : line.Substring(start)).Trim();
+            return int.TryParse(raw, out int parsed) ? parsed : 0;
+        }
+
+        private static string ParseSweepTarget(string line)
+        {
+            const string panelToken = "Target ";
+            int start = line.IndexOf(panelToken, StringComparison.Ordinal);
+            if (start >= 0)
+            {
+                start += panelToken.Length;
+                int pipe = line.IndexOf('|', start);
+                return (pipe > start ? line.Substring(start, pipe - start) : line.Substring(start)).Trim();
+            }
+
+            const string overlayToken = "target=";
+            start = line.IndexOf(overlayToken, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return "unknown";
+            }
+
+            return line.Substring(start + overlayToken.Length).Trim();
+        }
+
+        private static int ParseSampleStride(string sweepLine, IReadOnlyList<string> panelLines)
+        {
+            const string token = "Sample stride ";
+            int start = sweepLine.IndexOf(token, StringComparison.Ordinal);
+            if (start >= 0)
+            {
+                string raw = sweepLine.Substring(start + token.Length).Trim();
+                return int.TryParse(raw, out int parsed) ? parsed : 1;
+            }
+
+            string? summaryLine = FindLineContaining(panelLines, "stride ");
+            if (summaryLine == null)
+            {
+                return 1;
+            }
+
+            start = summaryLine.LastIndexOf("stride ", StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return 1;
+            }
+
+            string value = summaryLine.Substring(start + "stride ".Length).Trim().TrimEnd('.', ')');
+            return int.TryParse(value, out int stride) ? stride : 1;
+        }
+
+        private static string BuildHotpathSweepTraceJsonl(IReadOnlyList<HotpathSweepSnapshot> snapshots)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.AppendLine();
+                }
+
+                sb.Append(JsonSerializer.Serialize(snapshots[i]));
+            }
+
+            return sb.ToString();
+        }
+
+        private static string BuildHotpathSweepBattleReport(IReadOnlyList<HotpathSweepSnapshot> snapshots)
+        {
+            HotpathSweepSnapshot baseline = snapshots[0];
+            HotpathSweepSnapshot restored = snapshots[^1];
+            var sb = new StringBuilder();
+            sb.AppendLine("# Scenario Card: camera-10k-sweep");
+            sb.AppendLine();
+            sb.AppendLine("## Intent");
+            sb.AppendLine("- Player goal: validate the real camera demo path under a deterministic 10k+ crowd while visible-entity panel, HUD text, and HUD bars are all observable as separate lanes.");
+            sb.AppendLine("- Gameplay domain: camera acceptance, presentation hotpath, culling visibility, reactive diagnostics panel, HUD text, and HUD bars.");
+            sb.AppendLine();
+            sb.AppendLine("## Determinism Inputs");
+            sb.AppendLine("- Seed: fixed crowd lattice generated from index -> position mapping.");
+            sb.AppendLine("- Map: `camera_acceptance_hotpath`.");
+            sb.AppendLine("- Clock profile: 60 Hz fixed-step headless run.");
+            sb.AppendLine($"- Initial entities: {baseline.CrowdCount} crowd dummies plus 3 named anchor entities.");
+            sb.AppendLine();
+            sb.AppendLine("## Action Script");
+            sb.AppendLine("1. Load the hotpath map and wait for the deterministic crowd to fill to target.");
+            sb.AppendLine("2. Let the scripted camera sweep reach both hold states and confirm the visible sample window remains stable while holding.");
+            sb.AppendLine("3. Toggle labels, bars, text, and panel lanes independently.");
+            sb.AppendLine("4. Restore all lanes and confirm the panel and HUD lanes come back without losing the 10k crowd scene.");
+            sb.AppendLine();
+            sb.AppendLine("## Expected Outcomes");
+            sb.AppendLine($"- Primary success condition: crowd reaches {CameraAcceptanceIds.HotpathCrowdTargetCount} and remains sweep-observable with non-empty sampled visible window.");
+            sb.AppendLine("- Failure branch condition: any lane toggle implicitly disables another lane, or the sampled window becomes unstable during a sweep hold.");
+            sb.AppendLine($"- Key metrics: baseline visible={baseline.VisibleCrowdCount}, bars={baseline.WorldBarCount}, text={baseline.WorldTextCount}; restored visible={restored.VisibleCrowdCount}, bars={restored.WorldBarCount}, text={restored.WorldTextCount}.");
+            sb.AppendLine();
+            sb.AppendLine("## Evidence Artifacts");
+            sb.AppendLine("- `artifacts/acceptance/camera-10k-sweep/trace.jsonl`");
+            sb.AppendLine("- `artifacts/acceptance/camera-10k-sweep/battle-report.md`");
+            sb.AppendLine("- `artifacts/acceptance/camera-10k-sweep/path.mmd`");
+            sb.AppendLine();
+            sb.AppendLine("## Timeline");
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                HotpathSweepSnapshot snapshot = snapshots[i];
+                sb.AppendLine($"- `{snapshot.Step}` tick={snapshot.Tick} phase={snapshot.SweepPhase} target={snapshot.SweepTarget} crowd={snapshot.CrowdCount} visible={snapshot.VisibleCrowdCount} bars={snapshot.WorldBarCount} text={snapshot.WorldTextCount} sample={snapshot.SampleWindow.Length}");
+            }
+
+            return sb.ToString();
+        }
+
+        private static string BuildHotpathSweepPathMermaid()
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                "flowchart TD",
+                "    A[Load camera_acceptance_hotpath] --> B[Fill deterministic 10k crowd via RuntimeEntitySpawnQueue]",
+                "    B --> C[Scripted camera sweep starts]",
+                "    C --> D[Hold right -> capture visible sample window]",
+                "    D --> E[Hold left -> capture second visible sample window]",
+                "    E --> F[Toggle labels/bar/text/panel lanes independently]",
+                "    F --> G[Restore all lanes]",
+                "    G --> H[Write battle-report + trace + path]"
+            });
         }
 
         private static TestInputBackend GetInputBackend(GameEngine engine)
@@ -1115,6 +1709,23 @@ namespace Ludots.Tests.ThreeC.Acceptance
 
             throw new DirectoryNotFoundException("Failed to locate repository root from test output directory.");
         }
+
+        private readonly record struct HotpathSweepSnapshot(
+            string Step,
+            long Tick,
+            string SweepPhase,
+            int SweepCycle,
+            string SweepTarget,
+            int CrowdCount,
+            int VisibleCrowdCount,
+            int WorldBarCount,
+            int WorldTextCount,
+            int ScreenBarCount,
+            int ScreenTextCount,
+            int SelectionLabelCount,
+            bool PanelMounted,
+            int SampleStride,
+            string[] SampleWindow);
 
         private sealed class TestInputBackend : IInputBackend
         {

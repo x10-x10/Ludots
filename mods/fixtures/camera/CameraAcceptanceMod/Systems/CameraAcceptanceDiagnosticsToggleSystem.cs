@@ -1,10 +1,10 @@
+using Arch.System;
 using CameraAcceptanceMod.Runtime;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Engine;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Scripting;
-using Arch.System;
 
 namespace CameraAcceptanceMod.Systems
 {
@@ -26,7 +26,8 @@ namespace CameraAcceptanceMod.Systems
 
         public void Update(in float dt)
         {
-            if (!CameraAcceptanceIds.IsAcceptanceMap(_engine.CurrentMapSession?.MapId.Value))
+            string? mapId = _engine.CurrentMapSession?.MapId.Value;
+            if (!CameraAcceptanceIds.IsAcceptanceMap(mapId))
             {
                 return;
             }
@@ -38,7 +39,9 @@ namespace CameraAcceptanceMod.Systems
                 return;
             }
 
+            bool isHotpathMap = string.Equals(mapId, CameraAcceptanceIds.HotpathMapId, System.StringComparison.OrdinalIgnoreCase);
             bool changed = false;
+
             if (input.PressedThisFrame(CameraAcceptanceIds.TogglePanelActionId))
             {
                 renderDebug.DrawSkiaUi = !renderDebug.DrawSkiaUi;
@@ -57,11 +60,50 @@ namespace CameraAcceptanceMod.Systems
                 changed = true;
             }
 
-            if (changed)
+            if (isHotpathMap && input.PressedThisFrame(CameraAcceptanceIds.ToggleHotpathBarsActionId))
+            {
+                diagnostics.HotpathBarsEnabled = !diagnostics.HotpathBarsEnabled;
+                changed = true;
+            }
+
+            if (isHotpathMap && input.PressedThisFrame(CameraAcceptanceIds.ToggleHotpathHudTextActionId))
+            {
+                diagnostics.HotpathHudTextEnabled = !diagnostics.HotpathHudTextEnabled;
+                changed = true;
+            }
+
+            if (isHotpathMap && input.PressedThisFrame(CameraAcceptanceIds.ToggleTerrainActionId))
+            {
+                renderDebug.DrawTerrain = !renderDebug.DrawTerrain;
+                changed = true;
+            }
+
+            if (isHotpathMap && input.PressedThisFrame(CameraAcceptanceIds.TogglePrimitiveActionId))
+            {
+                renderDebug.DrawPrimitives = !renderDebug.DrawPrimitives;
+                changed = true;
+            }
+
+            if (isHotpathMap && input.PressedThisFrame(CameraAcceptanceIds.ToggleHotpathCullCrowdActionId))
+            {
+                diagnostics.HotpathCullCrowdEnabled = !diagnostics.HotpathCullCrowdEnabled;
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            if (isHotpathMap)
             {
                 Log.Info(in LogChannel,
-                    $"CameraAcceptance diagnostics toggles: panel={(renderDebug.DrawSkiaUi ? "ON" : "OFF")} hud={(diagnostics.HudEnabled ? "ON" : "OFF")} text={(diagnostics.TextEnabled ? "ON" : "OFF")}");
+                    $"CameraAcceptance diagnostics toggles: panel={(renderDebug.DrawSkiaUi ? "ON" : "OFF")} hud={(diagnostics.HudEnabled ? "ON" : "OFF")} select={(diagnostics.TextEnabled ? "ON" : "OFF")} bars={(diagnostics.HotpathBarsEnabled ? "ON" : "OFF")} hudText={(diagnostics.HotpathHudTextEnabled ? "ON" : "OFF")} terrain={(renderDebug.DrawTerrain ? "ON" : "OFF")} primitives={(renderDebug.DrawPrimitives ? "ON" : "OFF")} crowd={(diagnostics.HotpathCullCrowdEnabled ? "ON" : "OFF")}");
+                return;
             }
+
+            Log.Info(in LogChannel,
+                $"CameraAcceptance diagnostics toggles: panel={(renderDebug.DrawSkiaUi ? "ON" : "OFF")} hud={(diagnostics.HudEnabled ? "ON" : "OFF")} text={(diagnostics.TextEnabled ? "ON" : "OFF")}");
         }
     }
 }
