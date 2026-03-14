@@ -9,9 +9,9 @@ using Ludots.Core.Engine;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Map;
 using Ludots.Core.Presentation.Components;
+using Ludots.Core.Presentation.Config;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Scripting;
-using Ludots.Platform.Abstractions;
 
 namespace CameraAcceptanceMod.Systems
 {
@@ -22,6 +22,7 @@ namespace CameraAcceptanceMod.Systems
             .WithAll<CameraAcceptanceHotpathCrowdTag, MapEntity, VisualTransform, CullState>();
 
         private readonly GameEngine _engine;
+        private int _entityIdTokenId;
 
         public CameraAcceptanceSelectionOverlaySystem(GameEngine engine)
         {
@@ -42,13 +43,13 @@ namespace CameraAcceptanceMod.Systems
                 return;
             }
 
-            if (_engine.GetService(CoreServiceKeys.ScreenOverlayBuffer) is not ScreenOverlayBuffer overlay)
+            if (_engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer) is not WorldHudBatchBuffer worldHud)
             {
                 Observe(start);
                 return;
             }
 
-            if (_engine.GetService(CoreServiceKeys.ScreenProjector) is not IScreenProjector projector)
+            if (!TryResolveEntityIdToken(out int entityIdTokenId))
             {
                 Observe(start);
                 return;
@@ -75,7 +76,7 @@ namespace CameraAcceptanceMod.Systems
                         return;
                     }
 
-                    if (TryDrawLabel(overlay, projector, entity, transform.Position + new Vector3(0f, 1.35f, 0f)))
+                    if (TryQueueLabel(worldHud, entityIdTokenId, entity, transform.Position + new Vector3(0f, 1.35f, 0f)))
                     {
                         labelCount++;
                     }
@@ -95,7 +96,7 @@ namespace CameraAcceptanceMod.Systems
                         continue;
                     }
 
-                    TryDrawLabel(overlay, projector, entity, transform.Position + new Vector3(0f, 1.35f, 0f));
+                    TryQueueLabel(worldHud, entityIdTokenId, entity, transform.Position + new Vector3(0f, 1.35f, 0f));
                 }
 
                 PublishHotpathSelectionCount(0);
@@ -124,19 +125,53 @@ namespace CameraAcceptanceMod.Systems
             }
         }
 
-        private static bool TryDrawLabel(ScreenOverlayBuffer overlay, IScreenProjector projector, Entity entity, Vector3 worldPosition)
+        private bool TryResolveEntityIdToken(out int tokenId)
         {
-            Vector2 screen = projector.WorldToScreen(worldPosition);
-            if (float.IsNaN(screen.X) || float.IsNaN(screen.Y) || float.IsInfinity(screen.X) || float.IsInfinity(screen.Y))
+            if (_entityIdTokenId > 0)
             {
-                return false;
+                tokenId = _entityIdTokenId;
+                return true;
             }
 
-            string label = CameraAcceptanceSelectionView.FormatEntityId(entity);
-            int x = (int)MathF.Round(screen.X) - label.Length * 4;
-            int y = (int)MathF.Round(screen.Y) - 10;
-            overlay.AddText(x, y, label, 14, LabelColor);
+            if (_engine.GetService(CoreServiceKeys.PresentationTextCatalog) is not PresentationTextCatalog catalog)
+            {
+                throw new InvalidOperationException("PresentationTextCatalog is required for camera acceptance selection labels.");
+            }
+
+            tokenId = catalog.GetTokenId(WellKnownHudTextKeys.EntityId);
+            if (tokenId <= 0)
+            {
+                throw new InvalidOperationException($"Missing HUD text token '{WellKnownHudTextKeys.EntityId}' required by camera acceptance selection labels.");
+            }
+
+            _entityIdTokenId = tokenId;
             return true;
+        }
+
+        private static bool TryQueueLabel(WorldHudBatchBuffer worldHud, int tokenId, Entity entity, Vector3 worldPosition)
+        {
+            string label = CameraAcceptanceSelectionView.FormatEntityId(entity);
+            var packet = PresentationTextPacket.FromToken(tokenId);
+            packet.SetArg(0, PresentationTextArg.FromInt32(entity.Id));
+
+            return worldHud.TryAdd(new WorldHudItem
+            {
+                StableId = HudItemIdentity.ComposeStableId(entity.Id, WorldHudItemKind.Text, discriminator: 3),
+                DirtySerial = HudItemIdentity.ComposeTextDirtySerial(
+                    fontSize: 14,
+                    legacyStringId: 0,
+                    legacyModeId: 0,
+                    value0: 0f,
+                    value1: 0f,
+                    color: LabelColor,
+                    packet: packet),
+                Kind = WorldHudItemKind.Text,
+                WorldPosition = worldPosition,
+                Width = label.Length * 8f,
+                FontSize = 14,
+                Color0 = LabelColor,
+                Text = packet,
+            });
         }
 
         private static bool MatchesMap(in MapEntity mapEntity, in MapId currentMapId)

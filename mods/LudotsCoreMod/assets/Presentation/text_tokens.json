@@ -14,5 +14,9 @@
   {
     "id": "hud.combat.delta",
     "argCount": 1
+  },
+  {
+    "id": "hud.entity.id",
+    "argCount": 1
   }
 ]
