@@ -72,3 +72,26 @@ public interface IInputBackend
 | HUD 绘制 | 仅遍历 `ScreenHudBatchBuffer` 绘制，无投影、无裁切 |
 
 **分辨率**：统一通过 `IViewController.Resolution` 获取，Adapter 在窗口 resize 时更新 UI/Skia 等。
+
+## 6 UI 渲染适配
+
+UI 体系同样遵循六边形架构原则。`Ludots.UI` 程序集零平台依赖，通过策略接口隔离渲染后端：
+
+| 接口（Port） | 位置 | Skia 实现（Adapter） | 位置 |
+|---------------|------|---------------------|------|
+| `IUiTextMeasurer` | `Ludots.UI/Runtime/` | `SkiaTextMeasurer` | `Ludots.UI.Skia/` |
+| `IUiImageSizeProvider` | `Ludots.UI/Runtime/` | `SkiaImageSizeProvider` | `Ludots.UI.Skia/` |
+| `IUiRenderer` | `Ludots.UI/Runtime/` | `SkiaUiRenderer` | `Ludots.UI.Skia/` |
+| `IUiCanvasContent` | `Ludots.UI/Runtime/` | `UiCanvasContent` | `Ludots.UI.Skia/` |
+
+依赖方向：
+
+```
+Ludots.UI              → 零渲染依赖
+Ludots.UI.Skia         → Ludots.UI + SkiaSharp + Svg.Skia
+Adapter (Raylib/Web)   → 组装 Skia 实现并注入 UIRoot / UiScene
+```
+
+`Ludots.UI` 使用 `UiColor`（平台无关 RGBA struct）替代 `SKColor`，使用 `System.Numerics.Matrix3x2` 替代 `SKMatrix`。边界转换由 `Ludots.UI.Skia/UiSkiaExtensions` 提供（`ToSKColor()`、`ToUiColor()`、`ToSKMatrix()`）。
+
+详见 `docs/architecture/ui_runtime_architecture.md`。
