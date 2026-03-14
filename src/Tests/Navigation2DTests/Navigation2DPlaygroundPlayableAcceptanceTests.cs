@@ -22,6 +22,7 @@ using Ludots.Platform.Abstractions;
 using Ludots.UI;
 using Ludots.UI.Input;
 using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 using Navigation2DPlaygroundMod;
 using Navigation2DPlaygroundMod.Systems;
 using NUnit.Framework;
@@ -178,7 +179,7 @@ namespace Ludots.Tests.Navigation2D
             ConfigureAcceptanceDefaults(engine);
             InstallInput(engine);
 
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 

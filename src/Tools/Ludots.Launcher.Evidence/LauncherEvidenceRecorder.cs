@@ -28,6 +28,7 @@ using Ludots.Launcher.Backend;
 using Ludots.Platform.Abstractions;
 using Ludots.UI;
 using Ludots.UI.HtmlEngine.Markup;
+using Ludots.UI.Skia;
 using Navigation2DPlaygroundMod;
 using Navigation2DPlaygroundMod.Systems;
 using Raylib_cs;
@@ -137,10 +138,13 @@ public static class LauncherEvidenceRecorder
         var engine = bootstrap.Engine;
         var config = bootstrap.Config;
 
-        var uiRoot = new UIRoot();
+        var skiaRenderer = new SkiaUiRenderer();
+        var textMeasurer = new SkiaTextMeasurer();
+        var imageSizeProvider = new SkiaImageSizeProvider();
+        var uiRoot = new UIRoot(skiaRenderer);
         uiRoot.Resize(DefaultWidth, DefaultHeight);
         engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
-        engine.SetService(CoreServiceKeys.UISystem, (Ludots.Core.UI.IUiSystem)new MarkupUiSystem(uiRoot));
+        engine.SetService(CoreServiceKeys.UISystem, (Ludots.Core.UI.IUiSystem)new MarkupUiSystem(uiRoot, textMeasurer, imageSizeProvider));
 
         var inputBackend = new ScriptedInputBackend();
         var inputHandler = new PlayerInputHandler(inputBackend, new InputConfigPipelineLoader(engine.ConfigPipeline).Load());
@@ -197,10 +201,13 @@ public static class LauncherEvidenceRecorder
         var engine = bootstrap.Engine;
         var config = bootstrap.Config;
 
-        var uiRoot = new UIRoot();
+        var skiaRenderer = new SkiaUiRenderer();
+        var textMeasurer = new SkiaTextMeasurer();
+        var imageSizeProvider = new SkiaImageSizeProvider();
+        var uiRoot = new UIRoot(skiaRenderer);
         uiRoot.Resize(DefaultWidth, DefaultHeight);
         engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
-        engine.SetService(CoreServiceKeys.UISystem, (Ludots.Core.UI.IUiSystem)new MarkupUiSystem(uiRoot));
+        engine.SetService(CoreServiceKeys.UISystem, (Ludots.Core.UI.IUiSystem)new MarkupUiSystem(uiRoot, textMeasurer, imageSizeProvider));
 
         var inputBackend = new ScriptedInputBackend();
         var inputHandler = new PlayerInputHandler(inputBackend, new InputConfigPipelineLoader(engine.ConfigPipeline).Load());

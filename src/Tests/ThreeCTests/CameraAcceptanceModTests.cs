@@ -30,6 +30,7 @@ using Ludots.Presentation.Skia;
 using Ludots.UI;
 using Ludots.UI.Input;
 using Ludots.UI.Reactive;
+using Ludots.UI.Skia;
 using Ludots.UI.Runtime;
 using Ludots.Platform.Abstractions;
 using NUnit.Framework;
@@ -156,7 +157,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_ProjectionMap_QEAdjustsSpawnBatch_ClampsAtZero_AndUpdatesReactivePanel()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
@@ -189,7 +190,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_AcceptanceMaps_DrawFpsOverlayInTopRight()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
@@ -251,7 +252,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_DiagnosticsHotkeys_TogglePanelHud_AndSelectionText()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
             using var hudProjection = CreateHeadlessHudProjection(engine);
@@ -320,7 +321,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Directory.CreateDirectory(artifactDir);
 
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
@@ -572,7 +573,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_Panel_DoesNotCaptureWorldClicksOutsideCard()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
@@ -606,7 +607,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_Panel_ReusesSameSceneReferenceAcrossPresentationTicks()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
@@ -629,7 +630,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_Panel_RecomposesWithinMountedScene_WhenViewportTelemetryChanges()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
@@ -656,7 +657,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_Panel_SelectionStateUpdatesWithinMountedReactiveScene()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
@@ -692,7 +693,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             var backend = GetInputBackend(engine);
             ClickGround(engine, backend, new Vector2(3200f, 2000f));
 
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
             Tick(engine, 1);
@@ -759,7 +760,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_HotpathPanel_ReportsVisibleEntities_AndUpdatesWhenCameraViewChanges()
         {
             using var engine = CreateEngine(AcceptanceMods);
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 

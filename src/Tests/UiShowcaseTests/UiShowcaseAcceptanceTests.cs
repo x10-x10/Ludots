@@ -5,6 +5,7 @@ using Ludots.UI.Input;
 using Ludots.UI.Reactive;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Events;
+using Ludots.UI.Skia;
 using NUnit.Framework;
 using UiShowcaseCoreMod.Showcase;
 using UiSkinClassicMod;
@@ -77,8 +78,8 @@ public sealed class UiShowcaseAcceptanceTests
     [Test]
     public void ReactiveScene_ScrollVirtualWindow_RefreshesThroughUIRootLifecycle()
     {
-        var page = new ReactivePage<int>(0, BuildVirtualizedList);
-        var root = new UIRoot();
+        var page = new ReactivePage<int>(new SkiaTextMeasurer(), new SkiaImageSizeProvider(), 0, BuildVirtualizedList);
+        var root = new UIRoot(new SkiaUiRenderer());
         root.Resize(1280f, 720f);
         root.MountScene(page.Scene);
         page.Scene.Layout(1280f, 720f);

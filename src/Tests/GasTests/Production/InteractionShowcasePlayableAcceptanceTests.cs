@@ -29,6 +29,7 @@ using Ludots.Core.Systems;
 using Ludots.Platform.Abstractions;
 using Ludots.UI;
 using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 using NUnit.Framework;
 
 namespace Ludots.Tests.GAS.Production
@@ -699,7 +700,7 @@ namespace Ludots.Tests.GAS.Production
             engine.InitializeWithConfigPipeline(modPaths, assetsRoot);
             InstallInput(engine);
 
-            var uiRoot = new UIRoot();
+            var uiRoot = new UIRoot(new SkiaUiRenderer());
             uiRoot.Resize(1920f, 1080f);
             engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
 
