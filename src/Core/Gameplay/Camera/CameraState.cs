@@ -30,11 +30,18 @@ namespace Ludots.Core.Gameplay.Camera
         /// </summary>
         public float DistanceCm { get; set; } = 2000.0f;
 
+        public CameraRigKind RigKind { get; set; } = CameraRigKind.Orbit;
+
         /// <summary>
         /// Current zoom level index (if discrete zooming is used).
         /// </summary>
         public int ZoomLevel { get; set; } = 5;
 
         public float FovYDeg { get; set; } = 60.0f;
+
+        /// <summary>
+        /// True when camera is following a target entity (pan behaviors should skip).
+        /// </summary>
+        public bool IsFollowing { get; set; }
     }
 }

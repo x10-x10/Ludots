@@ -1,0 +1,31 @@
+{
+  "actions": [
+    { "id": "Diag_ToggleConfigPanel", "name": "Diag_ToggleConfigPanel", "type": "Button" },
+    { "id": "Diag_ToggleModsPanel", "name": "Diag_ToggleModsPanel", "type": "Button" },
+    { "id": "Diag_ToggleAttributesPanel", "name": "Diag_ToggleAttributesPanel", "type": "Button" },
+    { "id": "Diag_ToggleTurnBased", "name": "Diag_ToggleTurnBased", "type": "Button" },
+    { "id": "Diag_StepTurn", "name": "Diag_StepTurn", "type": "Button" },
+    { "id": "Diag_ToggleTerrain", "name": "Diag_ToggleTerrain", "type": "Button" },
+    { "id": "Diag_TogglePrimitives", "name": "Diag_TogglePrimitives", "type": "Button" },
+    { "id": "Diag_ToggleDebugDraw", "name": "Diag_ToggleDebugDraw", "type": "Button" },
+    { "id": "Diag_ToggleSkiaUi", "name": "Diag_ToggleSkiaUi", "type": "Button" }
+  ],
+  "contexts": [
+    {
+      "id": "Diagnostics_Overlay",
+      "name": "Diagnostics Overlay",
+      "priority": 120,
+      "bindings": [
+        { "actionId": "Diag_ToggleConfigPanel", "path": "<Keyboard>/f5" },
+        { "actionId": "Diag_ToggleModsPanel", "path": "<Keyboard>/f6" },
+        { "actionId": "Diag_ToggleAttributesPanel", "path": "<Keyboard>/f7" },
+        { "actionId": "Diag_ToggleTurnBased", "path": "<Keyboard>/f8" },
+        { "actionId": "Diag_StepTurn", "path": "<Keyboard>/space" },
+        { "actionId": "Diag_ToggleTerrain", "path": "<Keyboard>/f9" },
+        { "actionId": "Diag_TogglePrimitives", "path": "<Keyboard>/f10" },
+        { "actionId": "Diag_ToggleDebugDraw", "path": "<Keyboard>/f11" },
+        { "actionId": "Diag_ToggleSkiaUi", "path": "<Keyboard>/f12" }
+      ]
+    }
+  ]
+}

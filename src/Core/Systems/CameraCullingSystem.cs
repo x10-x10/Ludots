@@ -1,23 +1,31 @@
 using System;
 using System.Numerics;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Arch.Core;
 using Ludots.Core.Components;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Components;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Spatial;
 
 namespace Ludots.Core.Systems
 {
     public class CameraCullingSystem : BaseSystem<World, float>
     {
+        private static readonly QueryDescription _presentationStateQuery = new QueryDescription()
+            .WithAll<PresentationFrameState>();
+
         private readonly CameraManager _cameraManager;
         private readonly ISpatialQueryService _spatial;
         private readonly IViewController _view;
+        private readonly PresentationTimingDiagnostics? _timingDiagnostics;
         private Entity[] _buffer = new Entity[4096];
         private HashSet<Entity> _prevVisible = new HashSet<Entity>();
         private HashSet<Entity> _nextVisible = new HashSet<Entity>();
+
+        public CameraCullingDebugState DebugState { get; } = new CameraCullingDebugState();
         
         /// <summary>
         /// LOD 距离阈值（厘米）。实体到相机距离小于该值则使用对应 LOD。
@@ -27,22 +35,30 @@ namespace Ludots.Core.Systems
         public float LowLODDistCm = 20000f;    // < 200m (Low)
         // > LowLODDistCm → Culled
 
-        public CameraCullingSystem(World world, CameraManager cameraManager, ISpatialQueryService spatial, IViewController view) : base(world) 
+        public CameraCullingSystem(
+            World world,
+            CameraManager cameraManager,
+            ISpatialQueryService spatial,
+            IViewController view,
+            PresentationTimingDiagnostics? timingDiagnostics = null) : base(world) 
         {
             _cameraManager = cameraManager;
             _spatial = spatial ?? throw new ArgumentNullException(nameof(spatial));
             _view = view ?? throw new ArgumentNullException(nameof(view));
+            _timingDiagnostics = timingDiagnostics;
         }
 
         public override void Update(in float dt)
         {
-            var target = _cameraManager.State.TargetCm;
-            float distanceCm = _cameraManager.State.DistanceCm;
+            long start = Stopwatch.GetTimestamp();
+            CameraStateSnapshot cameraState = _cameraManager.GetInterpolatedState(ReadPresentationAlpha());
+            var target = cameraState.TargetCm;
+            float distanceCm = cameraState.DistanceCm;
             
             // Calculate Logic Viewport Size
-            float fovY = _cameraManager.State.FovYDeg * (float)(Math.PI / 180.0f);
+            float fovY = cameraState.FovYDeg * (float)(Math.PI / 180.0f);
             float aspectRatio = _view.AspectRatio;
-            float pitchRad = _cameraManager.State.Pitch * (float)(Math.PI / 180.0f);
+            float pitchRad = cameraState.Pitch * (float)(Math.PI / 180.0f);
             
             // H = 2 * Distance * tan(FOV/2)
             float logicHeight = 2.0f * distanceCm * (float)Math.Tan(fovY / 2.0f);
@@ -91,7 +107,16 @@ namespace Ludots.Core.Systems
             {
                 var e = _buffer[idx];
                 if (!World.IsAlive(e)) continue;
-                if (!World.Has<WorldPositionCm>(e) || !World.Has<CullState>(e) || !World.Has<VisualModel>(e)) continue;
+                if (!World.Has<WorldPositionCm>(e) || !World.Has<CullState>(e) || !World.Has<VisualRuntimeState>(e)) continue;
+
+                var visual = World.Get<VisualRuntimeState>(e);
+                if (!visual.ShouldEmit)
+                {
+                    ref var hiddenCull = ref World.Get<CullState>(e);
+                    hiddenCull.LOD = LODLevel.Culled;
+                    hiddenCull.IsVisible = false;
+                    continue;
+                }
 
                 var wp = World.Get<WorldPositionCm>(e).Value;
                 float px = wp.X.ToFloat();
@@ -146,6 +171,39 @@ namespace Ludots.Core.Systems
             var tmp = _prevVisible;
             _prevVisible = _nextVisible;
             _nextVisible = tmp;
+
+            DebugState.MinX = minX;
+            DebugState.MaxX = maxX;
+            DebugState.MinY = minY;
+            DebugState.MaxY = maxY;
+            DebugState.HighLodDist = HighLODDistCm;
+            DebugState.MediumLodDist = MediumLODDistCm;
+            DebugState.LowLodDist = LowLODDistCm;
+            DebugState.CameraTargetCm = new System.Numerics.Vector2(target.X, target.Y);
+            DebugState.VisibleEntityCount = _prevVisible.Count;
+            _timingDiagnostics?.ObserveCameraCulling((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency, _prevVisible.Count);
+        }
+
+        private float ReadPresentationAlpha()
+        {
+            var job = new ReadAlphaJob();
+            World.InlineQuery<ReadAlphaJob, PresentationFrameState>(in _presentationStateQuery, ref job);
+            return job.Alpha;
+        }
+
+        private struct ReadAlphaJob : IForEach<PresentationFrameState>
+        {
+            public float Alpha;
+
+            public ReadAlphaJob()
+            {
+                Alpha = 1f;
+            }
+
+            public void Update(ref PresentationFrameState state)
+            {
+                Alpha = state.Enabled ? state.InterpolationAlpha : 1f;
+            }
         }
     }
 }

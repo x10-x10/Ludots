@@ -1,5 +1,12 @@
+using System;
+
 namespace Ludots.Core.Scripting
 {
+    /// <summary>
+    /// Legacy string-based context keys. Use <see cref="CoreServiceKeys"/> with
+    /// <see cref="ServiceKey{T}"/> for compile-time type safety instead.
+    /// </summary>
+    [Obsolete("Use CoreServiceKeys with ServiceKey<T> for type-safe access. This class will be removed in a future release.")]
     public static class ContextKeys
     {
         public const string World = "World";
@@ -9,11 +16,11 @@ namespace Ludots.Core.Scripting
         public const string Engine = "Engine";
         public const string MapId = "MapId";
         public const string MapTags = "MapTags";
-        public const string UISystem = "UISystem";
         public const string UIRoot = "UIRoot";
         public const string UiCaptured = "UiCaptured";
         public const string InputHandler = "InputHandler";
         public const string InputBackend = "InputBackend";
+        public const string ViewController = "ViewController";
         public const string ScreenProjector = "ScreenProjector";
         public const string ScreenRayProvider = "ScreenRayProvider";
         public const string DebugDrawCommandBuffer = "DebugDrawCommandBuffer";
@@ -37,6 +44,10 @@ namespace Ludots.Core.Scripting
         public const string InputResponseBuffer = "InputResponseBuffer";
         public const string SelectionRequestQueue = "SelectionRequestQueue";
         public const string SelectionResponseBuffer = "SelectionResponseBuffer";
+        public const string RuntimeEntitySpawnQueue = "RuntimeEntitySpawnQueue";
+        public const string SelectionRuleRegistry = "SelectionRuleRegistry";
+        public const string InteractionActionBindings = "InteractionActionBindings";
+        public const string ActiveInputOrderMapping = "ActiveInputOrderMapping";
         public const string OrderQueue = "OrderQueue";
         public const string OrderTypeRegistry = "OrderTypeRegistry";
         public const string OrderBufferSystem = "OrderBufferSystem";
@@ -54,6 +65,13 @@ namespace Ludots.Core.Scripting
         public const string PresentationPrimitiveDrawBuffer = "PresentationPrimitiveDrawBuffer";
         public const string PresentationWorldHudBuffer = "PresentationWorldHudBuffer";
         public const string PresentationWorldHudStrings = "PresentationWorldHudStrings";
+        public const string PresentationTextCatalog = "PresentationTextCatalog";
+        public const string PresentationTextLocaleSelection = "PresentationTextLocaleSelection";
+        public const string PresentationScreenHudBuffer = "PresentationScreenHudBuffer";
+        public const string ScreenOverlayBuffer = "ScreenOverlayBuffer";
+        public const string RenderDebugState = "RenderDebugState";
+        public const string RenderCameraDebugState = "RenderCameraDebugState";
+        public const string CameraCullingDebugState = "CameraCullingDebugState";
         public const string WorldSizeSpec = "WorldSizeSpec";
         public const string SpatialCoordinateConverter = "SpatialCoordinateConverter";
         public const string SpatialQueryService = "SpatialQueryService";
@@ -65,18 +83,20 @@ namespace Ludots.Core.Scripting
         public const string ConfigCatalog = "ConfigCatalog";
         public const string AiRuntime = "AiRuntime";
         public const string MapFeatureFlags = "MapFeatureFlags";
-        public const string CameraControllerRequest = "CameraControllerRequest";
-        public const string CameraControllerRegistry = "CameraControllerRegistry";
+        public const string CameraPoseRequest = "CameraPoseRequest";
+        public const string VirtualCameraRequest = "VirtualCameraRequest";
+        public const string VirtualCameraRegistry = "VirtualCameraRegistry";
         public const string LocalPlayerEntity = "LocalPlayerEntity";
         public const string SelectedEntity = "SelectedEntity";
+        public const string HoveredEntity = "HoveredEntity";
         public const string AbilityInputRequestQueue = "AbilityInputRequestQueue";
         public const string GameConfig = "GameConfig";
         public const string PresentationFrameSetup = "PresentationFrameSetup";
         public const string TransientMarkerBuffer = "TransientMarkerBuffer";
-        // WorldHudConfig removed — unified into Performer entity-scoped definitions
+        // WorldHudConfig removed �?unified into Performer entity-scoped definitions
         public const string GasPresentationEventBuffer = "GasPresentationEventBuffer";
         public const string GroundOverlayBuffer = "GroundOverlayBuffer";
-        // IndicatorRequestBuffer removed — unified into Performer direct API
+        // IndicatorRequestBuffer removed �?unified into Performer direct API
         public const string PerformerDefinitionRegistry = "PerformerDefinitionRegistry";
         public const string PerformerInstanceBuffer = "PerformerInstanceBuffer";
         public const string Navigation2DRuntime = "Navigation2DRuntime";
@@ -93,11 +113,5 @@ namespace Ludots.Core.Scripting
 
         public const string SystemFactoryRegistry = "SystemFactoryRegistry";
         public const string TriggerDecoratorRegistry = "TriggerDecoratorRegistry";
-
-        public const string Navigation2DPlayground_AgentDeltaPerTeam = "Navigation2DPlayground_AgentDeltaPerTeam";
-        public const string Navigation2DPlayground_ResetScenario = "Navigation2DPlayground_ResetScenario";
-        public const string Navigation2DPlayground_AgentsPerTeam = "Navigation2DPlayground_AgentsPerTeam";
-        public const string Navigation2DPlayground_LiveAgentsTotal = "Navigation2DPlayground_LiveAgentsTotal";
-        public const string Navigation2DPlayground_FlowDebugLines = "Navigation2DPlayground_FlowDebugLines";
     }
 }

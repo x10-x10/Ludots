@@ -1,0 +1,162 @@
+{
+  "orderTypes": {
+    "castAbility": {
+      "orderTypeId": 100,
+      "label": "Cast Ability",
+      "maxQueueSize": 3,
+      "sameTypePolicy": "Queue",
+      "queueFullPolicy": "DropOldest",
+      "priority": 100,
+      "bufferWindowMs": 500,
+      "pendingBufferWindowMs": 400,
+      "canInterruptSelf": false,
+      "queuedModeMaxSize": 8,
+      "allowQueuedMode": true,
+      "clearQueueOnActivate": true,
+      "spatialBlackboardKey": 112,
+      "entityBlackboardKey": 111,
+      "intArg0BlackboardKey": 110,
+      "validationGraphId": 0
+    },
+    "moveTo": {
+      "orderTypeId": 101,
+      "label": "Move To",
+      "maxQueueSize": 8,
+      "sameTypePolicy": "Queue",
+      "queueFullPolicy": "DropOldest",
+      "priority": 60,
+      "bufferWindowMs": 300,
+      "pendingBufferWindowMs": 0,
+      "canInterruptSelf": true,
+      "queuedModeMaxSize": 8,
+      "allowQueuedMode": true,
+      "clearQueueOnActivate": true,
+      "spatialBlackboardKey": 201,
+      "entityBlackboardKey": -1,
+      "intArg0BlackboardKey": -1,
+      "validationGraphId": 0
+    },
+    "attackTarget": {
+      "orderTypeId": 102,
+      "label": "Attack Target",
+      "maxQueueSize": 1,
+      "sameTypePolicy": "Replace",
+      "queueFullPolicy": "DropOldest",
+      "priority": 75,
+      "bufferWindowMs": 300,
+      "pendingBufferWindowMs": 400,
+      "canInterruptSelf": true,
+      "queuedModeMaxSize": 8,
+      "allowQueuedMode": true,
+      "clearQueueOnActivate": true,
+      "spatialBlackboardKey": 121,
+      "entityBlackboardKey": 120,
+      "intArg0BlackboardKey": -1,
+      "validationGraphId": 0
+    },
+    "stop": {
+      "orderTypeId": 103,
+      "label": "Stop",
+      "maxQueueSize": 1,
+      "sameTypePolicy": "Replace",
+      "queueFullPolicy": "DropOldest",
+      "priority": 200,
+      "bufferWindowMs": 0,
+      "pendingBufferWindowMs": 400,
+      "canInterruptSelf": false,
+      "queuedModeMaxSize": 1,
+      "allowQueuedMode": false,
+      "clearQueueOnActivate": true,
+      "spatialBlackboardKey": -1,
+      "entityBlackboardKey": -1,
+      "intArg0BlackboardKey": -1,
+      "validationGraphId": 0
+    },
+    "chainPass": {
+      "orderTypeId": 1,
+      "label": "Pass",
+      "maxQueueSize": 1,
+      "sameTypePolicy": "Replace",
+      "queueFullPolicy": "RejectNew",
+      "priority": 10,
+      "bufferWindowMs": 0,
+      "pendingBufferWindowMs": 0,
+      "canInterruptSelf": false,
+      "queuedModeMaxSize": 1,
+      "allowQueuedMode": false,
+      "clearQueueOnActivate": false,
+      "spatialBlackboardKey": -1,
+      "entityBlackboardKey": -1,
+      "intArg0BlackboardKey": -1,
+      "validationGraphId": 0
+    },
+    "chainNegate": {
+      "orderTypeId": 2,
+      "label": "Negate",
+      "maxQueueSize": 1,
+      "sameTypePolicy": "Replace",
+      "queueFullPolicy": "RejectNew",
+      "priority": 20,
+      "bufferWindowMs": 0,
+      "pendingBufferWindowMs": 0,
+      "canInterruptSelf": false,
+      "queuedModeMaxSize": 1,
+      "allowQueuedMode": false,
+      "clearQueueOnActivate": false,
+      "spatialBlackboardKey": -1,
+      "entityBlackboardKey": -1,
+      "intArg0BlackboardKey": -1,
+      "validationGraphId": 0
+    },
+    "chainActivateEffect": {
+      "orderTypeId": 3,
+      "label": "Chain",
+      "maxQueueSize": 1,
+      "sameTypePolicy": "Replace",
+      "queueFullPolicy": "RejectNew",
+      "priority": 30,
+      "bufferWindowMs": 0,
+      "pendingBufferWindowMs": 0,
+      "canInterruptSelf": false,
+      "queuedModeMaxSize": 1,
+      "allowQueuedMode": false,
+      "clearQueueOnActivate": false,
+      "spatialBlackboardKey": -1,
+      "entityBlackboardKey": -1,
+      "intArg0BlackboardKey": -1,
+      "validationGraphId": 0
+    }
+  },
+  "orderRules": {
+    "castAbility": {
+      "orderTypeId": 100,
+      "blockedActiveOrderTypeIds": [],
+      "interruptsActiveOrderTypeIds": [
+        101
+      ]
+    },
+    "moveTo": {
+      "orderTypeId": 101,
+      "blockedActiveOrderTypeIds": [],
+      "interruptsActiveOrderTypeIds": [
+        102
+      ]
+    },
+    "attackTarget": {
+      "orderTypeId": 102,
+      "blockedActiveOrderTypeIds": [],
+      "interruptsActiveOrderTypeIds": [
+        101
+      ]
+    },
+    "stop": {
+      "orderTypeId": 103,
+      "blockedActiveOrderTypeIds": [],
+      "interruptsActiveOrderTypeIds": [
+        100,
+        101,
+        102
+      ]
+    }
+  }
+}

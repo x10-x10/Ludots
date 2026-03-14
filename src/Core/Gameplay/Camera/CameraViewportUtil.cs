@@ -1,0 +1,213 @@
+using System;
+using System.Numerics;
+using Ludots.Core.Mathematics;
+using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Hud;
+using Ludots.Platform.Abstractions;
+
+namespace Ludots.Core.Gameplay.Camera
+{
+    /// <summary>
+    /// Pure-math viewport and projection utilities. Platform-agnostic.
+    /// Used by Core systems for culling, HUD projection, and preset design.
+    /// </summary>
+    public static class CameraViewportUtil
+    {
+        private const float NearPlane = 0.1f;
+        private const float FarPlane = 10000f;
+
+        /// <summary>
+        /// Compute viewport extent in logic space (cm) with buffer.
+        /// Same formula as CameraCullingSystem.
+        /// </summary>
+        public static (float widthCm, float heightCm) ComputeViewportExtent(
+            float distanceCm, float fovYDeg, float pitchDeg, float aspectRatio,
+            float buffer = 1.5f)
+        {
+            float fovY = fovYDeg * (float)(Math.PI / 180.0);
+            float pitchRad = pitchDeg * (float)(Math.PI / 180.0);
+
+            float logicHeight = 2.0f * distanceCm * (float)Math.Tan(fovY / 2.0f);
+            float pitchScale = 1.0f / Math.Max((float)Math.Sin(pitchRad), 0.1f);
+            logicHeight *= pitchScale;
+            float logicWidth = logicHeight * aspectRatio;
+
+            logicWidth *= buffer;
+            logicHeight *= buffer;
+
+            return (logicWidth, logicHeight);
+        }
+
+        /// <summary>
+        /// Given desired vertical extent (cm), compute required DistanceCm.
+        /// </summary>
+        public static float DistanceForVerticalExtent(
+            float desiredHeightCm, float fovYDeg, float pitchDeg, float buffer = 1.5f)
+        {
+            float fovY = fovYDeg * (float)(Math.PI / 180.0);
+            float pitchRad = pitchDeg * (float)(Math.PI / 180.0);
+            float sinPitch = Math.Max((float)Math.Sin(pitchRad), 0.1f);
+
+            float h0 = desiredHeightCm / (2f * buffer);
+            float distanceCm = h0 * sinPitch / (float)Math.Tan(fovY / 2.0);
+            return distanceCm;
+        }
+
+        /// <summary>
+        /// Given desired horizontal extent (cm), compute required DistanceCm.
+        /// </summary>
+        public static float DistanceForHorizontalExtent(
+            float desiredWidthCm, float fovYDeg, float pitchDeg, float aspectRatio, float buffer = 1.5f)
+        {
+            float desiredHeightCm = desiredWidthCm / aspectRatio;
+            return DistanceForVerticalExtent(desiredHeightCm, fovYDeg, pitchDeg, buffer);
+        }
+
+        /// <summary>
+        /// Project world position (meters, Y-up) to screen pixels.
+        /// Returns NaN if behind camera or outside frustum.
+        /// </summary>
+        public static Vector2 WorldToScreen(
+            Vector3 worldM,
+            in CameraRenderState3D camera,
+            Vector2 resolution,
+            float aspectRatio)
+        {
+            var view = Matrix4x4.CreateLookAt(camera.Position, camera.Target, camera.Up);
+            float fovYRad = camera.FovYDeg * (float)(Math.PI / 180.0);
+            var proj = Matrix4x4.CreatePerspectiveFieldOfView(fovYRad, aspectRatio, NearPlane, FarPlane);
+
+            var world4 = new Vector4(worldM, 1f);
+            var viewProj = view * proj;
+            var clip = Vector4.Transform(world4, viewProj);
+
+            if (clip.W <= 0.001f)
+                return new Vector2(float.NaN, float.NaN);
+
+            float ndcX = clip.X / clip.W;
+            float ndcY = clip.Y / clip.W;
+
+            if (ndcX < -1f || ndcX > 1f || ndcY < -1f || ndcY > 1f)
+                return new Vector2(float.NaN, float.NaN);
+
+            float screenX = (ndcX + 1f) * 0.5f * resolution.X;
+            float screenY = (1f - ndcY) * 0.5f * resolution.Y;
+
+            return new Vector2(screenX, screenY);
+        }
+
+        /// <summary>
+        /// Convert a screen-space pixel position into a world-space ray using the
+        /// same camera math as <see cref="WorldToScreen"/>.
+        /// </summary>
+        public static ScreenRay ScreenToRay(
+            Vector2 screenPosition,
+            in CameraRenderState3D camera,
+            Vector2 resolution,
+            float aspectRatio)
+        {
+            if (resolution.X <= 0f || resolution.Y <= 0f)
+            {
+                return new ScreenRay(Vector3.Zero, Vector3.UnitZ);
+            }
+
+            float ndcX = (screenPosition.X / resolution.X) * 2f - 1f;
+            float ndcY = 1f - (screenPosition.Y / resolution.Y) * 2f;
+
+            var view = Matrix4x4.CreateLookAt(camera.Position, camera.Target, camera.Up);
+            float fovYRad = camera.FovYDeg * (float)(Math.PI / 180.0);
+            var projection = Matrix4x4.CreatePerspectiveFieldOfView(fovYRad, aspectRatio, NearPlane, FarPlane);
+            var viewProj = view * projection;
+            if (!Matrix4x4.Invert(viewProj, out var invViewProj))
+            {
+                Vector3 fallbackDir = Vector3.Normalize(camera.Target - camera.Position);
+                return new ScreenRay(camera.Position, fallbackDir);
+            }
+
+            var nearClip = new Vector4(ndcX, ndcY, 0f, 1f);
+            var farClip = new Vector4(ndcX, ndcY, 1f, 1f);
+            var nearWorld4 = Vector4.Transform(nearClip, invViewProj);
+            var farWorld4 = Vector4.Transform(farClip, invViewProj);
+            if (MathF.Abs(nearWorld4.W) < 1e-6f || MathF.Abs(farWorld4.W) < 1e-6f)
+            {
+                Vector3 fallbackDir = Vector3.Normalize(camera.Target - camera.Position);
+                return new ScreenRay(camera.Position, fallbackDir);
+            }
+
+            nearWorld4 /= nearWorld4.W;
+            farWorld4 /= farWorld4.W;
+
+            var nearWorld = new Vector3(nearWorld4.X, nearWorld4.Y, nearWorld4.Z);
+            var farWorld = new Vector3(farWorld4.X, farWorld4.Y, farWorld4.Z);
+            var direction = Vector3.Normalize(farWorld - nearWorld);
+            return new ScreenRay(nearWorld, direction);
+        }
+
+        /// <summary>
+        /// Derive CameraRenderState3D from CameraState (no smoothing).
+        /// Same logic as CameraPresenter.
+        /// </summary>
+        public static CameraRenderState3D StateToRenderState(CameraState state, RenderCameraDebugState cameraDebug = null)
+        {
+            if (state == null)
+                throw new ArgumentNullException(nameof(state));
+
+            return StateToRenderState(CameraStateSnapshot.FromState(state), cameraDebug);
+        }
+
+        public static CameraRenderState3D StateToRenderState(in CameraStateSnapshot state, RenderCameraDebugState cameraDebug = null)
+        {
+            Vector3 targetPos = new Vector3(
+                WorldUnits.CmToM(state.TargetCm.X), 0f, WorldUnits.CmToM(state.TargetCm.Y));
+
+            float yawRad = state.Yaw * (float)(Math.PI / 180.0);
+            float pitchRad = state.Pitch * (float)(Math.PI / 180.0);
+            float distanceM = WorldUnits.CmToM(state.DistanceCm);
+            if (cameraDebug is { Enabled: true })
+            {
+                distanceM += cameraDebug.PullBackMeters;
+            }
+
+            float hDist = distanceM * (float)Math.Cos(pitchRad);
+            float vDist = distanceM * (float)Math.Sin(pitchRad);
+
+            float offsetX = hDist * (float)Math.Sin(yawRad);
+            float offsetZ = -hDist * (float)Math.Cos(yawRad);
+            Vector3 offset = new Vector3(offsetX, vDist, offsetZ);
+            Vector3 desiredPos = targetPos + offset;
+            if (cameraDebug is { Enabled: true })
+            {
+                desiredPos += cameraDebug.PositionOffsetMeters;
+            }
+
+            bool firstPerson = state.RigKind == CameraRigKind.FirstPerson || Vector3.DistanceSquared(targetPos, desiredPos) < 0.000001f;
+            Vector3 lookTarget = targetPos;
+            Vector3 forward;
+            if (firstPerson)
+            {
+                desiredPos = targetPos;
+                forward = ForwardFromYawPitch(yawRad, pitchRad);
+                lookTarget = desiredPos + forward;
+            }
+            else
+            {
+                forward = Vector3.Normalize(targetPos - desiredPos);
+            }
+
+            Vector3 up = Vector3.UnitY;
+            if (Math.Abs(Vector3.Dot(forward, up)) > 0.99f)
+                up = Vector3.UnitZ;
+
+            return new CameraRenderState3D(desiredPos, lookTarget, up, state.FovYDeg);
+        }
+
+        private static Vector3 ForwardFromYawPitch(float yawRad, float pitchRad)
+        {
+            float cosPitch = (float)Math.Cos(pitchRad);
+            return Vector3.Normalize(new Vector3(
+                cosPitch * (float)Math.Sin(yawRad),
+                (float)Math.Sin(pitchRad),
+                -cosPitch * (float)Math.Cos(yawRad)));
+        }
+    }
+}

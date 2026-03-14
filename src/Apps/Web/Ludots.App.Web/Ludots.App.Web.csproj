@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <Import Project="..\..\..\Build\SkiaNativeRuntime.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Adapters\Web\Ludots.Adapter.Web\Ludots.Adapter.Web.csproj" />
+    <ProjectReference Include="..\..\..\Core\Ludots.Physics.Broadphase\Ludots.Physics.Broadphase.csproj" />
+    <ProjectReference Include="..\..\..\Core\Ludots.Physics2D\Ludots.Physics2D.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="launcher.runtime.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="game.navigation2d.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

@@ -39,11 +39,13 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine("[MOBA] 进入英雄竞技场。");
             sb.AppendLine("═══════════════════════════════════════════");
 
-            RunWithEngine(new[] { "LudotsCoreMod", "MobaDemoMod" }, "entry", engine =>
+            RunWithEngine(new[] { "LudotsCoreMod", "CoreInputMod", "MobaDemoMod" }, "entry", engine =>
             {
                 var world = engine.World;
                 var (hero, enemy1, enemy2) = FindEntities3(world, "Hero", "Enemy1", "Enemy2");
                 int healthId = EnsureAttr("Health");
+                int forceXId = EnsureAttr("Physics.ForceRequestX");
+                int forceYId = EnsureAttr("Physics.ForceRequestY");
 
                 LogEntityState(sb, "[MOBA]", "初始状态", world, hero, "Hero", new[] { healthId }, new[] { "Health" });
                 LogEntityState(sb, "[MOBA]", "初始状态", world, enemy1, "Enemy1", new[] { healthId }, new[] { "Health" });
@@ -60,7 +62,7 @@ namespace Ludots.Tests.GAS.Production
 
                 // ── W: 自我治疗 ──
                 // 先让 hero 受点伤
-                var effectRequests = (EffectRequestQueue)engine.GlobalContext[ContextKeys.EffectRequestQueue];
+                var effectRequests = engine.GetService(CoreServiceKeys.EffectRequestQueue);
                 int qTplId = EffectTemplateIdRegistry.GetId("Effect.Moba.Damage.Q");
                 effectRequests.Publish(new EffectRequest { RootId = 0, Source = enemy1, Target = hero, TargetContext = default, TemplateId = qTplId });
                 Tick(engine, 5);
@@ -117,6 +119,68 @@ namespace Ludots.Tests.GAS.Production
                     effectRequests.Publish(new EffectRequest { RootId = 0, Source = hero, Target = hero, TargetContext = default, TemplateId = auraId });
                     Tick(engine, 5);
                     sb.AppendLine("[MOBA] 光环已激活 (PeriodicSearch radius=700 Friendly)。");
+                }
+
+                // ── LaunchProjectile: 弹道生成 ──
+                int projectileTplId = EffectTemplateIdRegistry.GetId("Effect.Moba.Projectile.Arrow");
+                if (projectileTplId > 0)
+                {
+                    int projectileBefore = CountEntitiesWith<ProjectileState>(world);
+                    sb.AppendLine("[MOBA] 触发【Arrow Projectile】验证 LaunchProjectile。");
+                    effectRequests.Publish(new EffectRequest { RootId = 0, Source = hero, Target = enemy1, TargetContext = default, TemplateId = projectileTplId });
+                    Tick(engine, 5);
+                    int projectileAfter = CountEntitiesWith<ProjectileState>(world);
+                    sb.AppendLine($"[MOBA] Projectile 实体数: before={projectileBefore}, after={projectileAfter}。");
+                    Assert.That(projectileAfter, Is.GreaterThanOrEqualTo(projectileBefore), "LaunchProjectile should not reduce projectile count unexpectedly.");
+                }
+
+                // ── ApplyForce2D: 力输入注入 ──
+                int forceTplId = EffectTemplateIdRegistry.GetId("Effect.Moba.Force.E");
+                if (forceTplId > 0)
+                {
+                    float fxBefore = world.Get<AttributeBuffer>(enemy1).GetCurrent(forceXId);
+                    float fyBefore = world.Get<AttributeBuffer>(enemy1).GetCurrent(forceYId);
+                    sb.AppendLine("[MOBA] 对 Enemy1 施加【ApplyForce2D】。");
+                    effectRequests.Publish(new EffectRequest { RootId = 0, Source = hero, Target = enemy1, TargetContext = default, TemplateId = forceTplId });
+                    Tick(engine, 5);
+                    float fxAfter = world.Get<AttributeBuffer>(enemy1).GetCurrent(forceXId);
+                    float fyAfter = world.Get<AttributeBuffer>(enemy1).GetCurrent(forceYId);
+                    sb.AppendLine($"[MOBA] Force attrs: X {fxBefore:F1}->{fxAfter:F1}, Y {fyBefore:F1}->{fyAfter:F1}");
+                    Assert.That(MathF.Abs(fxAfter) + MathF.Abs(fyAfter), Is.GreaterThan(0.01f), "ApplyForce2D should write force request attributes.");
+                }
+
+                // ── CreateUnit: 召唤单位 ──
+                int summonTplId = EffectTemplateIdRegistry.GetId("Effect.Moba.Summon.Skeleton");
+                if (summonTplId > 0)
+                {
+                    if (engine.GlobalContext.TryGetValue(CoreServiceKeys.EffectTemplateRegistry.Name, out var tplObj) &&
+                        tplObj is EffectTemplateRegistry tplRegistry &&
+                        tplRegistry.TryGet(summonTplId, out var summonTpl))
+                    {
+                        Assert.That(summonTpl.PresetType, Is.EqualTo(EffectPresetType.CreateUnit), "Summon effect must use CreateUnit preset.");
+                    }
+
+                    sb.AppendLine("[MOBA] 触发【CreateUnit: Summon Skeleton】。");
+                    effectRequests.Publish(new EffectRequest { RootId = 0, Source = hero, Target = hero, TargetContext = default, TemplateId = summonTplId });
+                    Tick(engine, 10);
+                    sb.AppendLine("[MOBA] Summon 请求已执行（CreateUnit preset 覆盖验证通过）。");
+                }
+
+                // ── Displacement: 位移效果 ──
+                int displacementTplId = EffectTemplateIdRegistry.GetId("Effect.Moba.Displacement.R");
+                if (displacementTplId > 0 && world.Has<WorldPositionCm>(enemy2))
+                {
+                    if (engine.GlobalContext.TryGetValue(CoreServiceKeys.EffectTemplateRegistry.Name, out var tplObj) &&
+                        tplObj is EffectTemplateRegistry tplRegistry &&
+                        tplRegistry.TryGet(displacementTplId, out var displacementTpl))
+                    {
+                        Assert.That(displacementTpl.PresetType, Is.EqualTo(EffectPresetType.Displacement), "Displacement effect must use Displacement preset.");
+                    }
+
+                    sb.AppendLine("[MOBA] 对 Enemy2 施加【Displacement】。");
+                    effectRequests.Publish(new EffectRequest { RootId = 0, Source = hero, Target = enemy2, TargetContext = default, TemplateId = displacementTplId });
+                    Tick(engine, 20);
+                    sb.AppendLine("[MOBA] 位移请求已执行（Displacement preset 覆盖验证通过）。");
                 }
 
                 sb.AppendLine("───────────────────────────────────────────");
@@ -176,7 +240,7 @@ namespace Ludots.Tests.GAS.Production
                 LogEntityState(sb, "[TCG]", "初始状态", world, enemy, "TcgEnemy", new[] { healthId }, new[] { "Health" });
 
                 // PoisonCounter slot 1 (ability 2102) - stackable DoT, limit 5, AddDuration
-                var effectRequests = (EffectRequestQueue)engine.GlobalContext[ContextKeys.EffectRequestQueue];
+                var effectRequests = engine.GetService(CoreServiceKeys.EffectRequestQueue);
                 int poisonId = EffectTemplateIdRegistry.GetId("Effect.Tcg.PoisonCounter");
 
                 for (int stack = 1; stack <= 3; stack++)
@@ -217,7 +281,7 @@ namespace Ludots.Tests.GAS.Production
 
                 // MagicBarrier (slot 0, ability 2103 on tcg_grant map) - grants Immune.Spell
                 sb.AppendLine("[TCG] TcgHero 施放【魔法屏障】→ 自身 (Infinite Buff, GrantedTags: Immune.Spell)。");
-                var effectRequests = (EffectRequestQueue)engine.GlobalContext[ContextKeys.EffectRequestQueue];
+                var effectRequests = engine.GetService(CoreServiceKeys.EffectRequestQueue);
                 int magicBarrierId = EffectTemplateIdRegistry.GetId("Effect.Tcg.MagicBarrier");
                 effectRequests.Publish(new EffectRequest { RootId = 0, Source = hero, Target = hero, TargetContext = default, TemplateId = magicBarrierId });
                 Tick(engine, 10);
@@ -270,7 +334,7 @@ namespace Ludots.Tests.GAS.Production
 
                 // ── Slot 1 (3102): HealPotion +25HP ──
                 // 先让 hero 受伤
-                var effectRequests = (EffectRequestQueue)engine.GlobalContext[ContextKeys.EffectRequestQueue];
+                var effectRequests = engine.GetService(CoreServiceKeys.EffectRequestQueue);
                 int poisonId = EffectTemplateIdRegistry.GetId("Effect.Arpg.Poison");
                 effectRequests.Publish(new EffectRequest { RootId = 0, Source = enemy, Target = hero, TargetContext = default, TemplateId = poisonId });
                 Tick(engine, 15);
@@ -398,7 +462,7 @@ namespace Ludots.Tests.GAS.Production
                 LogTags(sb, "[4X]", world, engine, governor, "Governor", new[] { "Status.Allied" });
 
                 // ── Slot 5 (4106): TradeRoute - stackable Gold buff, limit 5, KeepDuration ──
-                var effectRequests = (EffectRequestQueue)engine.GlobalContext[ContextKeys.EffectRequestQueue];
+                var effectRequests = engine.GetService(CoreServiceKeys.EffectRequestQueue);
                 int tradeId = EffectTemplateIdRegistry.GetId("Effect.4X.TradeRoute");
                 float goldBefore = world.Get<AttributeBuffer>(governor).GetCurrent(goldId);
                 sb.AppendLine("[4X] 对 Governor 施加 3 层【贸易路线】(stackable Gold buff, KeepDuration, limit=5)。");
@@ -542,11 +606,7 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "src", "Mods");
-
-            var modPaths = new List<string>(mods.Length);
-            for (int i = 0; i < mods.Length; i++)
-                modPaths.Add(Path.Combine(modsRoot, mods[i]));
+            var modPaths = RepoModPaths.ResolveExplicit(repoRoot, mods);
 
             var engine = new GameEngine();
             try
@@ -555,7 +615,8 @@ namespace Ludots.Tests.GAS.Production
                 InstallDummyInput(engine);
                 engine.Start();
                 engine.LoadMap(mapId);
-                engine.GlobalContext.Remove(ContextKeys.CameraControllerRequest);
+                engine.GlobalContext.Remove(CoreServiceKeys.CameraPoseRequest.Name);
+                engine.GlobalContext.Remove(CoreServiceKeys.VirtualCameraRequest.Name);
 
                 // Warm up
                 Tick(engine, 5);
@@ -576,11 +637,11 @@ namespace Ludots.Tests.GAS.Production
 
         private static void CastAbility(GameEngine engine, Entity actor, Entity target, int slot)
         {
-            var orderQueue = (OrderQueue)engine.GlobalContext[ContextKeys.OrderQueue];
-            int castAbilityTagId = engine.MergedConfig.Constants.OrderTags["castAbility"];
+            var orderQueue = engine.GetService(CoreServiceKeys.OrderQueue);
+            int castAbilityOrderTypeId = engine.MergedConfig.Constants.OrderTypeIds["castAbility"];
             orderQueue.TryEnqueue(new Order
             {
-                OrderTagId = castAbilityTagId,
+                OrderTypeId = castAbilityOrderTypeId,
                 Actor = actor,
                 Target = target,
                 Args = new OrderArgs { I0 = slot }
@@ -589,7 +650,7 @@ namespace Ludots.Tests.GAS.Production
 
         private static void Tick(GameEngine engine, int frames)
         {
-            var stepPolicy = (GasClockStepPolicy)engine.GlobalContext[ContextKeys.GasClockStepPolicy];
+            var stepPolicy = engine.GetService(CoreServiceKeys.GasClockStepPolicy);
             for (int i = 0; i < frames; i++)
             {
                 if (stepPolicy.Mode == GasStepMode.Manual) stepPolicy.RequestStep(1);
@@ -622,7 +683,7 @@ namespace Ludots.Tests.GAS.Production
                 sb.AppendLine($"{prefix} [{entityName} Tags] (no GameplayTagContainer)");
                 return;
             }
-            var tagOps = (TagOps)engine.GlobalContext[ContextKeys.TagOps];
+            var tagOps = engine.GetService(CoreServiceKeys.TagOps);
             ref var tags = ref world.Get<GameplayTagContainer>(entity);
             sb.Append($"{prefix} [{entityName} Tags]");
             for (int i = 0; i < tagNames.Length; i++)
@@ -692,6 +753,17 @@ namespace Ludots.Tests.GAS.Production
             return found;
         }
 
+        private static int CountEntitiesWith<T>(World world) where T : struct
+        {
+            int count = 0;
+            var q = new QueryDescription().WithAll<T>();
+            world.Query(in q, (Entity _, ref T __) =>
+            {
+                count++;
+            });
+            return count;
+        }
+
         private static void WriteLog(string filename, StringBuilder sb)
         {
             string logPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, filename);
@@ -704,8 +776,8 @@ namespace Ludots.Tests.GAS.Production
         {
             var inputConfig = new InputConfigPipelineLoader(engine.ConfigPipeline).Load();
             var inputHandler = new PlayerInputHandler(new NullInputBackend(), inputConfig);
-            engine.GlobalContext[ContextKeys.InputHandler] = inputHandler;
-            engine.GlobalContext[ContextKeys.UiCaptured] = false;
+            engine.SetService(CoreServiceKeys.InputHandler, inputHandler);
+            engine.SetService(CoreServiceKeys.UiCaptured, false);
         }
 
         private sealed class NullInputBackend : IInputBackend

@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
+    <PackageReference Include="ZeroAllocJobScheduler" Version="1.1.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="NUnit" Version="4.2.2" />
@@ -20,6 +21,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Core\Ludots.Core.csproj" />
     <ProjectReference Include="..\..\Core\Ludots.Physics2D\Ludots.Physics2D.csproj" />
+    <ProjectReference Include="..\..\..\mods\LudotsCoreMod\LudotsCoreMod.csproj" />
+    <ProjectReference Include="..\..\..\mods\Navigation2DPlaygroundMod\Navigation2DPlaygroundMod.csproj" />
+    <ProjectReference Include="..\..\Libraries\Ludots.UI\Ludots.UI.csproj" />
+    <ProjectReference Include="..\..\Libraries\Ludots.UI.Skia\Ludots.UI.Skia.csproj" />
+    <ProjectReference Include="..\..\Libraries\SkiaSharp\SkiaSharp\SkiaSharp.csproj" />
   </ItemGroup>
 
 </Project>

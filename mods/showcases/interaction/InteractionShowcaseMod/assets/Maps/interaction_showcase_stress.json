@@ -1,0 +1,21 @@
+{
+  "Id": "interaction_showcase_stress",
+  "Tags": ["interaction.showcase", "interaction.showcase.stress"],
+  "DefaultCamera": {
+    "VirtualCameraId": "Camera.Profile.Tactical"
+  },
+  "Entities": [
+    {
+      "Template": "interaction_stress_anchor_red",
+      "Overrides": {
+        "WorldPositionCm": { "Value": { "X": 1000, "Y": 1400 } }
+      }
+    },
+    {
+      "Template": "interaction_stress_anchor_blue",
+      "Overrides": {
+        "WorldPositionCm": { "Value": { "X": 5400, "Y": 1400 } }
+      }
+    }
+  ]
+}

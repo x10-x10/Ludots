@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -8,27 +8,32 @@ namespace Ludots.Core.Input.Orders
     /// Interaction mode determines HOW InputActions become Orders.
     /// This is a game-level / player-preference setting, NOT per-ability.
     ///
-    /// TargetFirst (WoW): player selects target first, then presses ability key → order submitted immediately.
-    /// SmartCast (LoL): player presses ability key → order submitted immediately at cursor/hovered entity.
-    /// AimCast (DotA/WC3): player presses ability key → enters aiming phase → click to confirm, right-click/ESC to cancel.
+    /// TargetFirst (WoW): player selects target first, then presses ability key 鈫?order submitted immediately.
+    /// SmartCast (LoL): player presses ability key 鈫?order submitted immediately at cursor/hovered entity.
+    /// AimCast (DotA/WC3): player presses ability key 鈫?enters aiming phase 鈫?click to confirm, right-click/ESC to cancel.
     /// </summary>
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum InteractionModeType
     {
-        /// <summary>WoW style: select target, press key → instant cast.</summary>
+        /// <summary>WoW style: select target, press key 鈫?instant cast.</summary>
         TargetFirst = 0,
 
-        /// <summary>LoL style: press key → cast at cursor / hovered entity.</summary>
+        /// <summary>LoL style: press key 鈫?cast at cursor / hovered entity.</summary>
         SmartCast = 1,
 
-        /// <summary>DotA/WC3 style: press key → aiming → click confirm.</summary>
+        /// <summary>DotA/WC3 style: press key 鈫?aiming 鈫?click confirm.</summary>
         AimCast = 2,
 
         /// <summary>
-        /// LoL "Quick Cast with Indicator" style: hold key → show indicator,
-        /// release key → cast at cursor position. Right-click/ESC cancels.
+        /// LoL "Quick Cast with Indicator" style: hold key 鈫?show indicator,
+        /// release key 鈫?cast at cursor position. Right-click/ESC cancels.
         /// </summary>
         SmartCastWithIndicator = 3,
+
+        /// <summary>
+        /// Action-game style: system scores the current context and chooses the best cast slot + target.
+        /// </summary>
+        ContextScored = 4,
     }
 
     /// <summary>
@@ -52,11 +57,8 @@ namespace Ludots.Core.Input.Orders
         Held = 2,
         
         /// <summary>
-        /// Double-tap trigger. This does not belong in InputTriggerType — double-click-select-same-type
-        /// is a selection system concern (see advanced selection system design).
-        /// Retained for enum stability; will be removed when selection system is implemented.
+        /// Trigger when the action is pressed twice within the configured window.
         /// </summary>
-        [Obsolete("Double-tap selection belongs to the selection system, not InputTriggerType. Will be removed.")]
         DoubleTap = 3
     }
     
@@ -128,13 +130,13 @@ namespace Ludots.Core.Input.Orders
     public enum HeldPolicy
     {
         /// <summary>
-        /// Fire an order every frame while held (default, legacy behavior).
+        /// Fire an order every frame while held (default).
         /// </summary>
         EveryFrame = 0,
         
         /// <summary>
         /// Emit a Start order on press and an End order on release.
-        /// The OrderTagKey is suffixed with ".Start" and ".End" respectively.
+        /// The OrderTypeKey is suffixed with ".Start" and ".End" respectively.
         /// No orders are emitted between press and release.
         /// </summary>
         StartEnd = 1
@@ -205,11 +207,17 @@ namespace Ludots.Core.Input.Orders
         /// </summary>
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public InputTriggerType Trigger { get; set; } = InputTriggerType.PressedThisFrame;
+
+        /// <summary>
+        /// Double-tap time window in seconds.
+        /// Only meaningful when <see cref="Trigger"/> is <see cref="InputTriggerType.DoubleTap"/>.
+        /// </summary>
+        public float DoubleTapWindowSeconds { get; set; } = 0.30f;
         
         /// <summary>
         /// The order type key (must match a key in OrderTypeRegistry).
         /// </summary>
-        public string OrderTagKey { get; set; } = string.Empty;
+        public string OrderTypeKey { get; set; } = string.Empty;
         
         /// <summary>
         /// Template for order arguments.
@@ -318,3 +326,5 @@ namespace Ludots.Core.Input.Orders
         public UserOverrideSettings UserOverrides { get; set; } = new();
     }
 }
+
+

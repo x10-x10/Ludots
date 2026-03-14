@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\..\Build\SkiaNativeRuntime.props" />
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -12,12 +13,6 @@
     <ProjectReference Include="..\..\..\Core\Ludots.Physics.Broadphase\Ludots.Physics.Broadphase.csproj" />
     <ProjectReference Include="..\..\..\Core\Ludots.Physics2D\Ludots.Physics2D.csproj" />
   </ItemGroup>
-
-  <Target Name="BuildModsRelease" BeforeTargets="Build">
-    <MSBuild Projects="..\..\..\Mods\MobaDemoMod\MobaDemoMod.csproj;..\..\..\Mods\PerformanceVisualizationMod\PerformanceVisualizationMod.csproj;..\..\..\Mods\TerrainBenchmarkMod\TerrainBenchmarkMod.csproj;..\..\..\Mods\Physics2DPlaygroundMod\Physics2DPlaygroundMod.csproj;..\..\..\Mods\Navigation2DPlaygroundMod\Navigation2DPlaygroundMod.csproj"
-             Targets="Restore;Build"
-             Properties="Configuration=Release" />
-  </Target>
 
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <None Include="..\..\..\Platforms\Desktop\raylib.dll">
@@ -58,7 +53,7 @@
       <Link>water.fs</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="game.json">
+    <None Include="launcher.runtime.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="game.moba.json">

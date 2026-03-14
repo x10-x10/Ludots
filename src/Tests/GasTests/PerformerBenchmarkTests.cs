@@ -88,14 +88,18 @@ namespace Ludots.Tests.Presentation
 
             _healthAttrId = AttributeRegistry.Register("Health");
 
-            BuiltinPerformerDefinitions.Register(_defs);
+            var meshes = new MeshAssetRegistry();
+            BuiltinPerformerDefinitions.Register(
+                _defs,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
             var session = new GameSession();
             var graphApi = new GasGraphRuntimeApi(_world, null, null, null);
 
             _bridge = new PresentationBridgeSystem(_world, _eventBus, _presEvents, session, _gasEvents);
             _ruleSystem = new PerformerRuleSystem(_world, _presEvents, _commands, _defs, _programs, graphApi, _globals);
-            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances);
+            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances, new Ludots.Core.Presentation.PresentationStableIdAllocator());
             _emitSystem = new PerformerEmitSystem(_world, _instances, _defs, _overlays, _primitives, _hud, _programs, graphApi, _globals);
         }
 
@@ -136,7 +140,7 @@ namespace Ludots.Tests.Presentation
             // Register multiple definitions with rules to stress the matching loop
             for (int d = 100; d < 120; d++)
             {
-                _defs.Register(d, new PerformerDefinition
+                _defs.Register($"bench_{d}", new PerformerDefinition
                 {
                     VisualKind = PerformerVisualKind.Marker3D,
                     MeshOrShapeId = 1,
@@ -222,7 +226,7 @@ namespace Ludots.Tests.Presentation
             {
                 entities[i] = _world.Create(new VisualTransform { Position = new Vector3(i, 0, i) });
                 // Allocate to FloatingCombatText (has AlphaFade, YDrift, bindings)
-                _instances.TryAllocate(BuiltinPerformerIds.FloatingCombatText, entities[i], -1, out _);
+                _instances.TryAllocate(_defs.GetId(WellKnownPerformerKeys.FloatingCombatText), entities[i], -1, out _);
             }
 
             WarmUpGC();
@@ -539,7 +543,7 @@ namespace Ludots.Tests.Presentation
         public void Benchmark_ParamResolution_ManyBindings()
         {
             // Register a definition with many bindings to stress ResolveParam's linear scan
-            _defs.Register(200, new PerformerDefinition
+            _defs.Register("test_200", new PerformerDefinition
             {
                 VisualKind = PerformerVisualKind.WorldBar,
                 EntityScope = EntityScopeFilter.AllWithAttributes,
@@ -670,7 +674,7 @@ namespace Ludots.Tests.Presentation
 
                 for (int d = 0; d < defCount; d++)
                 {
-                    defs.Register(d + 1000, new PerformerDefinition
+                    defs.Register($"bench_{d + 1000}", new PerformerDefinition
                     {
                         VisualKind = PerformerVisualKind.Marker3D,
                         Rules = new[]

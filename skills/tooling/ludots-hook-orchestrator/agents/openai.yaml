@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Ludots Hook Orchestrator"
+  short_description: "Validate hook packets and route next skills"
+  default_prompt: "Use $ludots-hook-orchestrator to validate a hook packet, resolve the next consumer skills from the registry, and write an explicit dispatch note."

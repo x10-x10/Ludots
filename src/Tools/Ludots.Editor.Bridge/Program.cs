@@ -1,16 +1,22 @@
 using Ludots.Core.Map.Hex;
 using Ludots.Core.Map.Board;
 using Ludots.Core.Modding;
+using Ludots.Launcher.Backend;
 using Ludots.Core.Navigation.NavMesh;
 using Ludots.Core.Navigation.NavMesh.Bake;
 using Ludots.Core.Navigation.NavMesh.Config;
 using Ludots.NavBake.Recast;
 using Ludots.Tool;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.FileProviders;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Linq;
+
+var repoRoot = FindAssetsRoot();
+var launcher = new LauncherService(repoRoot);
+var launcherDistPath = Path.Combine(repoRoot, "src", "Tools", "Ludots.Launcher.React", "dist");
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,13 +36,195 @@ builder.Services.AddCors(o =>
 var app = builder.Build();
 app.UseCors("dev");
 
+if (Directory.Exists(launcherDistPath))
+{
+    var launcherDistProvider = new PhysicalFileProvider(launcherDistPath);
+    app.MapGet("/launcher", () => Results.Redirect("/launcher/"));
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider = launcherDistProvider,
+        RequestPath = "/launcher"
+    });
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = launcherDistProvider,
+        RequestPath = "/launcher"
+    });
+}
+
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
+
+app.MapGet("/api/launcher/state", () =>
+{
+    return Results.Ok(new
+    {
+        ok = true,
+        state = launcher.GetState(),
+        mods = launcher.DiscoverMods()
+    });
+});
+
+app.MapGet("/api/presets", () =>
+{
+    var state = launcher.GetState();
+    return Results.Ok(new
+    {
+        ok = true,
+        presets = state.Presets,
+        selectedPresetId = state.SelectedPresetId
+    });
+});
+
+app.MapPost("/api/presets", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    var body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+
+    if (!payload.TryGetProperty("name", out var nameElement) || string.IsNullOrWhiteSpace(nameElement.GetString()))
+    {
+        return Results.BadRequest(new { ok = false, error = "Missing 'name'." });
+    }
+
+    var modIds = new List<string>();
+    if (payload.TryGetProperty("activeModIds", out var modIdsElement) && modIdsElement.ValueKind == JsonValueKind.Array)
+    {
+        foreach (var modIdElement in modIdsElement.EnumerateArray())
+        {
+            if (modIdElement.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(modIdElement.GetString()))
+            {
+                modIds.Add(modIdElement.GetString()!);
+            }
+        }
+    }
+
+    var preset = launcher.SavePreset(
+        payload.TryGetProperty("presetId", out var presetIdElement) && presetIdElement.ValueKind == JsonValueKind.String
+            ? presetIdElement.GetString()
+            : null,
+        nameElement.GetString()!,
+        modIds,
+        includeDependencies: !payload.TryGetProperty("includeDependencies", out var includeDependenciesElement) || includeDependenciesElement.ValueKind != JsonValueKind.False,
+        selectAfterSave: !payload.TryGetProperty("selectAfterSave", out var selectAfterSaveElement) || selectAfterSaveElement.ValueKind != JsonValueKind.False);
+
+    return Results.Ok(new { ok = true, preset, state = launcher.GetState() });
+});
+
+app.MapPost("/api/presets/select", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    var body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+    var presetId = payload.TryGetProperty("presetId", out var presetIdElement) && presetIdElement.ValueKind == JsonValueKind.String
+        ? presetIdElement.GetString()
+        : null;
+
+    var state = launcher.SelectPreset(presetId);
+    return Results.Ok(new { ok = true, state });
+});
+
+app.MapDelete("/api/presets/{presetId}", (string presetId) =>
+{
+    launcher.DeletePreset(presetId);
+    return Results.Ok(new { ok = true, state = launcher.GetState() });
+});
+
+app.MapGet("/api/platforms", () =>
+{
+    var state = launcher.GetState();
+    return Results.Ok(new
+    {
+        ok = true,
+        platforms = state.Platforms,
+        selectedPlatformId = state.SelectedPlatformId
+    });
+});
+
+app.MapPost("/api/platforms/select", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    var body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+    if (!payload.TryGetProperty("platformId", out var platformIdElement) || string.IsNullOrWhiteSpace(platformIdElement.GetString()))
+    {
+        return Results.BadRequest(new { ok = false, error = "Missing 'platformId'." });
+    }
+
+    var state = launcher.SelectPlatform(platformIdElement.GetString()!);
+    return Results.Ok(new { ok = true, state });
+});
 
 app.MapGet("/api/mods", () =>
 {
-    string repoRoot = FindAssetsRoot();
-    var mods = EditorRepo.DiscoverMods(repoRoot);
+    var mods = launcher.DiscoverMods();
     return Results.Ok(new { ok = true, mods });
+});
+
+app.MapGet("/api/mods/{modId}/thumbnail", (string modId) =>
+{
+    var mods = launcher.DiscoverMods();
+    var mod = mods.FirstOrDefault(m => string.Equals(m.Id, modId, StringComparison.OrdinalIgnoreCase));
+    if (mod == null) return Results.NotFound();
+
+    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".webp" })
+    {
+        var path = Path.Combine(mod.RootPath, "assets", "Launcher", "thumbnail" + ext);
+        if (File.Exists(path))
+        {
+            var contentType = ext switch { ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".webp" => "image/webp", _ => "application/octet-stream" };
+            return Results.File(File.ReadAllBytes(path), contentType);
+        }
+    }
+    return Results.NotFound();
+});
+
+app.MapGet("/api/mods/{modId}/readme", (string modId) =>
+{
+    var mods = launcher.DiscoverMods();
+    var mod = mods.FirstOrDefault(m => string.Equals(m.Id, modId, StringComparison.OrdinalIgnoreCase));
+    if (mod == null) return Results.NotFound(new { ok = false });
+
+    var readmePath = Path.Combine(mod.RootPath, "README.md");
+    if (!File.Exists(readmePath)) return Results.NotFound(new { ok = false });
+
+    return Results.Ok(new { ok = true, content = File.ReadAllText(readmePath) });
+});
+
+app.MapGet("/api/mods/{modId}/changelog", (string modId) =>
+{
+    var mods = launcher.DiscoverMods();
+    var mod = mods.FirstOrDefault(m => string.Equals(m.Id, modId, StringComparison.OrdinalIgnoreCase));
+    if (mod == null) return Results.NotFound(new { ok = false });
+
+    if (string.IsNullOrWhiteSpace(mod.ChangelogFile))
+        return Results.NotFound(new { ok = false });
+
+    var changelogPath = Path.Combine(mod.RootPath, mod.ChangelogFile);
+    if (!File.Exists(changelogPath)) return Results.NotFound(new { ok = false });
+
+    return Results.Ok(new { ok = true, content = File.ReadAllText(changelogPath) });
+});
+
+app.MapGet("/api/workspace", () =>
+{
+    var state = launcher.GetState();
+    return Results.Ok(new { ok = true, sources = state.WorkspaceSources });
+});
+
+app.MapPost("/api/workspace/add-source", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    string body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+    if (!payload.TryGetProperty("path", out var pathEl))
+        return Results.BadRequest(new { ok = false, error = "Missing 'path' field" });
+
+    string newSource = pathEl.GetString() ?? "";
+    if (string.IsNullOrWhiteSpace(newSource) || !Directory.Exists(newSource))
+        return Results.BadRequest(new { ok = false, error = $"Directory not found: {newSource}" });
+
+    var state = launcher.AddWorkspaceSource(newSource);
+    return Results.Ok(new { ok = true, sources = state.WorkspaceSources, state });
 });
 
 app.MapGet("/api/mods/{modId}/load-order", (string modId) =>
@@ -147,8 +335,8 @@ app.MapGet("/api/mods/{modId}/mesh-assets", (string modId) =>
 {
     var primitives = new[]
     {
-        new { meshId = Ludots.Core.Presentation.Assets.PrimitiveMeshAssetIds.Cube, kind = "Cube" },
-        new { meshId = Ludots.Core.Presentation.Assets.PrimitiveMeshAssetIds.Sphere, kind = "Sphere" }
+        new { meshKey = Ludots.Core.Presentation.Assets.WellKnownMeshKeys.Cube, kind = "Cube" },
+        new { meshKey = Ludots.Core.Presentation.Assets.WellKnownMeshKeys.Sphere, kind = "Sphere" }
     };
     return Results.Ok(new { ok = true, primitives });
 });
@@ -504,6 +692,193 @@ app.MapPost("/api/nav/bake-recast-react", async (HttpRequest req) =>
     }
 });
 
+app.MapPost("/api/mods/create", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    string body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+    
+    if (!payload.TryGetProperty("id", out var idEl) || string.IsNullOrWhiteSpace(idEl.GetString()))
+        return Results.BadRequest(new { ok = false, error = "Missing 'id'" });
+    
+    string modId = idEl.GetString()!;
+    string template = "empty";
+    if (payload.TryGetProperty("template", out var tplEl) && tplEl.ValueKind == JsonValueKind.String)
+        template = tplEl.GetString() ?? "empty";
+    
+    string? targetDir = null;
+    if (payload.TryGetProperty("dir", out var dirEl) && dirEl.ValueKind == JsonValueKind.String)
+        targetDir = dirEl.GetString();
+
+    try
+    {
+        var output = await launcher.CreateModAsync(modId, template, targetDir);
+        return Results.Ok(new { ok = true, modId, output, mods = launcher.DiscoverMods() });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/mods/{modId}/fix-project", (string modId) =>
+{
+    try
+    {
+        var projectPath = launcher.FixModProject(modId);
+        return Results.Ok(new { ok = true, projectPath, mods = launcher.DiscoverMods() });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/mods/{modId}/build", async (string modId) =>
+{
+    try
+    {
+        var result = await launcher.BuildModAsync(modId);
+        return Results.Ok(new { ok = result.Ok, result, mods = launcher.DiscoverMods() });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/mods/build-all", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    string body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+
+    try
+    {
+        var selectors = ResolveSelectorsFromPayload(launcher, payload, allowDefaultPreset: false);
+        var results = await launcher.BuildAsync(selectors, ResolveAdapterFromPayload(launcher, payload), ResolveBuildModeFromPayload(payload));
+        return Results.Ok(new
+        {
+            ok = results.All(result => result.Ok),
+            results,
+            mods = launcher.DiscoverMods()
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/app/build", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    var body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+    if (!payload.TryGetProperty("platformId", out var platformIdElement) || string.IsNullOrWhiteSpace(platformIdElement.GetString()))
+    {
+        return Results.BadRequest(new { ok = false, error = "Missing 'platformId'." });
+    }
+
+    try
+    {
+        var result = await launcher.BuildAppAsync(platformIdElement.GetString()!);
+        return Results.Ok(new { ok = result.Ok, result });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/launch", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    string body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+
+    try
+    {
+        var selectors = ResolveSelectorsFromPayload(launcher, payload, allowDefaultPreset: true);
+        var result = await launcher.LaunchAsync(selectors, ResolveAdapterFromPayload(launcher, payload), ResolveBuildModeFromPayload(payload));
+        return Results.Ok(new { ok = result.Ok, pid = result.Pid, url = result.Url, error = result.Error, plan = result.Plan });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/mods/generate-sln", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    string body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+    
+    if (!payload.TryGetProperty("modId", out var idEl) || string.IsNullOrWhiteSpace(idEl.GetString()))
+        return Results.BadRequest(new { ok = false, error = "Missing 'modId'" });
+    
+    string modId = idEl.GetString()!;
+
+    try
+    {
+        var slnPath = await launcher.GenerateSolutionAsync(modId);
+        return Results.Ok(new { ok = true, slnPath });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapGet("/api/bindings", () =>
+{
+    return Results.Ok(new { ok = true, bindings = launcher.GetState().Bindings });
+});
+
+app.MapPost("/api/bindings", async (HttpRequest req) =>
+{
+    using var sr = new StreamReader(req.Body);
+    string body = await sr.ReadToEndAsync();
+    var payload = JsonSerializer.Deserialize<JsonElement>(body);
+
+    if (!payload.TryGetProperty("name", out var nameEl) || string.IsNullOrWhiteSpace(nameEl.GetString()))
+        return Results.BadRequest(new { ok = false, error = "Missing 'name'" });
+    if (!payload.TryGetProperty("targetType", out var typeEl) || string.IsNullOrWhiteSpace(typeEl.GetString()))
+        return Results.BadRequest(new { ok = false, error = "Missing 'targetType'" });
+    if (!payload.TryGetProperty("targetValue", out var valueEl) || string.IsNullOrWhiteSpace(valueEl.GetString()))
+        return Results.BadRequest(new { ok = false, error = "Missing 'targetValue'" });
+
+    try
+    {
+        var state = launcher.UpsertBinding(
+            NormalizeBindingName(nameEl.GetString()!),
+            typeEl.GetString()!,
+            valueEl.GetString()!,
+            payload.TryGetProperty("projectPath", out var projectEl) && projectEl.ValueKind == JsonValueKind.String
+                ? projectEl.GetString()
+                : null);
+        return Results.Ok(new { ok = true, state });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapDelete("/api/bindings/{name}", (string name) =>
+{
+    try
+    {
+        var state = launcher.DeleteBinding(NormalizeBindingName(name));
+        return Results.Ok(new { ok = true, state });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
 app.Run("http://localhost:5299");
 
 static float ParseFloat(string? s, float fallback)
@@ -528,6 +903,125 @@ static bool ParseBool(string? s, bool defaultValue)
 static string SerializeArtifact(NavBakeArtifact artifact)
 {
     return JsonSerializer.Serialize(artifact, new JsonSerializerOptions { WriteIndented = true, IncludeFields = true });
+}
+
+static string ResolveAdapterFromPayload(LauncherService launcher, JsonElement payload)
+{
+    if (payload.TryGetProperty("platformId", out var platformIdElement) &&
+        platformIdElement.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(platformIdElement.GetString()))
+    {
+        return platformIdElement.GetString()!;
+    }
+
+    if (payload.TryGetProperty("adapterId", out var adapterIdElement) &&
+        adapterIdElement.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(adapterIdElement.GetString()))
+    {
+        return adapterIdElement.GetString()!;
+    }
+
+    return launcher.GetState().SelectedPlatformId;
+}
+
+static LauncherBuildMode ResolveBuildModeFromPayload(JsonElement payload)
+{
+    if (payload.TryGetProperty("buildMode", out var buildModeElement) &&
+        buildModeElement.ValueKind == JsonValueKind.String &&
+        Enum.TryParse<LauncherBuildMode>(buildModeElement.GetString(), true, out var buildMode))
+    {
+        return buildMode;
+    }
+
+    return LauncherBuildMode.Auto;
+}
+
+static IReadOnlyList<string> ResolveSelectorsFromPayload(LauncherService launcher, JsonElement payload, bool allowDefaultPreset)
+{
+    var selectors = new List<string>();
+    if (payload.TryGetProperty("presetId", out var presetIdElement) &&
+        presetIdElement.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(presetIdElement.GetString()))
+    {
+        selectors.Add($"preset:{presetIdElement.GetString()!}");
+    }
+
+    if (payload.TryGetProperty("selectors", out var selectorsElement) && selectorsElement.ValueKind == JsonValueKind.Array)
+    {
+        foreach (var selectorElement in selectorsElement.EnumerateArray())
+        {
+            if (selectorElement.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(selectorElement.GetString()))
+            {
+                selectors.Add(NormalizeSelector(launcher, selectorElement.GetString()!));
+            }
+        }
+    }
+
+    if (payload.TryGetProperty("modIds", out var modIdsElement) && modIdsElement.ValueKind == JsonValueKind.Array)
+    {
+        foreach (var modIdElement in modIdsElement.EnumerateArray())
+        {
+            if (modIdElement.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(modIdElement.GetString()))
+            {
+                selectors.Add($"mod:{modIdElement.GetString()!}");
+            }
+        }
+    }
+
+    if (payload.TryGetProperty("paths", out var pathsElement) && pathsElement.ValueKind == JsonValueKind.Array)
+    {
+        foreach (var pathElement in pathsElement.EnumerateArray())
+        {
+            if (pathElement.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(pathElement.GetString()))
+            {
+                selectors.Add($"path:{pathElement.GetString()!}");
+            }
+        }
+    }
+
+    if (selectors.Count > 0)
+    {
+        return selectors;
+    }
+
+    if (!allowDefaultPreset)
+    {
+        throw new InvalidOperationException("At least one selector is required.");
+    }
+
+    var selectedPresetId = launcher.GetState().SelectedPresetId;
+    if (!string.IsNullOrWhiteSpace(selectedPresetId))
+    {
+        return new[] { $"preset:{selectedPresetId}" };
+    }
+
+    throw new InvalidOperationException("No selectors supplied and no preset is currently selected.");
+}
+
+static string NormalizeSelector(LauncherService launcher, string raw)
+{
+    var trimmed = raw.Trim();
+    if (trimmed.StartsWith('$') || trimmed.Contains(':'))
+    {
+        return trimmed;
+    }
+
+    if (Directory.Exists(trimmed) && File.Exists(Path.Combine(trimmed, "mod.json")))
+    {
+        return $"path:{trimmed}";
+    }
+
+    if (launcher.GetState().Bindings.Any(binding => string.Equals(binding.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
+    {
+        return $"${trimmed}";
+    }
+
+    return $"mod:{trimmed}";
+}
+
+static string NormalizeBindingName(string raw)
+{
+    return raw.Trim().TrimStart('$');
 }
 
 static List<(int cx, int cy)> ResolveTargets(VertexMap map, string? dirtyJson, bool includeNeighbors, bool fallbackToFullWhenNoTargets)
@@ -586,6 +1080,34 @@ static List<(int cx, int cy)> ResolveTargets(VertexMap map, string? dirtyJson, b
     return targets;
 }
 
+static async Task<(int exitCode, string output)> RunProcessAsync(string fileName, string arguments, string workingDirectory, int timeoutMs = 60000)
+{
+    var psi = new System.Diagnostics.ProcessStartInfo(fileName, arguments)
+    {
+        WorkingDirectory = workingDirectory,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+    };
+    
+    using var proc = System.Diagnostics.Process.Start(psi);
+    if (proc == null) return (-1, "Failed to start process");
+    
+    var stdout = proc.StandardOutput.ReadToEndAsync();
+    var stderr = proc.StandardError.ReadToEndAsync();
+    
+    bool exited = proc.WaitForExit(timeoutMs);
+    if (!exited)
+    {
+        try { proc.Kill(entireProcessTree: true); } catch { }
+        return (-1, "Process timed out");
+    }
+    
+    string output = (await stdout) + "\n" + (await stderr);
+    return (proc.ExitCode, output.Trim());
+}
+
 static string FindAssetsRoot()
 {
     var current = Directory.GetCurrentDirectory();
@@ -601,7 +1123,11 @@ readonly record struct TileBakeResult(int Cx, int Cy, bool Ok, string? NavTileBa
 
 static class EditorRepo
 {
-    public sealed record ModInfo(string Id, string Name, string Version, int Priority, Dictionary<string, string> Dependencies, string RootPath);
+    public sealed record ModInfo(
+        string Id, string Name, string Version, int Priority,
+        Dictionary<string, string> Dependencies, string RootPath, string RelativePath, string LayerPath,
+        string Description, string Author, List<string> Tags,
+        string ChangelogFile, bool HasThumbnail, bool HasReadme);
 
     public sealed class ModContext
     {
@@ -615,25 +1141,26 @@ static class EditorRepo
 
     public static List<ModInfo> DiscoverMods(string repoRoot)
     {
-        var mods = new Dictionary<string, ModInfo>(StringComparer.OrdinalIgnoreCase);
-
-        void ScanModsRoot(string modsRoot)
-        {
-            if (!Directory.Exists(modsRoot)) return;
-            foreach (var dir in Directory.GetDirectories(modsRoot))
-            {
-                string id = Path.GetFileName(dir);
-                string jsonPath = Path.Combine(dir, "mod.json");
-                if (!File.Exists(jsonPath)) continue;
-                if (mods.ContainsKey(id)) continue;
-                mods[id] = ReadModInfo(id, dir, jsonPath);
-            }
-        }
-
-        ScanModsRoot(Path.Combine(repoRoot, "src", "Mods"));
-        ScanModsRoot(Path.Combine(repoRoot, "assets", "Mods"));
-
-        return mods.Values.OrderBy(m => m.Priority).ThenBy(m => m.Id, StringComparer.OrdinalIgnoreCase).ToList();
+        return new LauncherService(repoRoot)
+            .DiscoverMods()
+            .Select(mod => new ModInfo(
+                mod.Id,
+                mod.Name,
+                mod.Version,
+                mod.Priority,
+                new Dictionary<string, string>(mod.Dependencies, StringComparer.Ordinal),
+                mod.RootPath,
+                mod.RelativePath,
+                mod.LayerPath,
+                mod.Description,
+                mod.Author,
+                mod.Tags.ToList(),
+                mod.ChangelogFile,
+                mod.HasThumbnail,
+                mod.HasReadme))
+            .OrderBy(mod => mod.Priority)
+            .ThenBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public static ModContext CreateContext(string repoRoot, string targetModId)
@@ -865,7 +1392,7 @@ static class EditorRepo
         }
 
         sources = sourcesLocal;
-        return mergedNodes.Values.OrderBy(n => n?["Id"]?.ToString() ?? n?["id"]?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase).ToArray();
+        return mergedNodes.Values.OrderBy(n => n?["id"]?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     public static JsonNode[] LoadMergedPerformers(ModContext ctx, bool includeSources, out List<string> sources)
@@ -882,7 +1409,7 @@ static class EditorRepo
             foreach (var item in arr)
             {
                 if (item is not JsonObject obj) continue;
-                int id = obj["id"]?.GetValue<int>() ?? 0;
+                int id = int.TryParse(obj["id"]?.GetValue<string>(), out int parsedId) ? parsedId : 0;
                 if (id <= 0) continue;
                 defs[id] = obj.DeepClone();
             }
@@ -981,16 +1508,54 @@ static class EditorRepo
         }
     }
 
-    private static ModInfo ReadModInfo(string id, string rootPath, string modJsonPath)
+    private static ModInfo ReadModInfo(string repoRoot, string rootPath, string modJsonPath, ModManifest manifest)
     {
-        var manifest = ModManifestJson.ParseStrict(File.ReadAllText(modJsonPath), modJsonPath);
+        bool hasThumbnail = File.Exists(Path.Combine(rootPath, "assets", "Launcher", "thumbnail.png"))
+                         || File.Exists(Path.Combine(rootPath, "assets", "Launcher", "thumbnail.jpg"));
+        bool hasReadme = File.Exists(Path.Combine(rootPath, "README.md"));
+        string relativePath = GetRepoRelativePath(repoRoot, rootPath);
+        string layerPath = GetLayerPath(relativePath);
+
         return new ModInfo(
-            id,
+            manifest.Name,
             manifest.Name,
             manifest.Version,
             manifest.Priority,
             new Dictionary<string, string>(manifest.Dependencies, StringComparer.Ordinal),
-            rootPath);
+            rootPath,
+            relativePath,
+            layerPath,
+            manifest.Description ?? "",
+            manifest.Author ?? "",
+            manifest.Tags ?? new List<string>(),
+            manifest.Changelog ?? "",
+            hasThumbnail,
+            hasReadme);
+    }
+
+    private static string GetRepoRelativePath(string repoRoot, string rootPath)
+    {
+        var relative = Path.GetRelativePath(repoRoot, rootPath).Replace('\\', '/');
+        return relative.StartsWith("../", StringComparison.Ordinal) ? rootPath.Replace('\\', '/') : relative;
+    }
+
+    private static string GetLayerPath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/');
+        const string modsPrefix = "mods/";
+        if (!normalized.StartsWith(modsPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return "external";
+        }
+
+        var modRelative = normalized.Substring(modsPrefix.Length);
+        var lastSlash = modRelative.LastIndexOf('/');
+        if (lastSlash < 0)
+        {
+            return "root";
+        }
+
+        return modRelative.Substring(0, lastSlash);
     }
 
     private static List<string> ResolveLoadOrder(Dictionary<string, ModInfo> mods, string root)
@@ -1049,24 +1614,10 @@ static class EditorRepo
     private static bool TryReadId(JsonObject obj, out string id)
     {
         id = string.Empty;
-        if (obj.TryGetPropertyValue("Id", out var idNode) && idNode != null)
-        {
-            id = idNode.ToString();
-            return !string.IsNullOrWhiteSpace(id);
-        }
-        if (obj.TryGetPropertyValue("id", out idNode) && idNode != null)
-        {
-            id = idNode.ToString();
-            return !string.IsNullOrWhiteSpace(id);
-        }
-        foreach (var kvp in obj)
-        {
-            if (!string.Equals(kvp.Key, "Id", StringComparison.OrdinalIgnoreCase)) continue;
-            if (kvp.Value == null) return false;
-            id = kvp.Value.ToString();
-            return !string.IsNullOrWhiteSpace(id);
-        }
-        return false;
+        if (!obj.TryGetPropertyValue("id", out var idNode) || idNode == null) return false;
+        if (idNode.GetValueKind() != JsonValueKind.String) return false;
+        id = idNode.GetValue<string>();
+        return !string.IsNullOrWhiteSpace(id);
     }
 
     private static string SanitizeId(string raw)

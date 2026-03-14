@@ -74,14 +74,17 @@ namespace Ludots.Tests.Presentation
             _healthAttrId = AttributeRegistry.Register("Health");
 
             // Register built-in definitions (CastCommitted marker, CastFailed marker, FloatingCombatText, EntityHealthBar)
-            BuiltinPerformerDefinitions.Register(_defs);
+            BuiltinPerformerDefinitions.Register(
+                _defs,
+                new MeshAssetRegistry(),
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
             var session = new GameSession();
             var graphApi = new GasGraphRuntimeApi(_world, null, null, null);
 
             _bridge = new PresentationBridgeSystem(_world, _eventBus, _presEvents, session, _gasEvents);
             _ruleSystem = new PerformerRuleSystem(_world, _presEvents, _commands, _defs, _programs, graphApi, _globals);
-            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances);
+            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances, new Ludots.Core.Presentation.PresentationStableIdAllocator());
             _emitSystem = new PerformerEmitSystem(_world, _instances, _defs, _overlays, _primitives, _hud, _programs, graphApi, _globals);
         }
 
@@ -138,6 +141,8 @@ namespace Ludots.Tests.Presentation
                 if (hudSpan[i].Kind == WorldHudItemKind.Text)
                 {
                     foundText = true;
+                    Assert.That(hudSpan[i].Text.TokenId, Is.EqualTo(1), "Floating combat text should carry the stable text token id.");
+                    Assert.That(hudSpan[i].Text.ArgCount, Is.EqualTo(1), "Floating combat text should expose one runtime text argument.");
                     break;
                 }
             }
@@ -382,7 +387,8 @@ namespace Ludots.Tests.Presentation
                 DefaultScale = 5f,
                 DefaultColor = new Vector4(0.3f, 0.7f, 1f, 0.5f),
             };
-            _defs.Register(1, def);
+            _defs.Register("test_overlay", def);
+            int overlayDefId = _defs.GetId("test_overlay");
 
             var owner = _world.Create(new VisualTransform { Position = new Vector3(5, 0, 5) });
             int scopeId = 42;
@@ -391,7 +397,7 @@ namespace Ludots.Tests.Presentation
             _commands.TryAdd(new PresentationCommand
             {
                 Kind = PresentationCommandKind.CreatePerformer,
-                IdA = 1,
+                IdA = overlayDefId,
                 IdB = scopeId,
                 Source = owner,
             });

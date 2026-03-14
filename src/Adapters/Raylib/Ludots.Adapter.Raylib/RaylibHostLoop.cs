@@ -1,23 +1,26 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using Ludots.Adapter.Raylib.Services;
 using Ludots.Client.Raylib.Rendering;
 using Ludots.Core.Components;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Engine;
-using Ludots.Core.Map.Hex;
 using Ludots.Core.Mathematics;
-using Ludots.Core.Navigation2D.Runtime;
 using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Assets;
+using Ludots.Core.Presentation.Config;
 using Ludots.Core.Presentation.DebugDraw;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
 using Ludots.Platform.Abstractions;
+using Ludots.Presentation.Skia;
 using Ludots.UI;
 using Ludots.UI.Input;
+using Ludots.UI.Skia;
 using Raylib_cs;
 using Rl = Raylib_cs.Raylib;
 using SkiaSharp;
@@ -27,16 +30,19 @@ namespace Ludots.Adapter.Raylib
     internal static class RaylibHostLoop
     {
         private static bool _uiPointerCaptured;
+        private static bool _emptyBufferWarned;
 
         public static void Run(RaylibHostSetup setup)
         {
             var engine = setup.Engine;
             var config = setup.Config;
             var uiRoot = setup.UiRoot;
+            var skiaRenderer = setup.Renderer;
+            var presentationTiming = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
 
             int screenWidth = config.WindowWidth <= 0 ? 1280 : config.WindowWidth;
             int screenHeight = config.WindowHeight <= 0 ? 720 : config.WindowHeight;
-            string title = string.IsNullOrWhiteSpace(config.WindowTitle) ? "Ludots Engine (Raylib)" : config.WindowTitle;
+            string title = string.IsNullOrWhiteSpace(config.WindowTitle) ? "Ludots Engine" : config.WindowTitle;
             // targetFps = 0 表示不锁帧，< 0 使用默认 60
             int targetFps = config.TargetFps == 0 ? 0 : (config.TargetFps < 0 ? 60 : config.TargetFps);
             bool windowOpened = false;
@@ -55,17 +61,18 @@ namespace Ludots.Adapter.Raylib
             {
                 Rl.InitWindow(screenWidth, screenHeight, title);
                 windowOpened = true;
+                Rl.SetExitKey(0);
                 Rl.SetTargetFPS(targetFps);
 
-                using var uiRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
+                using var compositeRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
+                using var underlayLayer = new SkiaRasterLayer();
+                using var uiLayer = new SkiaRasterLayer();
+                using var overlayLayer = new SkiaRasterLayer();
+                using var overlaySkiaRenderer = new SkiaOverlayRenderer();
+                underlayLayer.Resize(screenWidth, screenHeight);
+                uiLayer.Resize(screenWidth, screenHeight);
+                overlayLayer.Resize(screenWidth, screenHeight);
                 uiRoot.Resize(screenWidth, screenHeight);
-
-                bool drawTerrain = true;
-                bool drawPrimitives = true;
-                bool drawDebugDraw = true;
-                bool drawSkiaUi = true;
-                int navAgentDeltaPerTeam = 0;
-                bool navAgentReset = false;
 
                 var initialCamera = new Camera3D
                 {
@@ -77,53 +84,119 @@ namespace Ludots.Adapter.Raylib
                 };
 
                 var cameraAdapter = new RaylibCameraAdapter(initialCamera);
-                var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter);
-
-                IScreenProjector screenProjector = new RaylibScreenProjector(cameraAdapter);
-                engine.GlobalContext[ContextKeys.ScreenProjector] = screenProjector;
-                engine.GlobalContext[ContextKeys.ScreenRayProvider] = new RaylibScreenRayProvider(cameraAdapter);
-
-                ValidateRequiredContextBeforeLoop(engine);
+                var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter, presentationTiming);
 
                 var viewController = new RaylibViewController(cameraAdapter);
-                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController);
+                engine.GlobalContext[CoreServiceKeys.ViewController.Name] = viewController;
+
+                var screenProjector = new CoreScreenProjector(engine.GameSession.Camera, viewController);
+                var screenRayProvider = new CoreScreenRayProvider(engine.GameSession.Camera, viewController);
+                screenProjector.BindPresenter(cameraPresenter);
+                screenRayProvider.BindPresenter(cameraPresenter);
+                engine.GlobalContext[CoreServiceKeys.ScreenProjector.Name] = screenProjector;
+                engine.GlobalContext[CoreServiceKeys.ScreenRayProvider.Name] = screenRayProvider;
+
+                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController, presentationTiming);
                 engine.RegisterPresentationSystem(cullingSystem);
+                engine.GlobalContext[CoreServiceKeys.CameraCullingDebugState.Name] = cullingSystem.DebugState;
+
+                var renderCameraDebug = new RenderCameraDebugState();
+                engine.GlobalContext[CoreServiceKeys.RenderCameraDebugState.Name] = renderCameraDebug;
+
+                engine.RegisterPresentationSystem(new CullingVisualizationPresentationSystem(engine.GlobalContext));
+                var presentationFrameSetup = engine.GetService(CoreServiceKeys.PresentationFrameSetup);
+
+                WorldHudToScreenSystem? hudProjection = null;
+                PresentationOverlaySceneBuilder? overlaySceneBuilder = null;
+                PresentationOverlayScene? overlayScene = null;
+                ScreenOverlayBuffer? screenOverlayBuffer = null;
+                if (engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudBuffer.Name, out var whObj) && whObj is WorldHudBatchBuffer worldHud &&
+                    engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationScreenHudBuffer.Name, out var shObj) && shObj is ScreenHudBatchBuffer screenHud)
+                {
+                    WorldHudStringTable? worldHudStrings = engine.GetService(CoreServiceKeys.PresentationWorldHudStrings);
+                    PresentationTextCatalog? textCatalog = engine.GetService(CoreServiceKeys.PresentationTextCatalog);
+                    PresentationTextLocaleSelection? localeSelection = engine.GetService(CoreServiceKeys.PresentationTextLocaleSelection);
+                    screenOverlayBuffer = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
+                    hudProjection = new WorldHudToScreenSystem(engine.World, worldHud, worldHudStrings, screenProjector, viewController, screenHud, presentationTiming);
+                    overlaySceneBuilder = new PresentationOverlaySceneBuilder(screenHud, worldHudStrings, textCatalog, localeSelection, screenOverlayBuffer);
+                    overlayScene = new PresentationOverlayScene(screenHud.Capacity + ScreenOverlayBuffer.MaxItems);
+                }
+
+                ValidateRequiredContextBeforeLoop(engine);
 
                 engine.Start();
                 if (string.IsNullOrWhiteSpace(config.StartupMapId))
                 {
-                    throw new InvalidOperationException("Invalid game.json: 'StartupMapId' cannot be empty.");
+                    throw new InvalidOperationException("Invalid launcher bootstrap: 'StartupMapId' cannot be empty.");
                 }
                 engine.LoadMap(config.StartupMapId);
 
                 var debugDrawRenderer = new RaylibDebugDrawRenderer { PlaneY = 0.35f };
-                using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Instanced);
+                using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Instanced, engine.VFS);
+
+                int lastW = screenWidth;
+                int lastH = screenHeight;
+                bool underlayHadContent = false;
+                bool overlayHadContent = false;
+                bool uiHadContent = false;
+                bool compositeHadContent = false;
+                int underlayLayerVersion = -1;
+                int topOverlayLayerVersion = -1;
+                var underlayPacer = new PresentationOverlayLanePacer(PresentationOverlayLayer.UnderUi);
 
                 while (!Rl.WindowShouldClose())
                 {
                     try
                     {
+                        int w = Rl.GetScreenWidth();
+                        int h = Rl.GetScreenHeight();
+                        if (w != lastW || h != lastH)
+                        {
+                            lastW = w;
+                            lastH = h;
+                            compositeRenderer.Resize(w, h);
+                            underlayLayer.Resize(w, h);
+                            uiLayer.Resize(w, h);
+                            overlayLayer.Resize(w, h);
+                            uiRoot.Resize(w, h);
+                        }
+
                         float dt = Rl.GetFrameTime();
+                        var renderDebug = ResolveRenderDebugState(engine);
+                        bool drawTerrain = renderDebug.DrawTerrain;
+                        bool drawPrimitives = renderDebug.DrawPrimitives;
+                        bool drawDebugDraw = renderDebug.DrawDebugDraw;
+                        bool drawSkiaUi = renderDebug.DrawSkiaUi;
 
-                        navAgentDeltaPerTeam = 0;
-                        navAgentReset = false;
-                        Navigation2DRuntime? navRuntime = null;
-                        if (engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DRuntime, out var navObj) && navObj is Navigation2DRuntime nr) navRuntime = nr;
-                        ApplyOverlayToggles(ref drawTerrain, ref drawPrimitives, ref drawDebugDraw, ref drawSkiaUi, ref navAgentDeltaPerTeam, ref navAgentReset, navRuntime);
-                        if (navAgentDeltaPerTeam != 0)
+                        double uiInputMs = 0d;
+                        bool uiCaptured = false;
+                        if (drawSkiaUi)
                         {
-                            engine.GlobalContext[ContextKeys.Navigation2DPlayground_AgentDeltaPerTeam] = navAgentDeltaPerTeam;
-                        }
-                        if (navAgentReset)
-                        {
-                            engine.GlobalContext[ContextKeys.Navigation2DPlayground_ResetScenario] = true;
+                            long uiInputStart = Stopwatch.GetTimestamp();
+                            uiCaptured = UpdateInput(uiRoot);
+                            uiInputMs = ElapsedMs(uiInputStart);
                         }
 
-                        bool uiCaptured = drawSkiaUi && UpdateInput(uiRoot);
-                        engine.GlobalContext[ContextKeys.UiCaptured] = uiCaptured;
+                        presentationTiming?.ObserveUiInput(uiInputMs);
+                        engine.GlobalContext[CoreServiceKeys.UiCaptured.Name] = uiCaptured;
                         engine.Tick(dt);
 
-                        cameraPresenter.Update(engine.GameSession.Camera.State, dt);
+                        float cameraAlpha = presentationFrameSetup?.GetInterpolationAlpha() ?? 1f;
+                        cameraPresenter.Update(engine.GameSession.Camera, cameraAlpha, renderCameraDebug);
+                        hudProjection?.Update(dt);
+                        if (overlaySceneBuilder != null && overlayScene != null)
+                        {
+                            long overlayBuildStart = Stopwatch.GetTimestamp();
+                            overlaySceneBuilder.Build(overlayScene);
+                            presentationTiming?.ObserveScreenOverlayBuild(
+                                ElapsedMs(overlayBuildStart),
+                                overlayScene.DirtyLaneCount,
+                                overlayScene.Count);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveScreenOverlayBuild(0d, 0, 0);
+                        }
 
                         Rl.BeginDrawing();
                         Rl.ClearBackground(new Raylib_cs.Color(0, 0, 0, 255));
@@ -131,36 +204,65 @@ namespace Ludots.Adapter.Raylib
                         var activeCamera = cameraAdapter.Camera;
                         Rl.BeginMode3D(activeCamera);
 
-                        DrawInfiniteGrid(activeCamera.position, 120, 1.0f, 10);
+                        if (drawDebugDraw)
+                        {
+                            DrawInfiniteGrid(activeCamera.target, 300, 1.0f, 10);
 
-                        var t = activeCamera.target;
-                        Rl.DrawLine3D(t, t + new Vector3(2.0f, 0, 0), Color.RED);
-                        Rl.DrawLine3D(t, t + new Vector3(0, 0, 2.0f), Color.BLUE);
-                        Rl.DrawLine3D(t, t + new Vector3(0, 2.0f, 0), Color.GREEN);
+                            var target = activeCamera.target;
+                            Rl.DrawLine3D(target, target + new Vector3(2.0f, 0, 0), Color.RED);
+                            Rl.DrawLine3D(target, target + new Vector3(0, 0, 2.0f), Color.BLUE);
+                            Rl.DrawLine3D(target, target + new Vector3(0, 2.0f, 0), Color.GREEN);
+                        }
 
+                        // 锚定到 target，网格以观察点为中心；halfCount 越大边界越远
                         if (drawTerrain)
                         {
+                            long terrainStart = Stopwatch.GetTimestamp();
                             terrainRenderer.Render(engine.VertexMap, activeCamera);
+                            presentationTiming?.ObserveTerrain(
+                                ElapsedMs(terrainStart),
+                                terrainRenderer.ChunkBuildMsLastFrame,
+                                terrainRenderer.DrawnChunkCountLastFrame,
+                                terrainRenderer.BuiltChunkCountLastFrame);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveTerrain(0d, 0d, 0, 0);
                         }
 
                         if (drawPrimitives &&
-                            engine.GlobalContext.TryGetValue(ContextKeys.PresentationPrimitiveDrawBuffer, out var drawObj) &&
-                            engine.GlobalContext.TryGetValue(ContextKeys.PresentationMeshAssetRegistry, out var meshObj) &&
+                            engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationPrimitiveDrawBuffer.Name, out var drawObj) &&
+                            engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationMeshAssetRegistry.Name, out var meshObj) &&
                             drawObj is PrimitiveDrawBuffer draw &&
                             meshObj is MeshAssetRegistry meshes)
                         {
-                            primitiveRenderer.Draw(draw, meshes);
+                            if (!_emptyBufferWarned && draw.GetSpan().Length == 0)
+                            {
+                                System.Diagnostics.Debug.WriteLine("[RaylibHostLoop] PrimitiveDrawBuffer is empty on first render frame — no Marker3D performers emitting?");
+                                _emptyBufferWarned = true;
+                            }
+                            long primitiveStart = Stopwatch.GetTimestamp();
+                            PrimitiveDrawBuffer? snapshot = engine.GetService(CoreServiceKeys.PresentationVisualSnapshotBuffer);
+                            primitiveRenderer.Draw(draw, snapshot, meshes, renderDebug.AcceptanceScaleMultiplier);
+                            presentationTiming?.ObservePrimitiveRender(
+                                ElapsedMs(primitiveStart),
+                                primitiveRenderer.LastInstancedInstances,
+                                primitiveRenderer.LastInstancedBatches);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObservePrimitiveRender(0d, 0, 0);
                         }
 
                         // Draw ground overlays (range circles, cones, etc.)
-                        if (engine.GlobalContext.TryGetValue(ContextKeys.GroundOverlayBuffer, out var goObj) &&
+                        if (engine.GlobalContext.TryGetValue(CoreServiceKeys.GroundOverlayBuffer.Name, out var goObj) &&
                             goObj is GroundOverlayBuffer overlays && overlays.Count > 0)
                         {
                             DrawGroundOverlays(overlays);
                         }
 
                         if (drawDebugDraw &&
-                            engine.GlobalContext.TryGetValue(ContextKeys.DebugDrawCommandBuffer, out var ddObj) &&
+                            engine.GlobalContext.TryGetValue(CoreServiceKeys.DebugDrawCommandBuffer.Name, out var ddObj) &&
                             ddObj is DebugDrawCommandBuffer dd)
                         {
                             debugDrawRenderer.Draw(dd);
@@ -168,39 +270,109 @@ namespace Ludots.Adapter.Raylib
 
                         Rl.EndMode3D();
 
-                        // Terrain debug HUD
-                        string vtxmStatus = engine.VertexMap == null ? "NULL" : $"{engine.VertexMap.WidthInChunks}x{engine.VertexMap.HeightInChunks}";
-                        Rl.DrawText($"VertexMap: {vtxmStatus} | Chunks: {terrainRenderer.DrawnChunkCountLastFrame} Verts: {terrainRenderer.TerrainVertexCountLastFrame} Cached: {terrainRenderer.CachedChunkCount}", 10, 40, 14, Raylib_cs.Color.YELLOW);
-                        Rl.DrawText($"CamPos: ({activeCamera.position.X:F1},{activeCamera.position.Y:F1},{activeCamera.position.Z:F1}) Target: ({activeCamera.target.X:F1},{activeCamera.target.Y:F1},{activeCamera.target.Z:F1})", 10, 56, 14, Raylib_cs.Color.YELLOW);
+                        long overlayStart = Stopwatch.GetTimestamp();
+                        overlaySkiaRenderer.ResetFrameStats();
 
-                        if (engine.GlobalContext.TryGetValue(ContextKeys.PresentationPrimitiveDrawBuffer, out var drawObj2) &&
-                            drawObj2 is PrimitiveDrawBuffer draw2)
+                        bool hasUnderlay = overlayScene != null && overlayScene.ContainsLayer(PresentationOverlayLayer.UnderUi);
+                        bool hasTopOverlay = overlayScene != null && overlayScene.ContainsLayer(PresentationOverlayLayer.TopMost);
+                        bool hasUiLayer = drawSkiaUi && uiRoot.Scene != null;
+
+                        int currentUnderlayVersion = overlayScene?.GetLayerVersion(PresentationOverlayLayer.UnderUi) ?? 0;
+                        int currentTopOverlayVersion = overlayScene?.GetLayerVersion(PresentationOverlayLayer.TopMost) ?? 0;
+                        bool refreshUnderlay = overlayScene != null && (hasUnderlay || underlayHadContent) &&
+                            (currentUnderlayVersion != underlayLayerVersion || hasUnderlay != underlayHadContent);
+                        if (refreshUnderlay)
                         {
-                            Rl.DrawText($"Primitives: {draw2.Count} (Dropped: {draw2.DroppedSinceClear})", 10, 10, 20, Raylib_cs.Color.YELLOW);
+                            underlayLayer.Clear();
+                            if (hasUnderlay)
+                            {
+                                PresentationOverlayLanePacer.LaneRefreshPlan underlayPlan = underlayPacer.BuildPlan(overlayScene!);
+                                overlaySkiaRenderer.Render(overlayScene!, underlayLayer.Canvas, PresentationOverlayLayer.UnderUi, underlayPlan);
+                                underlayPacer.MarkPresented(overlayScene!, underlayPlan);
+                                underlayLayer.SetHasContent(true);
+                            }
+                            else
+                            {
+                                underlayPacer.Reset();
+                            }
+
+                            underlayHadContent = hasUnderlay;
+                            underlayLayerVersion = currentUnderlayVersion;
                         }
 
-                        int wpCount = 0;
-                        var wpQueryDesc = new Arch.Core.QueryDescription().WithAll<WorldPositionCm>();
-                        var wpQuery = engine.World.Query(in wpQueryDesc);
-                        foreach (var chunk in wpQuery) wpCount += chunk.Count;
-                        Rl.DrawText($"WorldPositionCm Entities: {wpCount}", 10, 34, 20, Raylib_cs.Color.YELLOW);
-
-                        RenderWorldHud(engine, screenProjector);
-
-                        if (drawSkiaUi && uiRoot.IsDirty)
+                        bool refreshUiLayer = hasUiLayer != uiHadContent || (drawSkiaUi && uiRoot.IsDirty);
+                        if (refreshUiLayer)
                         {
-                            uiRenderer.Canvas.Clear(SKColors.Transparent);
-                            uiRoot.Render(uiRenderer.Canvas);
-                            uiRenderer.UpdateTexture();
+                            long uiRenderStart = Stopwatch.GetTimestamp();
+                            uiLayer.Clear();
+                            if (hasUiLayer)
+                            {
+                                skiaRenderer.SetCanvas(uiLayer.Canvas);
+                                uiRoot.Render();
+                                uiLayer.SetHasContent(true);
+                            }
+                            presentationTiming?.ObserveUiRender(ElapsedMs(uiRenderStart));
+                            uiHadContent = hasUiLayer;
                         }
-                        if (drawSkiaUi)
+                        else
                         {
-                            uiRenderer.Draw();
+                            presentationTiming?.ObserveUiRender(0d);
                         }
 
-                        Rl.DrawFPS(screenWidth - 100, 10);
-                        Rl.DrawText($"Scale | Grid=1.00m | HexWidth={HexCoordinates.HexWidth:F3}m | RowSpacing={HexCoordinates.RowSpacing:F3}m | HeightScale={terrainRenderer.HeightScale:F2}", 10, screenHeight - 35, 20, Raylib_cs.Color.WHITE);
-                        DrawOverlay(drawTerrain, drawPrimitives, drawDebugDraw, drawSkiaUi, engine, primitiveRenderer);
+                        bool refreshTopOverlay = overlayScene != null && (hasTopOverlay || overlayHadContent) &&
+                            (currentTopOverlayVersion != topOverlayLayerVersion || hasTopOverlay != overlayHadContent);
+                        if (refreshTopOverlay)
+                        {
+                            overlayLayer.Clear();
+                            if (hasTopOverlay)
+                            {
+                                overlaySkiaRenderer.Render(overlayScene!, overlayLayer.Canvas, PresentationOverlayLayer.TopMost);
+                                overlayLayer.SetHasContent(true);
+                            }
+                            overlayHadContent = hasTopOverlay;
+                            topOverlayLayerVersion = currentTopOverlayVersion;
+                        }
+
+                        bool hasCompositeContent = hasUnderlay || hasUiLayer || hasTopOverlay;
+                        bool refreshComposite = refreshUnderlay || refreshUiLayer || refreshTopOverlay || hasCompositeContent != compositeHadContent;
+                        if (refreshComposite)
+                        {
+                            compositeRenderer.Canvas.Clear(SKColors.Transparent);
+                            if (hasUnderlay)
+                            {
+                                underlayLayer.DrawTo(compositeRenderer.Canvas);
+                            }
+
+                            if (hasUiLayer)
+                            {
+                                uiLayer.DrawTo(compositeRenderer.Canvas);
+                            }
+
+                            if (hasTopOverlay)
+                            {
+                                overlayLayer.DrawTo(compositeRenderer.Canvas);
+                            }
+
+                            long uiUploadStart = Stopwatch.GetTimestamp();
+                            compositeRenderer.UpdateTexture();
+                            presentationTiming?.ObserveUiUpload(hasCompositeContent ? ElapsedMs(uiUploadStart) : 0d);
+                            compositeHadContent = hasCompositeContent;
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveUiUpload(0d);
+                        }
+
+                        if (hasCompositeContent || compositeHadContent)
+                        {
+                            compositeRenderer.Draw();
+                        }
+
+                        screenOverlayBuffer?.Clear();
+                        presentationTiming?.ObserveScreenOverlayDraw(
+                            ElapsedMs(overlayStart),
+                            overlaySkiaRenderer.RebuiltLaneCountLastFrame,
+                            overlaySkiaRenderer.CachedTextLayoutCount);
 
                         Rl.EndDrawing();
                     }
@@ -221,8 +393,9 @@ namespace Ludots.Adapter.Raylib
 
         private static void ValidateRequiredContextBeforeLoop(GameEngine engine)
         {
-            ValidateKey<IScreenProjector>(engine, ContextKeys.ScreenProjector);
-            ValidateKey<IScreenRayProvider>(engine, ContextKeys.ScreenRayProvider);
+            ValidateKey<IScreenProjector>(engine, CoreServiceKeys.ScreenProjector.Name);
+            ValidateKey<IScreenRayProvider>(engine, CoreServiceKeys.ScreenRayProvider.Name);
+            ValidateKey<RenderDebugState>(engine, CoreServiceKeys.RenderDebugState.Name);
         }
 
         private static void ValidateKey<T>(GameEngine engine, string key)
@@ -231,6 +404,17 @@ namespace Ludots.Adapter.Raylib
             {
                 throw new InvalidOperationException($"GlobalContext missing or invalid: {key} expected {typeof(T).FullName}");
             }
+        }
+
+        private static RenderDebugState ResolveRenderDebugState(GameEngine engine)
+        {
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.RenderDebugState.Name, out var obj) &&
+                obj is RenderDebugState state)
+            {
+                return state;
+            }
+
+            throw new InvalidOperationException($"GlobalContext missing or invalid: {CoreServiceKeys.RenderDebugState.Name} expected {typeof(RenderDebugState).FullName}");
         }
 
         private static bool UpdateInput(UIRoot uiRoot)
@@ -254,6 +438,11 @@ namespace Ludots.Adapter.Raylib
             }
 
             return _uiPointerCaptured;
+        }
+
+        private static double ElapsedMs(long startTicks)
+        {
+            return (Stopwatch.GetTimestamp() - startTicks) * 1000.0 / Stopwatch.Frequency;
         }
 
         private static void DrawInfiniteGrid(Vector3 anchor, int halfCount, float spacing, int majorEvery)
@@ -290,73 +479,6 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
-        private static void RenderWorldHud(GameEngine engine, IScreenProjector projector)
-        {
-            if (!engine.GlobalContext.TryGetValue(ContextKeys.PresentationWorldHudBuffer, out var hudObj)) return;
-            engine.GlobalContext.TryGetValue(ContextKeys.PresentationWorldHudStrings, out var strObj);
-            if (hudObj is not WorldHudBatchBuffer hud) return;
-            var strings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
-
-            var span = hud.GetSpan();
-            for (int i = 0; i < span.Length; i++)
-            {
-                ref readonly var item = ref span[i];
-                Vector2 screen = projector.WorldToScreen(item.WorldPosition);
-                float x = screen.X - item.Width * 0.5f;
-                float y = screen.Y;
-
-                int ix = (int)x;
-                int iy = (int)y;
-                int iw = (int)item.Width;
-                int ih = (int)item.Height;
-
-                if (item.Kind == WorldHudItemKind.Bar)
-                {
-                    var bg = ToRaylibColor(item.Color0);
-                    var fg = ToRaylibColor(item.Color1);
-
-                    Rl.DrawRectangle(ix, iy, iw, ih, bg);
-                    int fw = (int)(iw * item.Value0);
-                    Rl.DrawRectangle(ix, iy, fw, ih, fg);
-                    Rl.DrawRectangleLines(ix, iy, iw, ih, new Color(0, 0, 0, 255));
-                    continue;
-                }
-
-                if (item.Kind == WorldHudItemKind.Text)
-                {
-                    int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
-                    var col = ToRaylibColor(item.Color0);
-
-                    string? text = null;
-                    if (item.Id0 != 0 && strings != null)
-                    {
-                        text = strings.TryGet(item.Id0);
-                    }
-                    else
-                    {
-                        var mode = (Ludots.Core.Presentation.Hud.WorldHudValueMode)item.Id1;
-                        if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.AttributeCurrentOverBase)
-                        {
-                            text = $"{(int)item.Value0}/{(int)item.Value1}";
-                        }
-                        else if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.AttributeCurrent)
-                        {
-                            text = $"{(int)item.Value0}";
-                        }
-                        else if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.Constant)
-                        {
-                            text = $"{item.Value0}";
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(text))
-                    {
-                        Rl.DrawText(text, ix, iy, fontSize, col);
-                    }
-                }
-            }
-        }
-
         private static void DrawGroundOverlays(GroundOverlayBuffer overlays)
         {
             var span = overlays.GetSpan();
@@ -368,8 +490,11 @@ namespace Ludots.Adapter.Raylib
                     case GroundOverlayShape.Circle:
                         DrawGroundCircle(in item);
                         break;
+                    case GroundOverlayShape.Cone:
+                        DrawGroundCone(in item);
+                        break;
                     case GroundOverlayShape.Ring:
-                        DrawGroundCircle(in item); // ring uses same path for now
+                        DrawGroundRing(in item);
                         break;
                     case GroundOverlayShape.Line:
                         DrawGroundLine(in item);
@@ -418,150 +543,128 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
+        private static void DrawGroundRing(in GroundOverlayItem item)
+        {
+            const int segments = 48;
+            float innerRadius = Math.Clamp(item.InnerRadius, 0f, item.Radius);
+            float outerRadius = MathF.Max(item.Radius, innerRadius);
+            var center = item.Center;
+
+            if (item.FillColor.W > 0.01f && outerRadius > innerRadius)
+            {
+                var fillColor = ToRaylibColor(item.FillColor);
+                const int bands = 6;
+                for (int band = 0; band < bands; band++)
+                {
+                    float radius = innerRadius + (outerRadius - innerRadius) * (band + 0.5f) / bands;
+                    DrawGroundArcLoop(center, radius, 0f, MathF.PI * 2f, segments, fillColor);
+                }
+            }
+
+            if (item.BorderColor.W > 0.01f && item.BorderWidth > 0f)
+            {
+                var border = ToRaylibColor(item.BorderColor);
+                DrawGroundArcLoop(center, outerRadius, 0f, MathF.PI * 2f, segments, border);
+                if (innerRadius > 0.001f)
+                {
+                    DrawGroundArcLoop(center, innerRadius, 0f, MathF.PI * 2f, segments, border);
+                }
+            }
+        }
+
+        private static void DrawGroundCone(in GroundOverlayItem item)
+        {
+            const int segments = 24;
+            float radius = MathF.Max(item.Radius, 0f);
+            float start = item.Rotation - item.Angle;
+            float end = item.Rotation + item.Angle;
+            var center = item.Center;
+
+            if (radius <= 0f)
+            {
+                return;
+            }
+
+            if (item.FillColor.W > 0.01f)
+            {
+                var fillColor = ToRaylibColor(item.FillColor);
+                const int bands = 6;
+                for (int band = 1; band <= bands; band++)
+                {
+                    float ringRadius = radius * band / bands;
+                    DrawGroundArcLoop(center, ringRadius, start, end, segments, fillColor);
+                }
+            }
+
+            if (item.BorderColor.W > 0.01f && item.BorderWidth > 0f)
+            {
+                var border = ToRaylibColor(item.BorderColor);
+                DrawGroundArcLoop(center, radius, start, end, segments, border);
+                var left = new Vector3(center.X + MathF.Cos(start) * radius, center.Y, center.Z + MathF.Sin(start) * radius);
+                var right = new Vector3(center.X + MathF.Cos(end) * radius, center.Y, center.Z + MathF.Sin(end) * radius);
+                Rl.DrawLine3D(center, left, border);
+                Rl.DrawLine3D(center, right, border);
+            }
+        }
+
         private static void DrawGroundLine(in GroundOverlayItem item)
         {
-            float dx = MathF.Cos(item.Rotation) * item.Length;
-            float dz = MathF.Sin(item.Rotation) * item.Length;
+            float length = item.Length > 0f ? item.Length : item.Radius;
+            if (length <= 0f)
+            {
+                return;
+            }
+
+            float dx = MathF.Cos(item.Rotation) * length;
+            float dz = MathF.Sin(item.Rotation) * length;
             var a = item.Center;
             var b = new Vector3(a.X + dx, a.Y, a.Z + dz);
-            Rl.DrawLine3D(a, b, ToRaylibColor(item.BorderColor));
-        }
+            float halfWidth = MathF.Max(0f, item.Width) * 0.5f;
+            var normal = new Vector3(-MathF.Sin(item.Rotation), 0f, MathF.Cos(item.Rotation));
 
-        private static Color ToRaylibColor(Vector4 c)
-        {
-            byte r = (byte)(Clamp01(c.X) * 255f);
-            byte g = (byte)(Clamp01(c.Y) * 255f);
-            byte b = (byte)(Clamp01(c.Z) * 255f);
-            byte a = (byte)(Clamp01(c.W) * 255f);
-            return new Color(r, g, b, a);
-        }
-
-        private static float Clamp01(float v)
-        {
-            if (v < 0f) return 0f;
-            if (v > 1f) return 1f;
-            return v;
-        }
-
-        private static void ApplyOverlayToggles(ref bool drawTerrain, ref bool drawPrimitives, ref bool drawDebugDraw, ref bool drawSkiaUi, ref int navAgentDeltaPerTeam, ref bool navAgentReset, Navigation2DRuntime? navRuntime)
-        {
-            var mousePos = Rl.GetMousePosition();
-            bool clicked = Rl.IsMouseButtonPressed(MouseButton.MOUSE_LEFT_BUTTON);
-
-            int x = 10;
-            int y = 60;
-            int w = 190;
-            int h = 22;
-            int gap = 6;
-
-            if (clicked)
+            if (item.FillColor.W > 0.01f)
             {
-                if (Hit(mousePos, x, y + (h + gap) * 0, w, h)) drawTerrain = !drawTerrain;
-                else if (Hit(mousePos, x, y + (h + gap) * 1, w, h)) drawPrimitives = !drawPrimitives;
-                else if (Hit(mousePos, x, y + (h + gap) * 2, w, h)) drawDebugDraw = !drawDebugDraw;
-                else if (Hit(mousePos, x, y + (h + gap) * 3, w, h)) drawSkiaUi = !drawSkiaUi;
-                else if (Hit(mousePos, x, y + (h + gap) * 4, w, h) && navRuntime != null) navRuntime.FlowEnabled = !navRuntime.FlowEnabled;
-                else if (Hit(mousePos, x, y + (h + gap) * 5, w, h) && navRuntime != null) navRuntime.FlowDebugEnabled = !navRuntime.FlowDebugEnabled;
-                else if (Hit(mousePos, x, y + (h + gap) * 6, w, h) && navRuntime != null) navRuntime.FlowDebugMode = (navRuntime.FlowDebugMode + 1) % 3;
-                else if (Hit(mousePos, x, y + (h + gap) * 7, w, h)) navAgentDeltaPerTeam = 500;
-                else if (Hit(mousePos, x, y + (h + gap) * 8, w, h)) navAgentDeltaPerTeam = -500;
-                else if (Hit(mousePos, x, y + (h + gap) * 9, w, h)) navAgentReset = true;
-                else if (Hit(mousePos, x, y + (h + gap) * 10, w, h) && navRuntime != null) navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick + 512, 0, 131072);
-                else if (Hit(mousePos, x, y + (h + gap) * 11, w, h) && navRuntime != null) navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick - 512, 0, 131072);
+                var fill = ToRaylibColor(item.FillColor);
+                int stripes = halfWidth > 0.001f ? Math.Clamp((int)MathF.Ceiling(halfWidth / 0.12f), 1, 8) : 1;
+                for (int stripe = -stripes; stripe <= stripes; stripe++)
+                {
+                    float offset = stripes == 0 ? 0f : halfWidth * stripe / Math.Max(stripes, 1);
+                    var delta = normal * offset;
+                    Rl.DrawLine3D(a + delta, b + delta, fill);
+                }
+            }
+
+            if (item.BorderColor.W > 0.01f)
+            {
+                var border = ToRaylibColor(item.BorderColor);
+                Rl.DrawLine3D(a, b, border);
+                if (halfWidth > 0.001f)
+                {
+                    var delta = normal * halfWidth;
+                    Rl.DrawLine3D(a + delta, b + delta, border);
+                    Rl.DrawLine3D(a - delta, b - delta, border);
+                }
             }
         }
 
-        private static void DrawOverlay(bool drawTerrain, bool drawPrimitives, bool drawDebugDraw, bool drawSkiaUi, GameEngine engine, RaylibPrimitiveRenderer primitiveRenderer)
+        private static void DrawGroundArcLoop(Vector3 center, float radius, float startAngle, float endAngle, int segments, Color color)
         {
-            int x = 10;
-            int y = 60;
-            int w = 190;
-            int h = 22;
-            int gap = 6;
-
-            DrawToggle(x, y + (h + gap) * 0, w, h, "Terrain", drawTerrain);
-            DrawToggle(x, y + (h + gap) * 1, w, h, "Primitives", drawPrimitives);
-            DrawToggle(x, y + (h + gap) * 2, w, h, "DebugDraw", drawDebugDraw);
-            DrawToggle(x, y + (h + gap) * 3, w, h, "SkiaUI", drawSkiaUi);
-
-            bool flowEnabled = false;
-            bool flowDebug = false;
-            int flowDebugMode = 0;
-            int flowIters = 0;
-            if (engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DRuntime, out var navObj) && navObj is Navigation2DRuntime nr)
+            if (segments <= 0 || radius <= 0f)
             {
-                flowEnabled = nr.FlowEnabled;
-                flowDebug = nr.FlowDebugEnabled;
-                flowDebugMode = nr.FlowDebugMode;
-                flowIters = nr.FlowIterationsPerTick;
+                return;
             }
 
-            DrawToggle(x, y + (h + gap) * 4, w, h, "FlowField", flowEnabled);
-            DrawToggle(x, y + (h + gap) * 5, w, h, "FlowDebug", flowDebug);
-            DrawButton(x, y + (h + gap) * 6, w, h, flowDebugMode switch { 1 => "DbgMode: Flow0", 2 => "DbgMode: Flow1", _ => "DbgMode: Both" });
-            DrawButton(x, y + (h + gap) * 7, w, h, "Agents +500/team");
-            DrawButton(x, y + (h + gap) * 8, w, h, "Agents -500/team");
-            DrawButton(x, y + (h + gap) * 9, w, h, "Reset positions");
-            DrawButton(x, y + (h + gap) * 10, w, h, $"FlowIter +512 ({flowIters})");
-            DrawButton(x, y + (h + gap) * 11, w, h, $"FlowIter -512 ({flowIters})");
-
-            int agentsPerTeam = 0;
-            int liveTotal = 0;
-            if (engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_AgentsPerTeam, out var aptObj) && aptObj is int apt) agentsPerTeam = apt;
-            if (engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_LiveAgentsTotal, out var ltObj) && ltObj is int lt) liveTotal = lt;
-
-            Rl.DrawText($"Agents/team: {agentsPerTeam}", x + 4, y + (h + gap) * 12 + 0, 16, new Color(220, 220, 220, 220));
-            Rl.DrawText($"Live agents: {liveTotal}", x + 4, y + (h + gap) * 12 + 18, 16, new Color(220, 220, 220, 220));
-            Rl.DrawText($"Instanced: {primitiveRenderer.LastInstancedInstances} ({primitiveRenderer.LastInstancedBatches} batches)", x + 4, y + (h + gap) * 12 + 36, 16, new Color(220, 220, 220, 220));
-
-            int ddLines = 0;
-            if (engine.GlobalContext.TryGetValue(ContextKeys.DebugDrawCommandBuffer, out var ddObj) && ddObj is DebugDrawCommandBuffer dd)
+            float step = (endAngle - startAngle) / segments;
+            for (int s = 0; s < segments; s++)
             {
-                ddLines = dd.Lines.Count;
-            }
-            Rl.DrawText($"DebugLines: {ddLines}", x + 4, y + (h + gap) * 12 + 54, 16, new Color(220, 220, 220, 220));
-
-            int flowDbgLines = 0;
-            if (engine.GlobalContext.TryGetValue(ContextKeys.Navigation2DPlayground_FlowDebugLines, out var fdlObj) && fdlObj is int fdl) flowDbgLines = fdl;
-            Rl.DrawText($"FlowDbgLines: {flowDbgLines}", x + 4, y + (h + gap) * 12 + 72, 16, new Color(220, 220, 220, 220));
-
-            // Audit playground counters (render only when present)
-            int auditGlobal = engine.GlobalContext.TryGetValue("Audit.GlobalMapLoadedCount", out var agObj) && agObj is int ag ? ag : -1;
-            int auditScoped = engine.GlobalContext.TryGetValue("Audit.ScopedMapLoadedCount", out var asObj) && asObj is int asc ? asc : -1;
-            int auditNamed = engine.GlobalContext.TryGetValue("Audit.NamedDecoratorCount", out var anObj) && anObj is int an ? an : -1;
-            int auditAnchor = engine.GlobalContext.TryGetValue("Audit.AnchorDecoratorCount", out var aaObj) && aaObj is int aa ? aa : -1;
-            int auditFactory = engine.GlobalContext.TryGetValue("Audit.FactoryActivationCount", out var afObj) && afObj is int af ? af : -1;
-
-            if (auditGlobal >= 0 || auditScoped >= 0 || auditNamed >= 0 || auditAnchor >= 0 || auditFactory >= 0)
-            {
-                int auditYBase = y + (h + gap) * 12 + 96;
-                Rl.DrawText($"Audit Global: {Math.Max(auditGlobal, 0)}", x + 4, auditYBase, 16, new Color(180, 240, 180, 230));
-                Rl.DrawText($"Audit Scoped: {Math.Max(auditScoped, 0)}", x + 4, auditYBase + 18, 16, new Color(180, 240, 180, 230));
-                Rl.DrawText($"Audit Named: {Math.Max(auditNamed, 0)}", x + 4, auditYBase + 36, 16, new Color(180, 240, 180, 230));
-                Rl.DrawText($"Audit Anchor: {Math.Max(auditAnchor, 0)}", x + 4, auditYBase + 54, 16, new Color(180, 240, 180, 230));
-                Rl.DrawText($"Audit Factory: {Math.Max(auditFactory, 0)}", x + 4, auditYBase + 72, 16, new Color(180, 240, 180, 230));
+                float a0 = startAngle + s * step;
+                float a1 = startAngle + (s + 1) * step;
+                var p0 = new Vector3(center.X + MathF.Cos(a0) * radius, center.Y, center.Z + MathF.Sin(a0) * radius);
+                var p1 = new Vector3(center.X + MathF.Cos(a1) * radius, center.Y, center.Z + MathF.Sin(a1) * radius);
+                Rl.DrawLine3D(p0, p1, color);
             }
         }
 
-        private static void DrawToggle(int x, int y, int w, int h, string label, bool enabled)
-        {
-            var col = enabled ? new Color(0, 180, 0, 220) : new Color(140, 0, 0, 220);
-            Rl.DrawRectangle(x, y, w, h, new Color(0, 0, 0, 160));
-            Rl.DrawRectangleLines(x, y, w, h, col);
-            Rl.DrawText($"{label}: {(enabled ? "ON" : "OFF")}", x + 8, y + 3, 16, col);
-        }
-
-        private static void DrawButton(int x, int y, int w, int h, string label)
-        {
-            var col = new Color(90, 150, 220, 220);
-            Rl.DrawRectangle(x, y, w, h, new Color(0, 0, 0, 160));
-            Rl.DrawRectangleLines(x, y, w, h, col);
-            Rl.DrawText(label, x + 8, y + 3, 16, col);
-        }
-
-        private static bool Hit(Vector2 p, int x, int y, int w, int h)
-        {
-            return p.X >= x && p.X <= x + w && p.Y >= y && p.Y <= y + h;
-        }
+        private static Color ToRaylibColor(Vector4 c) => RaylibColorUtil.ToRaylibColor(in c);
     }
 }

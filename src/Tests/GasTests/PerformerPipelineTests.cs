@@ -13,6 +13,7 @@ using Ludots.Core.Presentation.Commands;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Events;
 using Ludots.Core.Presentation.Hud;
+using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.Performers;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Presentation.Systems;
@@ -178,7 +179,7 @@ namespace Ludots.Tests.Presentation
                     }
                 }
             };
-            _defs.Register(1, def);
+            _defs.Register("test_1", def);
 
             var actor = _world.Create();
             _events.TryAdd(new PresentationEvent
@@ -218,7 +219,7 @@ namespace Ludots.Tests.Presentation
                     }
                 }
             };
-            _defs.Register(1, def);
+            _defs.Register("test_1", def);
 
             _events.TryAdd(new PresentationEvent
             {
@@ -263,7 +264,7 @@ namespace Ludots.Tests.Presentation
             var prefabs = new Ludots.Core.Presentation.Assets.PrefabRegistry();
             var draw = new PrimitiveDrawBuffer();
             var markers = new TransientMarkerBuffer();
-            _system = new PerformerRuntimeSystem(_world, prefabs, _commands, draw, markers, _instances);
+            _system = new PerformerRuntimeSystem(_world, prefabs, _commands, draw, markers, _instances, new Ludots.Core.Presentation.PresentationStableIdAllocator());
         }
 
         [TearDown]
@@ -360,8 +361,8 @@ namespace Ludots.Tests.Presentation
                 DefaultScale = 0.5f,
                 DefaultLifetime = 1f,
             };
-            _defs.Register(50, def);
-            _instances.TryAllocate(50, entity, 0, out _);
+            int defId = _defs.Register("test_50", def);
+            _instances.TryAllocate(defId, entity, 0, out _);
 
             _system.Update(0.016f);
 
@@ -369,6 +370,29 @@ namespace Ludots.Tests.Presentation
             Assert.That(span.Length, Is.EqualTo(1));
             Assert.That(span[0].MeshAssetId, Is.EqualTo(2));
             Assert.That(span[0].Scale.X, Is.EqualTo(0.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void WorldAnchored_InstanceScoped_Marker3D_EmitsAtWorldAnchor()
+        {
+            var def = new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.Marker3D,
+                MeshOrShapeId = 2,
+                DefaultColor = new Vector4(0f, 1f, 0f, 1f),
+                DefaultScale = 1f,
+            };
+
+            int defId = _defs.Register("test_world_anchor", def);
+            _instances.TryAllocate(defId, default, 0, PresentationAnchorKind.WorldPosition, new Vector3(7f, 0.5f, 9f), 123, out _);
+
+            _system.Update(0.016f);
+
+            var span = _primitives.GetSpan();
+            Assert.That(span.Length, Is.EqualTo(1));
+            Assert.That(span[0].StableId, Is.EqualTo(123));
+            Assert.That(span[0].Position.X, Is.EqualTo(7f).Within(0.01f));
+            Assert.That(span[0].Position.Z, Is.EqualTo(9f).Within(0.01f));
         }
 
         [Test]
@@ -381,8 +405,8 @@ namespace Ludots.Tests.Presentation
                 MeshOrShapeId = 1,
                 DefaultLifetime = 0.1f,
             };
-            _defs.Register(60, def);
-            _instances.TryAllocate(60, entity, 0, out int handle);
+            int defId = _defs.Register("test_60", def);
+            _instances.TryAllocate(defId, entity, 0, out int handle);
 
             // Tick past lifetime
             _system.Update(0.05f);
@@ -405,8 +429,8 @@ namespace Ludots.Tests.Presentation
                 DefaultLifetime = 1f,
                 AlphaFadeOverLifetime = true,
             };
-            _defs.Register(70, def);
-            _instances.TryAllocate(70, entity, 0, out _);
+            int defId = _defs.Register("test_70", def);
+            _instances.TryAllocate(defId, entity, 0, out _);
 
             // Tick to 50% of lifetime
             _system.Update(0.5f);
@@ -428,8 +452,8 @@ namespace Ludots.Tests.Presentation
                 DefaultLifetime = 2f,
                 PositionYDriftPerSecond = 1f, // 1 meter per second
             };
-            _defs.Register(80, def);
-            _instances.TryAllocate(80, entity, 0, out _);
+            int defId = _defs.Register("test_80", def);
+            _instances.TryAllocate(defId, entity, 0, out _);
 
             _system.Update(1f); // 1 second → Y should be ~1.0
             var span = _primitives.GetSpan();
@@ -453,7 +477,7 @@ namespace Ludots.Tests.Presentation
                 DefaultColor = new Vector4(0, 1, 0, 1),
                 PositionOffset = new Vector3(0, 0.5f, 0),
             };
-            _defs.Register(90, def);
+            _defs.Register("test_90", def);
 
             _system.Update(0.016f);
 
@@ -479,7 +503,7 @@ namespace Ludots.Tests.Presentation
                 EntityScope = EntityScopeFilter.AllWithAttributes,
                 VisibilityCondition = new ConditionRef { Inline = InlineConditionKind.OwnerCullVisible },
             };
-            _defs.Register(91, def);
+            _defs.Register("test_91", def);
 
             _system.Update(0.016f);
 
@@ -612,21 +636,29 @@ namespace Ludots.Tests.Presentation
         [Test]
         public void Register_AllBuiltinIds_Present()
         {
+            var meshes = new MeshAssetRegistry();
             var registry = new PerformerDefinitionRegistry();
-            BuiltinPerformerDefinitions.Register(registry);
+            BuiltinPerformerDefinitions.Register(
+                registry,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
-            Assert.That(registry.TryGet(BuiltinPerformerIds.CastCommittedMarker, out _), Is.True);
-            Assert.That(registry.TryGet(BuiltinPerformerIds.CastFailedMarker, out _), Is.True);
-            Assert.That(registry.TryGet(BuiltinPerformerIds.FloatingCombatText, out _), Is.True);
-            Assert.That(registry.TryGet(BuiltinPerformerIds.EntityHealthBar, out _), Is.True);
+            Assert.That(registry.TryGet(registry.GetId(WellKnownPerformerKeys.CastCommittedMarker), out _), Is.True);
+            Assert.That(registry.TryGet(registry.GetId(WellKnownPerformerKeys.CastFailedMarker), out _), Is.True);
+            Assert.That(registry.TryGet(registry.GetId(WellKnownPerformerKeys.FloatingCombatText), out _), Is.True);
+            Assert.That(registry.TryGet(registry.GetId(WellKnownPerformerKeys.EntityHealthBar), out _), Is.True);
         }
 
         [Test]
         public void FloatingCombatText_HasYDriftAndAlphaFade()
         {
+            var meshes = new MeshAssetRegistry();
             var registry = new PerformerDefinitionRegistry();
-            BuiltinPerformerDefinitions.Register(registry);
-            registry.TryGet(BuiltinPerformerIds.FloatingCombatText, out var def);
+            BuiltinPerformerDefinitions.Register(
+                registry,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
+            registry.TryGet(registry.GetId(WellKnownPerformerKeys.FloatingCombatText), out var def);
 
             Assert.That(def.PositionYDriftPerSecond, Is.GreaterThan(0f));
             Assert.That(def.AlphaFadeOverLifetime, Is.True);
@@ -636,9 +668,13 @@ namespace Ludots.Tests.Presentation
         [Test]
         public void EntityHealthBar_IsEntityScoped()
         {
+            var meshes = new MeshAssetRegistry();
             var registry = new PerformerDefinitionRegistry();
-            BuiltinPerformerDefinitions.Register(registry);
-            registry.TryGet(BuiltinPerformerIds.EntityHealthBar, out var def);
+            BuiltinPerformerDefinitions.Register(
+                registry,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
+            registry.TryGet(registry.GetId(WellKnownPerformerKeys.EntityHealthBar), out var def);
 
             Assert.That(def.EntityScope, Is.EqualTo(EntityScopeFilter.AllWithAttributes));
             Assert.That(def.VisualKind, Is.EqualTo(PerformerVisualKind.WorldBar));

@@ -32,17 +32,16 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "src", "Mods");
             string reportPath = Path.Combine(repoRoot, "artifacts", "GasProductionReport.md");
 
             var scenarios = new List<ScenarioResult>();
             try
             {
-                scenarios.Add(RunScenario("MOBA", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "MobaDemoMod" }, "entry", RunMobaScenario));
-                scenarios.Add(RunScenario("TCG/Modify", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "TcgDemoMod" }, "tcg_modify", RunTcgModifyScenario));
-                scenarios.Add(RunScenario("TCG/Hook", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "TcgDemoMod" }, "tcg_hook", RunTcgHookScenario));
-                scenarios.Add(RunScenario("ARPG", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "ArpgDemoMod" }, "arpg_entry", RunArpgScenario));
-                scenarios.Add(RunScenario("4X", assetsRoot, modsRoot, new[] { "LudotsCoreMod", "FourXDemoMod" }, "fourx_entry", RunFourXScenario));
+                scenarios.Add(RunScenario("MOBA", repoRoot, assetsRoot, new[] { "LudotsCoreMod", "CoreInputMod", "MobaDemoMod" }, "entry", RunMobaScenario));
+                scenarios.Add(RunScenario("TCG/Modify", repoRoot, assetsRoot, new[] { "LudotsCoreMod", "TcgDemoMod" }, "tcg_modify", RunTcgModifyScenario));
+                scenarios.Add(RunScenario("TCG/Hook", repoRoot, assetsRoot, new[] { "LudotsCoreMod", "TcgDemoMod" }, "tcg_hook", RunTcgHookScenario));
+                scenarios.Add(RunScenario("ARPG", repoRoot, assetsRoot, new[] { "LudotsCoreMod", "ArpgDemoMod" }, "arpg_entry", RunArpgScenario));
+                scenarios.Add(RunScenario("4X", repoRoot, assetsRoot, new[] { "LudotsCoreMod", "FourXDemoMod" }, "fourx_entry", RunFourXScenario));
             }
             finally
             {
@@ -66,8 +65,8 @@ namespace Ludots.Tests.GAS.Production
 
         private static ScenarioResult RunScenario(
             string name,
+            string repoRoot,
             string assetsRoot,
-            string modsRoot,
             string[] mods,
             string mapId,
             Action<GameEngine, List<StepResult>> scenario)
@@ -76,11 +75,7 @@ namespace Ludots.Tests.GAS.Production
             var engine = new GameEngine();
             try
             {
-                var modPaths = new List<string>(mods.Length);
-                for (int i = 0; i < mods.Length; i++)
-                {
-                    modPaths.Add(Path.Combine(modsRoot, mods[i]));
-                }
+                var modPaths = RepoModPaths.ResolveExplicit(repoRoot, mods);
 
                 engine.InitializeWithConfigPipeline(modPaths, assetsRoot);
                 InstallDummyInput(engine);
@@ -118,7 +113,7 @@ namespace Ludots.Tests.GAS.Production
             float e1AfterQ = world.Get<AttributeBuffer>(enemy1).GetCurrent(healthId);
             steps.Add(CheckNear("Cast Q damages Enemy1", e1Before - 20f, e1AfterQ));
 
-            var tagOps = (TagOps)engine.GlobalContext[ContextKeys.TagOps];
+            var tagOps = engine.GetService(CoreServiceKeys.TagOps);
             int gcd = TagRegistry.Register("Cooldown.GCD");
             ref var heroTags = ref world.Get<GameplayTagContainer>(hero);
             steps.Add(new StepResult("Global cooldown expires", !tagOps.HasTag(ref heroTags, gcd, TagSense.Effective), "Expected Cooldown.GCD not present"));
@@ -144,7 +139,7 @@ namespace Ludots.Tests.GAS.Production
             var coneResArr = engine.SpatialQueries.QueryCone(new WorldCmInt2(hx, hy), dir, halfAngleDeg: 45, rangeCm: 800, arrBuf);
             steps.Add(new StepResult("SpatialQuery cone works with array buffer", coneResArr.Count >= 2, $"Count={coneResArr.Count} Dropped={coneResArr.Dropped}"));
 
-            var templates = (EffectTemplateRegistry)engine.GlobalContext[ContextKeys.EffectTemplateRegistry];
+            var templates = engine.GetService(CoreServiceKeys.EffectTemplateRegistry);
             int eTplId = EffectTemplateIdRegistry.GetId("Effect.Moba.Damage.E");
             if (!templates.TryGetRef(eTplId, out int eTplIdx))
             {
@@ -178,7 +173,7 @@ namespace Ludots.Tests.GAS.Production
             steps.Add(CheckNear("Cast E hits Enemy1", e1BeforeE - 5f, e1AfterE));
             steps.Add(CheckNear("Cast E hits Enemy2", e2BeforeE - 5f, e2AfterE));
 
-            var effectRequests = (EffectRequestQueue)engine.GlobalContext[ContextKeys.EffectRequestQueue];
+            var effectRequests = engine.GetService(CoreServiceKeys.EffectRequestQueue);
             int dotId = EffectTemplateIdRegistry.GetId("Effect.Moba.DOT.Burn");
             effectRequests.Publish(new EffectRequest { RootId = 0, Source = hero, Target = enemy1, TargetContext = default, TemplateId = dotId });
             Tick(engine, 25);
@@ -226,7 +221,7 @@ namespace Ludots.Tests.GAS.Production
             var (hero, enemy) = FindByNames2(world, "ArpgHero", "ArpgEnemy");
             int healthId = AttributeRegistry.GetId("Health");
 
-            var templates = (EffectTemplateRegistry)engine.GlobalContext[ContextKeys.EffectTemplateRegistry];
+            var templates = engine.GetService(CoreServiceKeys.EffectTemplateRegistry);
             int arrowTplId = EffectTemplateIdRegistry.GetId("Effect.Arpg.FireArrow");
             if (templates.TryGetRef(arrowTplId, out int arrowIdx))
             {
@@ -252,7 +247,7 @@ namespace Ludots.Tests.GAS.Production
             bool wolfSpawned = HasAnyNamePrefix(world, "Unit:Unit.Wolf");
             steps.Add(new StepResult("CreateUnit spawns Wolf", wolfSpawned, "Expect Unit:Unit.Wolf entity"));
 
-            var effectRequests = (EffectRequestQueue)engine.GlobalContext[ContextKeys.EffectRequestQueue];
+            var effectRequests = engine.GetService(CoreServiceKeys.EffectRequestQueue);
             int poisonId = EffectTemplateIdRegistry.GetId("Effect.Arpg.Poison");
             effectRequests.Publish(new EffectRequest { RootId = 0, Source = enemy, Target = hero, TargetContext = default, TemplateId = poisonId });
             Tick(engine, 15);
@@ -264,7 +259,7 @@ namespace Ludots.Tests.GAS.Production
 
             CastAbility(engine, hero, hero, slot: 3);
             Tick(engine, 5);
-            var tagOps = (TagOps)engine.GlobalContext[ContextKeys.TagOps];
+            var tagOps = engine.GetService(CoreServiceKeys.TagOps);
             int stunned = TagRegistry.Register("Status.Stunned");
             int cannotMove = TagRegistry.Register("Status.CannotMove");
             ref var tags = ref world.Get<GameplayTagContainer>(hero);
@@ -279,7 +274,7 @@ namespace Ludots.Tests.GAS.Production
             var world = engine.World;
             var (hero, site) = FindByNames2(world, "Governor", "OutpostSite");
 
-            var templates = (EffectTemplateRegistry)engine.GlobalContext[ContextKeys.EffectTemplateRegistry];
+            var templates = engine.GetService(CoreServiceKeys.EffectTemplateRegistry);
             int buildTplId = EffectTemplateIdRegistry.GetId("Effect.4X.BuildOutpost");
             if (templates.TryGetRef(buildTplId, out int buildIdx))
             {
@@ -289,7 +284,7 @@ namespace Ludots.Tests.GAS.Production
 
             CastAbility(engine, hero, site, slot: 1);
             Tick(engine, 5);
-            var tagOps = (TagOps)engine.GlobalContext[ContextKeys.TagOps];
+            var tagOps = engine.GetService(CoreServiceKeys.TagOps);
             int colonizing = TagRegistry.Register("Status.Colonizing");
             int working = TagRegistry.Register("Status.Working");
             ref var tags = ref world.Get<GameplayTagContainer>(hero);
@@ -309,8 +304,8 @@ namespace Ludots.Tests.GAS.Production
         {
             var inputConfig = new InputConfigPipelineLoader(engine.ConfigPipeline).Load();
             var inputHandler = new PlayerInputHandler(new NullInputBackend(), inputConfig);
-            engine.GlobalContext[ContextKeys.InputHandler] = inputHandler;
-            engine.GlobalContext[ContextKeys.UiCaptured] = false;
+            engine.SetService(CoreServiceKeys.InputHandler, inputHandler);
+            engine.SetService(CoreServiceKeys.UiCaptured, false);
         }
 
         private sealed class NullInputBackend : IInputBackend
@@ -326,11 +321,11 @@ namespace Ludots.Tests.GAS.Production
 
         private static void CastAbility(GameEngine engine, Entity actor, Entity target, int slot)
         {
-            var orderQueue = (OrderQueue)engine.GlobalContext[ContextKeys.OrderQueue];
-            int castAbilityTagId = engine.MergedConfig.Constants.OrderTags["castAbility"];
+            var orderQueue = engine.GetService(CoreServiceKeys.OrderQueue);
+            int castAbilityOrderTypeId = engine.MergedConfig.Constants.OrderTypeIds["castAbility"];
             orderQueue.TryEnqueue(new Order
             {
-                OrderTagId = castAbilityTagId,
+                OrderTypeId = castAbilityOrderTypeId,
                 Actor = actor,
                 Target = target,
                 Args = new OrderArgs { I0 = slot }

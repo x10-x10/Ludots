@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Ludots.Core.Components;
+using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
@@ -39,6 +40,7 @@ namespace Ludots.Core.Config
             Register("EntityLayer", SetEntityLayer);
             Register("AttributeBuffer", SetAttributeBuffer);
             Register("AbilityStateBuffer", SetAbilityStateBuffer);
+            Register("AbilityFormSetRef", SetAbilityFormSetRef);
             Register<ForceInput2D>("ForceInput2D");
             Register<GameplayTagContainer>("GameplayTagContainer");
             Register("OrderBuffer", SetOrderBuffer);
@@ -96,7 +98,7 @@ namespace Ludots.Core.Config
 
         private static void SetOrderBuffer(Entity entity, JsonNode data)
         {
-            // OrderBuffer always starts empty — JSON data is ignored (no serializable state)
+            // OrderBuffer always starts empty; JSON data is ignored.
             entity.Add(OrderBuffer.CreateEmpty());
         }
 
@@ -107,7 +109,31 @@ namespace Ludots.Core.Config
             {
                 for (int i = 0; i < arr.Count && buffer.Count < AbilityStateBuffer.CAPACITY; i++)
                 {
-                    int id = arr[i]?.GetValue<int>() ?? 0;
+                    var elem = arr[i];
+                    if (elem == null) continue;
+
+                    int id;
+                    if (elem.GetValueKind() == JsonValueKind.String)
+                    {
+                        var abilityConfigId = elem.GetValue<string>();
+                        if (string.IsNullOrWhiteSpace(abilityConfigId))
+                        {
+                            id = 0;
+                        }
+                        else
+                        {
+                            id = Ludots.Core.Gameplay.GAS.Registry.AbilityIdRegistry.GetId(abilityConfigId);
+                            if (id <= 0)
+                            {
+                                throw new InvalidOperationException($"Unknown ability id '{abilityConfigId}' in AbilityStateBuffer config.");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        id = elem.GetValue<int>();
+                    }
+
                     if (id > 0) buffer.AddAbility(id);
                 }
             }
@@ -134,10 +160,42 @@ namespace Ludots.Core.Config
             }
             var fix64Pos = Fix64Vec2.FromInt(x, y);
             entity.Add(new WorldPositionCm { Value = fix64Pos });
-            // 自动添加插值、渲染、剔除所需的伴生组件
+            // Add the companion components required by interpolation, rendering, and culling.
             entity.Add(new PreviousWorldPositionCm { Value = fix64Pos });
             entity.Add(VisualTransform.Default);
             entity.Add(new CullState { IsVisible = true, LOD = LODLevel.High });
+        }
+
+        private static void SetAbilityFormSetRef(Entity entity, JsonNode data)
+        {
+            string? formSetName = null;
+            if (data.GetValueKind() == JsonValueKind.String)
+            {
+                formSetName = data.GetValue<string>();
+            }
+            else if (data is JsonObject obj)
+            {
+                formSetName =
+                    obj["formSetId"]?.GetValue<string>() ??
+                    obj["FormSetId"]?.GetValue<string>();
+            }
+
+            if (string.IsNullOrWhiteSpace(formSetName))
+            {
+                throw new InvalidOperationException("AbilityFormSetRef requires a non-empty formSetId.");
+            }
+
+            int formSetId = AbilityFormSetIdRegistry.GetId(formSetName);
+            if (formSetId <= 0)
+            {
+                throw new InvalidOperationException($"Unknown ability form set id '{formSetName}'.");
+            }
+
+            entity.Add(new AbilityFormSetRef { FormSetId = formSetId });
+            if (!entity.Has<AbilityFormSlotBuffer>())
+            {
+                entity.Add(new AbilityFormSlotBuffer());
+            }
         }
 
         private static void SetEntityLayer(Entity entity, JsonNode data)
@@ -199,3 +257,5 @@ namespace Ludots.Core.Config
         }
     }
 }
+
+

@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Ludots CI Audit Gate"
+  short_description: "Gate PR and CI on complete evidence packets"
+  default_prompt: "Use $ludots-ci-audit-gate to verify hook packets and evidence completeness, then emit a CI audit result with exact blockers."

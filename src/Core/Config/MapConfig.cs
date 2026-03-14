@@ -35,9 +35,16 @@ namespace Ludots.Core.Config
     /// <summary>
     /// Camera configuration for a map. Matches the CameraState orbit model.
     /// All fields are optional; null/0 means "use engine default".
+    /// If VirtualCameraId is set, the named virtual camera profile is activated first;
+    /// explicit fields then override that runtime instance.
     /// </summary>
     public class CameraConfig
     {
+        /// <summary>
+        /// Optional virtual camera profile ID (e.g. "Moba", "Rts", "Default").
+        /// </summary>
+        public string VirtualCameraId { get; set; }
+
         public float? TargetXCm { get; set; }
         public float? TargetYCm { get; set; }
         public float? Yaw { get; set; }

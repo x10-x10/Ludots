@@ -1,26 +1,29 @@
+using System;
 using System.Collections.Generic;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Arch.System;
+using Ludots.Core.Components;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Input;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Presentation;
+using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Gameplay.Components;
 
 namespace Ludots.Core.Gameplay.GAS.Systems
 {
     /// <summary>
-    /// GAS chain order tag configuration - loaded from GameConfig.Constants.GasOrderTags
+    /// Response-chain order type configuration loaded from GameConfig.Constants.ResponseChainOrderTypeIds
     /// </summary>
-    public struct GasChainOrderTags
+    public struct ResponseChainOrderTypes
     {
         public int ChainPass;
         public int ChainNegate;
         public int ChainActivateEffect;
         
-        public static GasChainOrderTags Default => new GasChainOrderTags
+        public static ResponseChainOrderTypes Default => new ResponseChainOrderTypes
         {
             ChainPass = 1,
             ChainNegate = 2,
@@ -37,10 +40,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly OrderQueue _chainOrders;
         private readonly ResponseChainTelemetryBuffer _telemetry;
         private readonly OrderRequestQueue _orderRequests;
-        private readonly GasChainOrderTags _chainTags;
+        private readonly ResponseChainOrderTypes _responseChainOrderTypes;
         private readonly GasPresentationEventBuffer _presentationEvents;
 
-        // ── Phase Graph execution (optional, null = legacy-only mode) ──
+        // 鈹€鈹€ Phase Graph execution (optional) 鈹€鈹€
         private readonly EffectPhaseExecutor _phaseExecutor;
         private readonly Ludots.Core.NodeLibraries.GASGraph.IGraphRuntimeApi _graphApi;
         private readonly Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi _graphApiHost;
@@ -230,7 +233,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
         }
 
-        public EffectProposalProcessingSystem(World world, EffectRequestQueue queue, GasBudget budget = null, EffectTemplateRegistry templates = null, InputRequestQueue inputRequests = null, OrderQueue chainOrders = null, ResponseChainTelemetryBuffer telemetry = null, OrderRequestQueue orderRequests = null, GasChainOrderTags? chainTags = null, GasPresentationEventBuffer presentationEvents = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null)
+        public EffectProposalProcessingSystem(World world, EffectRequestQueue queue, GasBudget budget = null, EffectTemplateRegistry templates = null, InputRequestQueue inputRequests = null, OrderQueue chainOrders = null, ResponseChainTelemetryBuffer telemetry = null, OrderRequestQueue orderRequests = null, ResponseChainOrderTypes? responseChainOrderTypes = null, GasPresentationEventBuffer presentationEvents = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null)
             : base(world)
         {
             _queue = queue;
@@ -240,7 +243,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _chainOrders = chainOrders;
             _telemetry = telemetry;
             _orderRequests = orderRequests;
-            _chainTags = chainTags ?? GasChainOrderTags.Default;
+            _responseChainOrderTypes = responseChainOrderTypes ?? ResponseChainOrderTypes.Default;
             _presentationEvents = presentationEvents;
             _phaseExecutor = phaseExecutor;
             _graphApiHost = graphApi;
@@ -306,11 +309,12 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         continue;
                     }
 
-                    if (_templates == null || req.TemplateId <= 0 || !_templates.TryGet(req.TemplateId, out var rootTpl))
+                    if (_templates == null || req.TemplateId <= 0 || !_templates.TryGetRef(req.TemplateId, out int rootTplIdx))
                     {
                         workUnits++;
                         continue;
                     }
+                    ref readonly var rootTpl = ref _templates.GetRef(rootTplIdx);
 
                     _activeReq = req;
                     _phase = WindowPhase.Collect;
@@ -366,7 +370,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         });
                     }
 
-                    // ── Execute OnPropose Phase Graphs (before ResponseChain) ──
+                    // 鈹€鈹€ Execute OnPropose Phase Graphs (before ResponseChain) 鈹€鈹€
                     ExecuteOnProposePhase(in root, in rootTpl);
 
                     if (rootTpl.ParticipatesInResponse)
@@ -412,10 +416,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                             if (_budget != null) _budget.ResponseCreatesDropped++;
                                             break;
                                         }
-                                        if (_templates == null || response.EffectTemplateId <= 0 || !_templates.TryGet(response.EffectTemplateId, out var tpl))
+                                        if (_templates == null || response.EffectTemplateId <= 0 || !_templates.TryGetRef(response.EffectTemplateId, out int tplIdx))
                                         {
                                             break;
                                         }
+                                        ref readonly var tpl = ref _templates.GetRef(tplIdx);
 
                                         var chainedModifiers = tpl.Modifiers;
                                         ApplyPresetModifiers(ref chainedModifiers, in tpl, in _activeReq);
@@ -526,9 +531,9 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 TargetContext = _window[0].TargetContext,
                                 AllowedCount = 0
                             };
-                            req.AddAllowed(_chainTags.ChainPass);
-                            req.AddAllowed(_chainTags.ChainNegate);
-                            if (_inputRequestTagId > 0) req.AddAllowed(_chainTags.ChainActivateEffect);
+                            req.AddAllowed(_responseChainOrderTypes.ChainPass);
+                            req.AddAllowed(_responseChainOrderTypes.ChainNegate);
+                            if (_inputRequestTagId > 0) req.AddAllowed(_responseChainOrderTypes.ChainActivateEffect);
                             _orderRequests.TryEnqueue(req);
                         }
                     }
@@ -541,7 +546,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             if (workUnits >= MaxWorkUnitsPerSlice) return false;
                             progressed = true;
 
-                            if (order.OrderTagId == _chainTags.ChainPass)
+                            if (order.OrderTypeId == _responseChainOrderTypes.ChainPass)
                             {
                                 if (_telemetry != null)
                                 {
@@ -552,7 +557,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                         TemplateId = _activeReq.TemplateId,
                                         TagId = _window[0].TagId,
                                         ProposalIndex = 0,
-                                        OrderTagId = order.OrderTagId,
+                                        OrderTypeId = order.OrderTypeId,
                                         Source = order.Actor,
                                         Target = order.Target,
                                         Context = order.TargetContext
@@ -570,7 +575,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             }
 
                             _passStreak = 0;
-                            if (order.OrderTagId == _chainTags.ChainNegate)
+                            if (order.OrderTypeId == _responseChainOrderTypes.ChainNegate)
                             {
                                 if (_telemetry != null)
                                 {
@@ -581,7 +586,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                         TemplateId = _activeReq.TemplateId,
                                         TagId = _window[0].TagId,
                                         ProposalIndex = 0,
-                                        OrderTagId = order.OrderTagId,
+                                        OrderTypeId = order.OrderTypeId,
                                         Source = order.Actor,
                                         Target = order.Target,
                                         Context = order.TargetContext
@@ -592,7 +597,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 continue;
                             }
 
-                            if (order.OrderTagId == _chainTags.ChainActivateEffect && order.Args.I0 > 0)
+                            if (order.OrderTypeId == _responseChainOrderTypes.ChainActivateEffect && order.Args.I0 > 0)
                             {
                                 if (_telemetry != null)
                                 {
@@ -603,7 +608,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                         TemplateId = order.Args.I0,
                                         TagId = _window[0].TagId,
                                         ProposalIndex = 0,
-                                        OrderTagId = order.OrderTagId,
+                                        OrderTypeId = order.OrderTypeId,
                                         Source = order.Actor,
                                         Target = order.Target,
                                         Context = order.TargetContext
@@ -615,11 +620,12 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                     workUnits++;
                                     continue;
                                 }
-                                if (_templates == null || !_templates.TryGet(order.Args.I0, out var tpl))
+                                if (_templates == null || !_templates.TryGetRef(order.Args.I0, out int tplIdx))
                                 {
                                     workUnits++;
                                     continue;
                                 }
+                                ref readonly var tpl = ref _templates.GetRef(tplIdx);
 
                                 var chainedModifiers = tpl.Modifiers;
                                 ApplyPresetModifiers(ref chainedModifiers, in tpl, in _activeReq);
@@ -766,7 +772,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             continue;
                         }
 
-                        if (_templates == null || e.TemplateId <= 0 || !_templates.TryGet(e.TemplateId, out var tpl))
+                        if (_templates == null || e.TemplateId <= 0 || !_templates.TryGetRef(e.TemplateId, out int tplIdx))
                         {
                             if (_telemetry != null)
                             {
@@ -786,13 +792,15 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             workUnits++;
                             continue;
                         }
+                        ref readonly var tpl = ref _templates.GetRef(tplIdx);
 
-                        // ── Execute OnCalculate Phase Graphs (after ResponseChain resolves) ──
+                        // 鈹€鈹€ Execute OnCalculate Phase Graphs (after ResponseChain resolves) 鈹€鈹€
                         ExecuteOnCalculatePhase(in e, in tpl);
 
                         if (IsPureInstantTemplate(in tpl))
                         {
                             ref var attr = ref World.TryGetRef<AttributeBuffer>(e.Target, out bool hasAttr);
+                            float delta = 0f;
                             if (hasAttr)
                             {
                                 // Snapshot primary attribute for delta calculation
@@ -800,7 +808,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 float before = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
                                 EffectModifierOps.Apply(in e.Modifiers, ref attr);
                                 float after = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
-                                float delta = after - before;
+                                delta = after - before;
                                 if (_presentationEvents != null && delta != 0f)
                                 {
                                     _presentationEvents.Publish(new GasPresentationEvent
@@ -817,7 +825,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
                             // Dispatch OnApply Phase Listeners even for pure-instant effects.
                             // Modifiers are applied inline above (equivalent to Main handler),
-                            // but Listeners must still fire for observability — e.g. "whenever
+                            // but Listeners must still fire for observability 鈥?e.g. "whenever
                             // damage is dealt, draw a card" or "thorns: reflect damage on hit".
                             if (_phaseExecutor != null && _graphApi != null)
                             {
@@ -909,7 +917,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             int consumed = _rootCursor;
             if (_phase == WindowPhase.Collect || _phase == WindowPhase.WaitInput)
             {
-                // Current root hasn't been resolved yet — safe to re-process it.
+                // Current root hasn't been resolved yet 鈥?safe to re-process it.
                 consumed = _rootCursor > 0 ? _rootCursor - 1 : 0;
             }
             if (consumed > 0 && _queue != null)
@@ -1015,15 +1023,21 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             if (tpl.ListenerSetup.Count > 0) return false;
             // Templates with TargetResolver need entity-based processing for fan-out
             if (tpl.HasTargetResolver) return false;
-            // Presets that perform non-modifier side effects require entity-based phase execution.
-            if (tpl.PresetType == EffectPresetType.LaunchProjectile) return false;
-            if (tpl.PresetType == EffectPresetType.CreateUnit) return false;
-            return true;
+            // Only modifier-driven instant presets can remain on the inline path.
+            // Behavior presets must stay entity-backed so OnApply builtins execute.
+            return tpl.PresetType switch
+            {
+                EffectPresetType.None => true,
+                EffectPresetType.InstantDamage => true,
+                EffectPresetType.Heal => true,
+                EffectPresetType.ApplyForce2D => true,
+                _ => false,
+            };
         }
 
         private void CreateEntityEffect(in EffectProposal proposal, in EffectTemplateData tpl)
         {
-            // ── Stack merge: if template has stack policy and an existing effect exists on target, merge ──
+            // 鈹€鈹€ Stack merge: if template has stack policy and an existing effect exists on target, merge 鈹€鈹€
             if (tpl.HasStackPolicy && tpl.LifetimeKind != EffectLifetimeKind.Instant
                 && World.IsAlive(proposal.Target) && World.Has<ActiveEffectContainer>(proposal.Target))
             {
@@ -1050,7 +1064,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             // KeepDuration: do nothing
                         }
 
-                        // Update tag contributions (delta from oldCount → newCount)
+                        // Update tag contributions (delta from oldCount 鈫?newCount)
                         if (World.Has<EffectGrantedTags>(existing) && World.Has<TagCountContainer>(proposal.Target))
                         {
                             ref readonly var grantedTags = ref World.Get<EffectGrantedTags>(existing);
@@ -1133,7 +1147,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         {
             if (_phaseExecutor == null || _graphApi == null) return;
 
-            SetMergedConfigContext(in tpl, in proposal);
+            var mergedConfig = BuildMergedConfig(in tpl, in proposal);
+            if (_graphApiHost != null && mergedConfig.Count > 0)
+            {
+                _graphApiHost.SetConfigContext(in mergedConfig);
+            }
             _phaseExecutor.ExecutePhase(
                 World, _graphApi,
                 proposal.Source, proposal.Target, proposal.TargetContext,
@@ -1142,7 +1160,8 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 in tpl.PhaseGraphBindings,
                 tpl.PresetType,
                 proposal.TagId,
-                proposal.TemplateId);
+                proposal.TemplateId,
+                in mergedConfig);
             ClearConfigContext();
         }
 
@@ -1154,7 +1173,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         {
             if (_phaseExecutor == null || _graphApi == null) return;
 
-            SetMergedConfigContext(in tpl, in proposal);
+            var mergedConfig = BuildMergedConfig(in tpl, in proposal);
+            if (_graphApiHost != null && mergedConfig.Count > 0)
+            {
+                _graphApiHost.SetConfigContext(in mergedConfig);
+            }
             _phaseExecutor.ExecutePhase(
                 World, _graphApi,
                 proposal.Source, proposal.Target, proposal.TargetContext,
@@ -1163,11 +1186,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 in tpl.PhaseGraphBindings,
                 tpl.PresetType,
                 proposal.TagId,
-                proposal.TemplateId);
+                proposal.TemplateId,
+                in mergedConfig);
             ClearConfigContext();
         }
-
-        private EffectConfigParams _mergedConfigTemp; // reusable to avoid repeated stack allocation
 
         private void SetConfigContext(in EffectTemplateData tpl)
         {
@@ -1177,24 +1199,30 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
         }
 
-        /// <summary>
-        /// Set merged config context: template params + proposal-level CallerParams.
-        /// </summary>
         private void SetMergedConfigContext(in EffectTemplateData tpl, in EffectProposal proposal)
         {
-            if (_graphApiHost == null) return;
+            if (_graphApiHost == null)
+            {
+                return;
+            }
 
+            var merged = BuildMergedConfig(in tpl, in proposal);
+            if (merged.Count > 0)
+            {
+                _graphApiHost.SetConfigContext(in merged);
+            }
+        }
+
+        private EffectConfigParams BuildMergedConfig(in EffectTemplateData tpl, in EffectProposal proposal)
+        {
             if (proposal.HasCallerParams)
             {
-                _mergedConfigTemp = tpl.ConfigParams;
-                _mergedConfigTemp.MergeFrom(in proposal.CallerParams);
-                if (_mergedConfigTemp.Count > 0)
-                    _graphApiHost.SetConfigContext(in _mergedConfigTemp);
+                var merged = tpl.ConfigParams;
+                merged.MergeFrom(in proposal.CallerParams);
+                return merged;
             }
-            else if (tpl.ConfigParams.Count > 0)
-            {
-                _graphApiHost.SetConfigContext(in tpl.ConfigParams);
-            }
+
+            return tpl.ConfigParams;
         }
 
         private void ClearConfigContext()
@@ -1222,3 +1250,4 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
     }
 }
+

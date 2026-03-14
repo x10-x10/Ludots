@@ -1,0 +1,22 @@
+[
+  {
+    "id": "hud.attribute.current",
+    "argCount": 1
+  },
+  {
+    "id": "hud.attribute.current_over_base",
+    "argCount": 2
+  },
+  {
+    "id": "hud.attribute.constant",
+    "argCount": 1
+  },
+  {
+    "id": "hud.combat.delta",
+    "argCount": 1
+  },
+  {
+    "id": "hud.entity.id",
+    "argCount": 1
+  }
+]

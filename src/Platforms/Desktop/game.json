@@ -6,13 +6,13 @@
   ],
   "WindowWidth": 1280,
   "WindowHeight": 720,
-  "WindowTitle": "Ludots Engine (Raylib)",
+  "WindowTitle": "Ludots Engine",
   "TargetFps": 60,
   "ModPaths": [
-    "../../../../../Mods/MobaDemoMod",
-    "../../../../../Mods/PerformanceVisualizationMod",
-    "../../../../../Mods/TerrainBenchmarkMod",
-    "../../../../../Mods/Physics2DPlaygroundMod",
-    "../../../../../Mods/Navigation2DPlaygroundMod"
+    "../../../../../../mods/MobaDemoMod",
+    "../../../../../../mods/PerformanceVisualizationMod",
+    "../../../../../../mods/TerrainBenchmarkMod",
+    "../../../../../../mods/Physics2DPlaygroundMod",
+    "../../../../../../mods/Navigation2DPlaygroundMod"
   ]
 }

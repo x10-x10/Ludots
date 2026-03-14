@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Ludots Video Frame Extract"
+  short_description: "Extract keyframes and contact sheets from recordings"
+  default_prompt: "Use $ludots-video-frame-extract to turn a recording into reviewable keyframes, a contact sheet, and a frames-ready hook packet."

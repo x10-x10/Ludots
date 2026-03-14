@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Ludots.Core.Modding;
+using Ludots.Core.Modding.Workspace;
 using Ludots.ModLauncher.Config;
 using Ludots.ModLauncher.ModSdk;
 
@@ -57,7 +58,33 @@ namespace Ludots.ModLauncher.Cli
 
             if (parsed.Primary == "run")
             {
-                context.RunRaylib();
+                string? presetFile = null;
+                if (!string.IsNullOrWhiteSpace(parsed.PresetId))
+                {
+                    var presetsDir = Path.Combine(rootDir, "src", "Apps", "Raylib", "Ludots.App.Raylib");
+                    var presets = GamePreset.DiscoverPresets(presetsDir);
+                    var match = presets.Find(p => string.Equals(p.Id, parsed.PresetId, StringComparison.OrdinalIgnoreCase));
+                    if (match == null)
+                        throw new InvalidOperationException($"Preset not found: {parsed.PresetId}");
+                    presetFile = Path.GetFileName(match.FilePath);
+                }
+                context.RunRaylib(presetFile);
+                return 0;
+            }
+
+            if (parsed.Primary == "presets" && parsed.Secondary == "list")
+            {
+                var presetsDir = Path.Combine(rootDir, "src", "Apps", "Raylib", "Ludots.App.Raylib");
+                var presets = GamePreset.DiscoverPresets(presetsDir);
+
+                Console.WriteLine($"{"Id",-20} {"Title",-45} {"Mods",5}  File");
+                Console.WriteLine(new string('-', 90));
+                foreach (var p in presets)
+                {
+                    Console.WriteLine($"{p.Id,-20} {p.WindowTitle,-45} {p.ModPaths.Count,5}  {Path.GetFileName(p.FilePath)}");
+                }
+                Console.WriteLine();
+                Console.WriteLine($"Found {presets.Count} preset(s) in {presetsDir}");
                 return 0;
             }
 
@@ -89,7 +116,7 @@ namespace Ludots.ModLauncher.Cli
             {
                 _rootDir = rootDir;
                 _assetsDir = Path.Combine(_rootDir, "assets");
-                _modsDir = Path.Combine(_rootDir, "src", "Mods");
+                _modsDir = Path.Combine(_rootDir, "mods");
                 _gameExePath = Path.Combine(_rootDir, "src", "Apps", "Raylib", "Ludots.App.Raylib", "bin", "Release", "net8.0", "Ludots.App.Raylib.exe");
                 _gameJsonPath = Path.Combine(Path.GetDirectoryName(_gameExePath) ?? _rootDir, "game.json");
                 _config = config ?? new ModLauncherConfig();
@@ -103,6 +130,7 @@ namespace Ludots.ModLauncher.Cli
             public List<ModInfo> ResolveActiveMods(string? presetId, List<string> modNamesOrPaths)
             {
                 var all = ScanMods();
+                var byName = all.ToDictionary(m => m.Name, StringComparer.OrdinalIgnoreCase);
 
                 if (modNamesOrPaths.Count > 0)
                 {
@@ -113,19 +141,30 @@ namespace Ludots.ModLauncher.Cli
                         var missing = modNamesOrPaths.Where(x => !picked.Any(m => string.Equals(m.Name, x, StringComparison.OrdinalIgnoreCase) || string.Equals(m.FullPath, x, StringComparison.OrdinalIgnoreCase))).ToList();
                         throw new InvalidOperationException($"Unknown mods: {string.Join(", ", missing)}");
                     }
-                    return picked;
+
+                    return ResolveWithDependencies(picked.Select(m => m.Name), byName);
                 }
 
                 var effectivePresetId = string.IsNullOrWhiteSpace(presetId) ? _config.SelectedPresetId : presetId;
                 if (string.IsNullOrWhiteSpace(effectivePresetId)) throw new InvalidOperationException("PresetId is required (no --preset and no SelectedPresetId).");
                 if (!_config.Presets.TryGetValue(effectivePresetId, out var preset)) throw new InvalidOperationException($"Preset not found: {effectivePresetId}");
 
-                var byName = all.ToDictionary(m => m.Name, StringComparer.OrdinalIgnoreCase);
-                var active = new List<ModInfo>();
+                var selectedNames = new List<string>();
                 foreach (var n in preset.ActiveModNames)
                 {
-                    if (!byName.TryGetValue(n, out var m)) throw new InvalidOperationException($"Preset refers to missing mod: {n}");
-                    active.Add(m);
+                    if (!byName.ContainsKey(n)) throw new InvalidOperationException($"Preset refers to missing mod: {n}");
+                    selectedNames.Add(n);
+                }
+
+                if (preset.IncludeDependencies)
+                {
+                    return ResolveWithDependencies(selectedNames, byName);
+                }
+
+                var active = new List<ModInfo>(selectedNames.Count);
+                for (int i = 0; i < selectedNames.Count; i++)
+                {
+                    active.Add(byName[selectedNames[i]]);
                 }
                 return active;
             }
@@ -139,28 +178,58 @@ namespace Ludots.ModLauncher.Cli
                 var results = new List<ModInfo>();
                 var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                void TryLoad(string dir)
+                var discovered = ModDiscovery.DiscoverMods(directoriesToScan);
+                for (int i = 0; i < discovered.Count; i++)
                 {
-                    var modJson = Path.Combine(dir, "mod.json");
-                    if (!File.Exists(modJson)) return;
+                    var mod = discovered[i];
+                    if (!seenNames.Add(mod.Manifest.Name))
+                    {
+                        continue;
+                    }
 
-                    var manifest = ModManifestJson.ParseStrict(File.ReadAllText(modJson), modJson);
-                    var name = manifest.Name;
-                    if (seenNames.Contains(name)) return;
-
-                    var full = Path.GetFullPath(dir);
-                    results.Add(new ModInfo(name, full));
-                    seenNames.Add(name);
-                }
-
-                foreach (var root in directoriesToScan)
-                {
-                    if (!Directory.Exists(root)) continue;
-                    TryLoad(root);
-                    foreach (var d in Directory.GetDirectories(root)) TryLoad(d);
+                    results.Add(new ModInfo(mod.Manifest.Name, mod.DirectoryPath, mod.Manifest));
                 }
 
                 return results;
+            }
+
+            private static List<ModInfo> ResolveWithDependencies(IEnumerable<string> roots, Dictionary<string, ModInfo> byName)
+            {
+                var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var order = new List<string>();
+
+                void Collect(string modName)
+                {
+                    if (!required.Add(modName)) return;
+                    if (!byName.TryGetValue(modName, out var mod))
+                    {
+                        throw new InvalidOperationException($"Missing dependency mod: {modName}");
+                    }
+
+                    foreach (var dep in mod.Manifest.Dependencies.Keys)
+                    {
+                        if (string.IsNullOrWhiteSpace(dep)) continue;
+                        Collect(dep);
+                    }
+
+                    order.Add(modName);
+                }
+
+                foreach (var root in roots)
+                {
+                    Collect(root);
+                }
+
+                var uniqueOrdered = new List<ModInfo>(order.Count);
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < order.Count; i++)
+                {
+                    var name = order[i];
+                    if (!seen.Add(name)) continue;
+                    uniqueOrdered.Add(byName[name]);
+                }
+
+                return uniqueOrdered;
             }
 
             public void EnsureModProject(ModInfo mod)
@@ -239,16 +308,22 @@ namespace Ludots.ModLauncher.Cli
                 Log($"Wrote game.json: {_gameJsonPath}");
             }
 
-            public void RunRaylib()
+            public void RunRaylib(string? presetFile = null)
             {
                 if (!File.Exists(_gameExePath)) throw new FileNotFoundException($"Game exe not found: {_gameExePath}");
                 Log($"Starting: {_gameExePath}");
-                Process.Start(new ProcessStartInfo
+                var psi = new ProcessStartInfo
                 {
                     FileName = _gameExePath,
                     WorkingDirectory = Path.GetDirectoryName(_gameExePath) ?? _rootDir,
                     UseShellExecute = true
-                });
+                };
+                if (!string.IsNullOrWhiteSpace(presetFile))
+                {
+                    psi.Arguments = presetFile;
+                    Log($"  preset: {presetFile}");
+                }
+                Process.Start(psi);
             }
 
             private int RunDotnet(string args)
@@ -278,7 +353,7 @@ namespace Ludots.ModLauncher.Cli
             }
         }
 
-        private readonly record struct ModInfo(string Name, string FullPath);
+        private readonly record struct ModInfo(string Name, string FullPath, ModManifest Manifest);
     }
 }
 

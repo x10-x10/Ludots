@@ -30,8 +30,18 @@ namespace Ludots.Tool
             var initCommand = new Command("init", "Initialize a new mod project");
             var modIdOption = new Option<string>("--id", "The ID of the mod");
             modIdOption.IsRequired = true;
+            var dirOption = new Option<string>("--dir", "Directory to create the mod in (default: mods/)");
+            var templateOption = new Option<string>("--template", () => "empty", "Template: empty, gameplay");
             initCommand.AddOption(modIdOption);
-            initCommand.SetHandler((string id) => InitMod(id), modIdOption);
+            initCommand.AddOption(dirOption);
+            initCommand.AddOption(templateOption);
+            initCommand.SetHandler((InvocationContext ctx) =>
+            {
+                var id = ctx.ParseResult.GetValueForOption(modIdOption);
+                var dir = ctx.ParseResult.GetValueForOption(dirOption);
+                var template = ctx.ParseResult.GetValueForOption(templateOption) ?? "empty";
+                InitMod(id, dir, template);
+            });
             
             // 'build' command
             var buildCommand = new Command("build", "Build the mod project");
@@ -47,15 +57,18 @@ namespace Ludots.Tool
 
             var graphCommand = new Command("graph", "Compile graph assets");
             var compileGraphsCommand = new Command("compile", "Compile GAS graphs to binary blob");
-            var graphModOption = new Option<string>("--mod", "The mod ID to compile graphs for") { IsRequired = true };
+            var graphModOption = new Option<string?>("--mod", () => null, "The mod ID to compile graphs for");
+            var graphModPathOption = new Option<string?>("--modPath", () => null, "The full mod root path to compile graphs for");
             var assetsRootOption = new Option<string?>("--assetsRoot", () => null, "Assets root (repo root containing 'assets/')");
             compileGraphsCommand.AddOption(graphModOption);
+            compileGraphsCommand.AddOption(graphModPathOption);
             compileGraphsCommand.AddOption(assetsRootOption);
             compileGraphsCommand.SetHandler((InvocationContext ctx) =>
             {
                 var mod = ctx.ParseResult.GetValueForOption(graphModOption);
+                var modPath = ctx.ParseResult.GetValueForOption(graphModPathOption);
                 var assetsRoot = ctx.ParseResult.GetValueForOption(assetsRootOption);
-                ctx.ExitCode = CompileGraphs(mod, assetsRoot);
+                ctx.ExitCode = CompileGraphs(mod, modPath, assetsRoot);
             });
             graphCommand.AddCommand(compileGraphsCommand);
             rootCommand.AddCommand(graphCommand);
@@ -245,77 +258,126 @@ namespace Ludots.Tool
             return await rootCommand.InvokeAsync(args);
         }
 
-        static void InitMod(string modId)
+        static void InitMod(string modId, string dir, string template)
         {
-            Console.WriteLine($"Initializing mod '{modId}'...");
-            
-            // Assuming we are in root or src/Mods?
-            // Let's enforce a standard structure: src/Mods/{ModId}
-            
-            // Try to find src/Mods from current directory up to root
-            var modsRoot = FindModsRoot();
-            if (modsRoot == null)
+            Console.WriteLine($"Initializing mod '{modId}' (template={template})...");
+
+            string modDir;
+            if (!string.IsNullOrWhiteSpace(dir))
             {
-                 // Fallback: Create in current directory
-                 modsRoot = Directory.GetCurrentDirectory();
-                 Console.WriteLine($"Warning: Could not find 'src/Mods' in hierarchy. Creating in current directory: {modsRoot}");
+                modDir = Path.GetFullPath(Path.Combine(dir, modId));
             }
-            
-            var modDir = Path.Combine(modsRoot, modId);
+            else
+            {
+                var modsRoot = FindModsRoot();
+                if (modsRoot == null)
+                {
+                    Console.WriteLine("Error: Could not find 'mods' in hierarchy. Use --dir to specify a target directory.");
+                    return;
+                }
+                modDir = Path.Combine(modsRoot, modId);
+            }
+
             if (Directory.Exists(modDir))
             {
                 Console.WriteLine($"Error: Directory '{modDir}' already exists.");
                 return;
             }
-            
+
+            bool isGameplay = string.Equals(template, "gameplay", StringComparison.OrdinalIgnoreCase);
+            if (!isGameplay && !string.Equals(template, "empty", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Error: Unknown template '{template}'. Valid values: empty, gameplay");
+                return;
+            }
+
             Directory.CreateDirectory(modDir);
             Directory.CreateDirectory(Path.Combine(modDir, "assets"));
             Directory.CreateDirectory(Path.Combine(modDir, "assets", "maps"));
-            
-            // Create mod.json using canonical schema shared with runtime loader.
+            Directory.CreateDirectory(Path.Combine(modDir, "assets", "Launcher"));
+
             var manifest = new ModManifest
             {
                 Name = modId,
                 Version = "1.0.0",
                 Description = "A new Ludots mod.",
-                Main = $"bin/Release/net8.0/{modId}.dll",
+                Main = $"bin/net8.0/{modId}.dll",
                 Priority = 0,
-                Dependencies = new Dictionary<string, string>()
+                Dependencies = new Dictionary<string, string>(),
+                Changelog = "CHANGELOG.md"
             };
+
+            if (isGameplay)
+            {
+                manifest.Dependencies["LudotsCoreMod"] = "^1.0.0";
+            }
+
             var jsonContent = ModManifestJson.ToCanonicalJson(manifest);
             File.WriteAllText(Path.Combine(modDir, "mod.json"), jsonContent);
-            
-            // Create .csproj
-            // We need relative path to Ludots.Core
-            // If we are in src/Mods/{ModId}, Core is at ../../Core/Ludots.Core.csproj
+
+            var changelogContent = $@"# {modId} Changelog
+
+## 1.0.0
+- Initial release
+";
+            File.WriteAllText(Path.Combine(modDir, "CHANGELOG.md"), changelogContent);
+
+            var coreRelPath = Path.GetRelativePath(modDir, Path.Combine(FindAssetsRoot() ?? Directory.GetCurrentDirectory(), "src", "Core", "Ludots.Core.csproj"));
             var csprojContent = $@"<Project Sdk=""Microsoft.NET.Sdk"">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <OutputPath>..\..\..\assets\Mods\{modId}\bin</OutputPath>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include=""..\..\Core\Ludots.Core.csproj"">
+    <ProjectReference Include=""{coreRelPath}"">
         <Private>false</Private>
     </ProjectReference>
   </ItemGroup>
-  
-  <Target Name=""PostBuild"" AfterTargets=""PostBuildEvent"">
-    <Copy SourceFiles=""mod.json"" DestinationFolder=""..\..\..\assets\Mods\{modId}"" />
-    <ItemGroup>
-        <AssetFiles Include=""assets\**\*.*"" />
-    </ItemGroup>
-    <Copy SourceFiles=""@(AssetFiles)"" DestinationFolder=""..\..\..\assets\Mods\{modId}\assets\%(RecursiveDir)"" />
-  </Target>
 </Project>";
             File.WriteAllText(Path.Combine(modDir, $"{modId}.csproj"), csprojContent);
-            
-            // Create Entry Class
-            var classContent = $@"using System;
+
+            if (isGameplay)
+            {
+                var mapsDir = Path.Combine(modDir, "assets", "Maps");
+                Directory.CreateDirectory(mapsDir);
+
+                var mapConfig = $@"{{
+  ""MapId"": ""{modId}_entry"",
+  ""DisplayName"": ""{modId} Entry Map"",
+  ""Width"": 64,
+  ""Height"": 64
+}}";
+                File.WriteAllText(Path.Combine(mapsDir, $"{modId}_entry.json"), mapConfig);
+
+                var gameJson = $@"{{
+  ""StartupMapId"": ""{modId}_entry""
+}}";
+                File.WriteAllText(Path.Combine(modDir, "assets", "game.json"), gameJson);
+
+                var triggerContent = $@"using Ludots.Core.Modding;
+using Ludots.Core.Scripting;
+
+namespace {modId}
+{{
+    public class {modId}Entry : IMod
+    {{
+        public void OnLoad(IModContext context)
+        {{
+            context.Log(""{modId} Loaded!"");
+        }}
+
+        public void OnUnload()
+        {{
+        }}
+    }}
+}}";
+                File.WriteAllText(Path.Combine(modDir, $"{modId}Entry.cs"), triggerContent);
+            }
+            else
+            {
+                var classContent = $@"using System;
 using Ludots.Core.Modding;
 using Ludots.Core.Scripting;
 
@@ -330,12 +392,12 @@ namespace {modId}
 
         public void OnUnload()
         {{
-            // Cleanup
         }}
     }}
 }}";
-            File.WriteAllText(Path.Combine(modDir, $"{modId}Entry.cs"), classContent);
-            
+                File.WriteAllText(Path.Combine(modDir, $"{modId}Entry.cs"), classContent);
+            }
+
             Console.WriteLine($"Mod '{modId}' initialized at {modDir}");
         }
 
@@ -346,7 +408,7 @@ namespace {modId}
             var modsRoot = FindModsRoot();
             if (modsRoot == null)
             {
-                Console.WriteLine("Error: Could not find 'src/Mods' directory.");
+                Console.WriteLine("Error: Could not find 'mods' directory.");
                 return;
             }
             
@@ -365,7 +427,7 @@ namespace {modId}
             
             if (process.ExitCode == 0)
             {
-                Console.WriteLine($"Build success! Output deployed to assets/Mods/{modId}");
+                Console.WriteLine($"Build success! Output at mods/{modId}/bin/net8.0");
             }
             else
             {
@@ -373,7 +435,7 @@ namespace {modId}
             }
         }
 
-        static int CompileGraphs(string modId, string? assetsRoot)
+        static int CompileGraphs(string? modId, string? modPath, string? assetsRoot)
         {
             assetsRoot ??= FindAssetsRoot();
             if (assetsRoot == null)
@@ -382,25 +444,31 @@ namespace {modId}
                 return 1;
             }
 
-            var modDir = Path.Combine(assetsRoot, "assets", "Mods", modId);
+            string modDir;
+            if (!string.IsNullOrWhiteSpace(modPath))
+            {
+                modDir = Path.GetFullPath(modPath);
+            }
+            else if (!string.IsNullOrWhiteSpace(modId))
+            {
+                modDir = Path.Combine(assetsRoot, "mods", modId);
+            }
+            else
+            {
+                Console.WriteLine("Error: graph compile requires --modPath or --mod.");
+                return 1;
+            }
+
             if (!Directory.Exists(modDir))
             {
-                var srcModDir = Path.Combine(assetsRoot, "src", "Mods", modId);
-                if (Directory.Exists(srcModDir))
-                {
-                    modDir = srcModDir;
-                }
-                else
-                {
-                    Console.WriteLine($"Error: Mod directory not found at {modDir}");
-                    return 1;
-                }
+                Console.WriteLine($"Error: Mod directory not found at {modDir}");
+                return 1;
             }
 
             var graphsJsonPath = Path.Combine(modDir, "assets", "Configs", "GAS", "graphs.json");
             if (!File.Exists(graphsJsonPath))
             {
-                Console.WriteLine($"No graphs.json found for mod '{modId}'.");
+                Console.WriteLine($"No graphs.json found for mod '{modDir}'.");
                 return 0;
             }
 
@@ -494,12 +562,8 @@ namespace {modId}
             var current = Directory.GetCurrentDirectory();
             while (current != null)
             {
-                var check = Path.Combine(current, "src", "Mods");
+                var check = Path.Combine(current, "mods");
                 if (Directory.Exists(check)) return check;
-                
-                // Also check if we are IN src
-                if (Path.GetFileName(current) == "src" && Directory.Exists(Path.Combine(current, "Mods")))
-                    return Path.Combine(current, "Mods");
 
                 current = Directory.GetParent(current)?.FullName;
             }

@@ -7,7 +7,6 @@ using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Mathematics.FixedPoint;
-
 namespace Ludots.Core.Gameplay.GAS.Systems
 {
     public sealed class AbilityMoveWorldCmSystem : BaseSystem<World, float>
@@ -60,14 +59,14 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     Fix64Vec2 current = wp.Value;
                     Fix64Vec2 target = exec.TargetPosCm;
 
-                    var delta = target - current;
-                    float dx = delta.X.ToFloat();
-                    float dy = delta.Y.ToFloat();
-                    float dist = MathF.Sqrt(dx * dx + dy * dy);
-
-                    if (dist <= _stopRadiusCm || dist <= stepCm || dist <= 1f)
+                    bool arrived = WorldMoveCmStepHelper.StepTowards(
+                        ref current,
+                        target,
+                        stepCm,
+                        _stopRadiusCm);
+                    wp.Value = current;
+                    if (arrived)
                     {
-                        wp.Value = target;
                         _eventBus.Publish(new GameplayEvent
                         {
                             TagId = _arrivedEventTagId,
@@ -75,13 +74,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             Target = entity,
                             Magnitude = 0f,
                         });
-                        continue;
                     }
-
-                    float inv = 1f / dist;
-                    float ux = dx * inv;
-                    float uy = dy * inv;
-                    wp.Value = current + Fix64Vec2.FromFloat(ux * stepCm, uy * stepCm);
                 }
             }
         }

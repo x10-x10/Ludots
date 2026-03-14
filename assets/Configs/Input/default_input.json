@@ -26,6 +26,11 @@
       "type": "Axis2D"
     },
     {
+      "id": "PointerDelta",
+      "name": "Gameplay_PointerDelta",
+      "type": "Axis2D"
+    },
+    {
       "id": "PointerPos",
       "name": "Gameplay_PointerPos",
       "type": "Axis2D"
@@ -109,6 +114,11 @@
       "id": "ChainDemo",
       "name": "Gameplay_ChainDemo",
       "type": "Button"
+    },
+    {
+      "id": "CameraLock",
+      "name": "Gameplay_CameraLock",
+      "type": "Button"
     }
   ],
   "contexts": [
@@ -162,6 +172,25 @@
           "path": "<Mouse>/Pos"
         },
         {
+          "actionId": "PointerDelta",
+          "path": "<Mouse>/Delta"
+        },
+        {
+          "actionId": "Look",
+          "path": "<Mouse>/Delta",
+          "processors": [
+            {
+              "type": "Invert",
+              "parameters": [
+                {
+                  "name": "Y",
+                  "value": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
           "actionId": "OrbitRotateHold",
           "path": "<Mouse>/MiddleButton"
         },
@@ -171,6 +200,10 @@
           "processors": [
             { "type": "Scale", "parameters": [{ "name": "Factor", "value": 0.1 }] }
           ]
+        },
+        {
+          "actionId": "CameraLock",
+          "path": "<Keyboard>/space"
         }
       ]
     },

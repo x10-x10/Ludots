@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Modding;
 
@@ -43,6 +44,7 @@ namespace Ludots.Core.Config
             {
                 PropertyNameCaseInsensitive = true
             };
+            options.Converters.Add(new JsonStringEnumConverter());
             
             var jsonString = merged.ToJsonString();
             var config = JsonSerializer.Deserialize<GameConfig>(jsonString, options) ?? new GameConfig();
@@ -165,7 +167,7 @@ namespace Ludots.Core.Config
         /// </summary>
         public static ConfigCatalogEntry GetEntryOrDefault(
             ConfigCatalog catalog, string path,
-            ConfigMergePolicy defaultPolicy, string defaultIdField = "Id")
+            ConfigMergePolicy defaultPolicy, string defaultIdField = "id")
         {
             if (catalog != null && catalog.TryGet(path, out var found))
                 return found;
@@ -214,3 +216,5 @@ namespace Ludots.Core.Config
         }
     }
 }
+
+

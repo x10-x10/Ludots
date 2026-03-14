@@ -8,6 +8,8 @@ using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Orders;
+using Ludots.Core.Presentation.Hud;
+using Ludots.Core.Scripting;
 using NUnit.Framework;
 
 namespace Ludots.Tests.GAS.Production
@@ -20,27 +22,29 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "src", "Mods");
 
             var engine = new GameEngine();
             try
             {
                 engine.InitializeWithConfigPipeline(
-                    new()
-                    {
-                        Path.Combine(modsRoot, "LudotsCoreMod"),
-                        Path.Combine(modsRoot, "MobaDemoMod")
-                    },
+                    RepoModPaths.ResolveExplicit(repoRoot, new[] { "LudotsCoreMod", "CoreInputMod", "MobaDemoMod" }),
                     assetsRoot);
 
                 engine.Start();
                 engine.LoadMap(engine.MergedConfig.StartupMapId);
-                engine.GlobalContext.Remove(Ludots.Core.Scripting.ContextKeys.CameraControllerRequest);
+                engine.GlobalContext.Remove(Ludots.Core.Scripting.CoreServiceKeys.CameraPoseRequest.Name);
+                engine.GlobalContext.Remove(Ludots.Core.Scripting.CoreServiceKeys.VirtualCameraRequest.Name);
 
                 for (int i = 0; i < 5; i++)
                 {
                     engine.Tick(1f / 60f);
                 }
+
+                Assert.That(
+                    engine.GlobalContext.TryGetValue(CoreServiceKeys.ScreenOverlayBuffer.Name, out var overlayObj) &&
+                    overlayObj is ScreenOverlayBuffer,
+                    Is.True,
+                    "ScreenOverlayBuffer must be registered in GlobalContext.");
 
                 var startErrors = engine.TriggerManager.Errors;
                 if (startErrors.Count > 0)
@@ -57,11 +61,11 @@ namespace Ludots.Tests.GAS.Production
                 if (healthId <= 0) healthId = Ludots.Core.Gameplay.GAS.Registry.AttributeRegistry.Register("Health");
                 float enemyHealthBefore = enemyAttrsBefore.GetCurrent(healthId);
 
-                var orderQueue = (OrderQueue)engine.GlobalContext[Ludots.Core.Scripting.ContextKeys.OrderQueue];
-                int castAbilityTagId = engine.MergedConfig.Constants.OrderTags["castAbility"];
+                var orderQueue = engine.GetService(Ludots.Core.Scripting.CoreServiceKeys.OrderQueue);
+                int castAbilityOrderTypeId = engine.MergedConfig.Constants.OrderTypeIds["castAbility"];
                 orderQueue.TryEnqueue(new Order
                 {
-                    OrderTagId = castAbilityTagId,
+                    OrderTypeId = castAbilityOrderTypeId,
                     Actor = hero,
                     Target = enemy,
                     Args = new OrderArgs { I0 = 0 }

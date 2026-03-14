@@ -12,7 +12,7 @@ namespace Ludots.Core.Presentation.Hud
         public int DroppedSinceClear { get; private set; }
         public int DroppedTotal { get; private set; }
 
-        public WorldHudBatchBuffer(int capacity = 16384)
+        public WorldHudBatchBuffer(int capacity = 65536)
         {
             if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
             _buffer = new WorldHudItem[capacity];
