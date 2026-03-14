@@ -13,6 +13,7 @@ namespace CameraAcceptanceMod.Runtime
         public bool HotpathHudTextEnabled { get; set; } = true;
         public bool HotpathCullCrowdEnabled { get; set; } = true;
 
+        public float SmoothedFrameMs { get; private set; } = 16.67f;
         public float PanelSyncMs { get; private set; }
         public float HudBuildMs { get; private set; }
         public float TextBuildMs { get; private set; }
@@ -36,6 +37,9 @@ namespace CameraAcceptanceMod.Runtime
         public int PanelVirtualizedTotalItems { get; private set; }
         public int PanelVirtualizedComposedItems { get; private set; }
 
+        public float SmoothedFps => SmoothedFrameMs > 0.001f ? 1000f / SmoothedFrameMs : 0f;
+
+        public void ObserveFrameTime(double sampleMs) => SmoothedFrameMs = Smooth(SmoothedFrameMs, (float)sampleMs);
         public void ObservePanelSync(double sampleMs) => PanelSyncMs = Smooth(PanelSyncMs, (float)sampleMs);
         public void ObserveHudBuild(double sampleMs) => HudBuildMs = Smooth(HudBuildMs, (float)sampleMs);
         public void ObserveTextBuild(double sampleMs) => TextBuildMs = Smooth(TextBuildMs, (float)sampleMs);

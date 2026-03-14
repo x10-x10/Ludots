@@ -38,7 +38,6 @@ namespace CameraAcceptanceMod
                     engine.RegisterPresentationSystem(new CameraAcceptanceProjectionBoundsOverlaySystem(engine));
                     engine.RegisterPresentationSystem(new CameraAcceptanceHotpathLaneSystem(engine));
                     engine.RegisterPresentationSystem(new CameraAcceptanceSelectionOverlaySystem(engine));
-                    engine.RegisterPresentationSystem(new CameraAcceptanceHudOverlaySystem(engine));
                 }
 
                 return Task.CompletedTask;

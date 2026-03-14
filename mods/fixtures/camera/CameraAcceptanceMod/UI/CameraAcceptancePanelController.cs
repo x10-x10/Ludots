@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using Arch.Core;
 using CameraAcceptanceMod.Runtime;
@@ -11,6 +12,7 @@ using Ludots.Core.Input.Selection;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Hud;
+using Ludots.Core.Systems;
 using Ludots.Core.Scripting;
 using Ludots.UI;
 using Ludots.UI.Compose;
@@ -21,6 +23,11 @@ namespace CameraAcceptanceMod.UI
 {
     internal sealed class CameraAcceptancePanelController
     {
+        private const float DiagnosticsAverageGlyphWidthPx = 6.25f;
+        private const float DiagnosticsCardTop = 16f;
+        private const float DiagnosticsCardMargin = 16f;
+        private const string DiagnosticsCardId = "camera-diagnostics-card";
+        private const int DiagnosticsRefreshIntervalTicks = 6;
         private const float PanelWidth = 500f;
         private const float SelectionBufferHeight = 180f;
         private const float SelectionRowHeight = 22f;
@@ -39,6 +46,20 @@ namespace CameraAcceptanceMod.UI
         private GameEngine? _engine;
         private int _lastSelectionRowsTouched;
         private int _lastRowPoolSize = SelectionRowPoolSize;
+        private string[] _cachedDiagnosticsLines = Array.Empty<string>();
+        private string _cachedDiagnosticsMapId = string.Empty;
+        private long _cachedDiagnosticsTick = -1;
+        private int _cachedVisibleEntities = int.MinValue;
+        private int _cachedProjectionSpawnCount = int.MinValue;
+        private int _cachedHotpathCrowdCount = int.MinValue;
+        private int _cachedHotpathVisibleCrowdCount = int.MinValue;
+        private bool _cachedPanelEnabled = true;
+        private bool _cachedHudEnabled = true;
+        private bool _cachedSelectionTextEnabled = true;
+        private bool _cachedHotpathBarsEnabled = true;
+        private bool _cachedHotpathHudTextEnabled = true;
+        private bool _cachedPrimitivesEnabled = true;
+        private bool _cachedHotpathCullCrowdEnabled = true;
 
         public CameraAcceptancePanelController()
         {
@@ -91,15 +112,17 @@ namespace CameraAcceptanceMod.UI
             _lastRowPoolSize = SelectionRowPoolSize;
             _page.SetState(_ => CameraAcceptancePanelState.Empty);
             _engine = null;
+            ResetDiagnosticsCache();
         }
 
         private UiElementBuilder BuildRoot(ReactiveContext<CameraAcceptancePanelState> context)
         {
             CameraAcceptancePanelState state = context.State;
+            UiElementBuilder mainPanel;
 
             if (string.IsNullOrWhiteSpace(state.MapId))
             {
-                return Ui.Card(
+                mainPanel = Ui.Card(
                         Ui.Text("Camera Acceptance").FontSize(22f).Bold().Color("#F7FAFF"),
                         Ui.Text("No active acceptance map.").FontSize(13f).Color("#8EA2BD"))
                     .Width(PanelWidth)
@@ -107,56 +130,94 @@ namespace CameraAcceptanceMod.UI
                     .Gap(10f)
                     .Radius(18f)
                     .Background("#101A29")
-                    .Absolute(16f, 16f)
+                    .Absolute(16f, DiagnosticsCardTop)
                     .ZIndex(20);
-            }
-
-            var children = new List<UiElementBuilder>
-            {
-                Ui.Text("Camera Acceptance").FontSize(22f).Bold().Color("#F7FAFF"),
-                Ui.Text(state.MapDescription).Id("camera-panel-map-description").FontSize(14f).Color("#D0D8E6").WhiteSpace(UiWhiteSpace.Normal),
-                Ui.Text($"Map: {state.MapId}").Id("camera-panel-map-id").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text($"Camera: {state.ActiveCameraId}").Id("camera-panel-camera-id").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text($"Mode: {state.ActiveModeId}").Id("camera-panel-mode-id").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text($"Selection: {state.SelectedName}").Id("camera-panel-selection-name").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text($"Selected IDs: {state.SelectedIdsSummary}").Id("camera-panel-selected-summary").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
-                Ui.Text($"Follow Target: {state.FollowTarget}").Id("camera-panel-follow-target").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text("Viewport telemetry: top-right HUD").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
-                Ui.Text($"Projection Spawn Batch: {state.ProjectionSpawnCount}").Id("camera-panel-projection-spawn").FontSize(13f).Color("#8EA2BD"),
-                Ui.Text("Scenarios").FontSize(12f).Bold().Color("#F4C77D"),
-                Ui.Row(
-                        BuildMapButton("Proj", state.MapId == CameraAcceptanceIds.ProjectionMapId, CameraAcceptanceIds.ProjectionMapId),
-                        BuildMapButton("Hotpath", state.MapId == CameraAcceptanceIds.HotpathMapId, CameraAcceptanceIds.HotpathMapId),
-                        BuildMapButton("RTS", state.MapId == CameraAcceptanceIds.RtsMapId, CameraAcceptanceIds.RtsMapId),
-                        BuildMapButton("TPS", state.MapId == CameraAcceptanceIds.TpsMapId, CameraAcceptanceIds.TpsMapId),
-                        BuildMapButton("Blend", state.MapId == CameraAcceptanceIds.BlendMapId, CameraAcceptanceIds.BlendMapId),
-                        BuildMapButton("Follow", state.MapId == CameraAcceptanceIds.FollowMapId, CameraAcceptanceIds.FollowMapId),
-                        BuildMapButton("Stack", state.MapId == CameraAcceptanceIds.StackMapId, CameraAcceptanceIds.StackMapId))
-                    .Wrap()
-                    .Gap(8f),
-                Ui.Text("Actions").FontSize(12f).Bold().Color("#F4C77D"),
-                BuildScenarioActions(state),
-                Ui.Text("How To Verify").FontSize(12f).Bold().Color("#F4C77D"),
-                Ui.Text(state.ControlsDescription).FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
-            };
-
-            if (string.Equals(state.MapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
-            {
-                children.Add(BuildHotpathControls(state));
-                children.Add(BuildVisibleEntitiesSection(context, state.VisibleEntityRows, state.VisibleEntitySummary));
             }
             else
             {
-                children.Add(BuildSelectedIdsSection(context, state.SelectedIds));
+                var children = new List<UiElementBuilder>
+                {
+                    Ui.Text("Camera Acceptance").FontSize(22f).Bold().Color("#F7FAFF"),
+                    Ui.Text(state.MapDescription).Id("camera-panel-map-description").FontSize(14f).Color("#D0D8E6").WhiteSpace(UiWhiteSpace.Normal),
+                    Ui.Text($"Map: {state.MapId}").Id("camera-panel-map-id").FontSize(13f).Color("#8EA2BD"),
+                    Ui.Text($"Camera: {state.ActiveCameraId}").Id("camera-panel-camera-id").FontSize(13f).Color("#8EA2BD"),
+                    Ui.Text($"Mode: {state.ActiveModeId}").Id("camera-panel-mode-id").FontSize(13f).Color("#8EA2BD"),
+                    Ui.Text($"Selection: {state.SelectedName}").Id("camera-panel-selection-name").FontSize(13f).Color("#8EA2BD"),
+                    Ui.Text($"Selected IDs: {state.SelectedIdsSummary}").Id("camera-panel-selected-summary").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
+                    Ui.Text($"Follow Target: {state.FollowTarget}").Id("camera-panel-follow-target").FontSize(13f).Color("#8EA2BD"),
+                    Ui.Text("Viewport telemetry: retained top-right diagnostics").Id("camera-panel-diagnostics-mode").FontSize(13f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal),
+                    Ui.Text($"Projection Spawn Batch: {state.ProjectionSpawnCount}").Id("camera-panel-projection-spawn").FontSize(13f).Color("#8EA2BD"),
+                    Ui.Text("Scenarios").FontSize(12f).Bold().Color("#F4C77D"),
+                    Ui.Row(
+                            BuildMapButton("Proj", state.MapId == CameraAcceptanceIds.ProjectionMapId, CameraAcceptanceIds.ProjectionMapId),
+                            BuildMapButton("Hotpath", state.MapId == CameraAcceptanceIds.HotpathMapId, CameraAcceptanceIds.HotpathMapId),
+                            BuildMapButton("RTS", state.MapId == CameraAcceptanceIds.RtsMapId, CameraAcceptanceIds.RtsMapId),
+                            BuildMapButton("TPS", state.MapId == CameraAcceptanceIds.TpsMapId, CameraAcceptanceIds.TpsMapId),
+                            BuildMapButton("Blend", state.MapId == CameraAcceptanceIds.BlendMapId, CameraAcceptanceIds.BlendMapId),
+                            BuildMapButton("Follow", state.MapId == CameraAcceptanceIds.FollowMapId, CameraAcceptanceIds.FollowMapId),
+                            BuildMapButton("Stack", state.MapId == CameraAcceptanceIds.StackMapId, CameraAcceptanceIds.StackMapId))
+                        .Wrap()
+                        .Gap(8f),
+                    Ui.Text("Actions").FontSize(12f).Bold().Color("#F4C77D"),
+                    BuildScenarioActions(state),
+                    Ui.Text("How To Verify").FontSize(12f).Bold().Color("#F4C77D"),
+                    Ui.Text(state.ControlsDescription).FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
+                };
+
+                if (string.Equals(state.MapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    children.Add(BuildHotpathControls(state));
+                    children.Add(BuildVisibleEntitiesSection(context, state.VisibleEntityRows, state.VisibleEntitySummary));
+                }
+                else
+                {
+                    children.Add(BuildSelectedIdsSection(context, state.SelectedIds));
+                }
+
+                mainPanel = Ui.Card(children.ToArray()).Width(PanelWidth)
+                    .Padding(16f)
+                    .Gap(10f)
+                    .Radius(18f)
+                    .Background("#101A29")
+                    .Absolute(16f, DiagnosticsCardTop)
+                    .ZIndex(20);
             }
 
-            return Ui.Card(children.ToArray()).Width(PanelWidth)
-                .Padding(16f)
-                .Gap(10f)
-                .Radius(18f)
-                .Background("#101A29")
-                .Absolute(16f, 16f)
-                .ZIndex(20);
+            if (state.DiagnosticsLines.Length != 0)
+            {
+                mainPanel.Child(
+                    BuildDiagnosticsSection(state)
+                        .Absolute(MathF.Max(0f, state.DiagnosticsCardLeft - DiagnosticsCardMargin), -2f)
+                        .ZIndex(50));
+            }
+
+            return mainPanel;
+        }
+
+        private static UiElementBuilder BuildDiagnosticsSection(CameraAcceptancePanelState state)
+        {
+            var children = new List<UiElementBuilder>
+            {
+                Ui.Text("Native Diagnostics").FontSize(14f).Bold().Color("#F7FAFF")
+            };
+
+            for (int i = 0; i < state.DiagnosticsLines.Length; i++)
+            {
+                children.Add(
+                    Ui.Text(state.DiagnosticsLines[i])
+                        .Id($"camera-diagnostics-line-{i:00}")
+                        .FontSize(i == 0 ? 14f : 12f)
+                        .Color(i == 0 ? "#F7FAFF" : "#C7D3E1")
+                        .WhiteSpace(UiWhiteSpace.Normal));
+            }
+
+            return Ui.Card(children.ToArray())
+                .Id(DiagnosticsCardId)
+                .Padding(14f)
+                .Gap(6f)
+                .Radius(16f)
+                .Background("#08111BE8")
+                .ZIndex(30);
         }
 
         private static UiElementBuilder BuildSelectedIdsSection(ReactiveContext<CameraAcceptancePanelState> context, IReadOnlyList<string> selectedIds)
@@ -405,6 +466,8 @@ namespace CameraAcceptanceMod.UI
                 : Array.Empty<string>();
             CameraAcceptanceDiagnosticsState? diagnostics = engine.GetService(CameraAcceptanceServiceKeys.DiagnosticsState);
             RenderDebugState? renderDebug = engine.GetService(CoreServiceKeys.RenderDebugState);
+            Vector2 viewport = ResolveViewportSize(engine);
+            string[] diagnosticsLines = BuildDiagnosticsLines(engine, mapId, diagnostics, renderDebug);
             return new CameraAcceptancePanelState(
                 mapId,
                 CameraAcceptanceIds.DescribeMap(mapId),
@@ -419,6 +482,10 @@ namespace CameraAcceptanceMod.UI
                 CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine),
                 BuildVisibleEntitySummary(visibleEntityRows),
                 visibleEntityRows,
+                viewport.X,
+                viewport.Y,
+                ComputeDiagnosticsCardLeft(viewport.X, diagnosticsLines),
+                diagnosticsLines,
                 renderDebug?.DrawSkiaUi ?? true,
                 diagnostics?.HudEnabled ?? true,
                 diagnostics?.TextEnabled ?? true,
@@ -426,6 +493,170 @@ namespace CameraAcceptanceMod.UI
                 diagnostics?.HotpathHudTextEnabled ?? true,
                 renderDebug?.DrawPrimitives ?? true,
                 diagnostics?.HotpathCullCrowdEnabled ?? true);
+        }
+
+        private string[] BuildDiagnosticsLines(
+            GameEngine engine,
+            string mapId,
+            CameraAcceptanceDiagnosticsState? diagnostics,
+            RenderDebugState? renderDebug)
+        {
+            if (diagnostics == null || renderDebug == null || !diagnostics.HudEnabled)
+            {
+                diagnostics?.ObserveHudBuild(0d);
+                ResetDiagnosticsCache();
+                return Array.Empty<string>();
+            }
+
+            PresentationTimingDiagnostics? timings = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
+            long currentTick = engine.GameSession?.CurrentTick ?? 0L;
+            int visibleEntities = ResolveVisibleEntityCount(engine, timings);
+            int projectionSpawnCount = CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine);
+            if (!ShouldRefreshDiagnosticsSnapshot(
+                    mapId,
+                    diagnostics,
+                    renderDebug,
+                    currentTick,
+                    visibleEntities,
+                    projectionSpawnCount))
+            {
+                return _cachedDiagnosticsLines;
+            }
+
+            long start = Stopwatch.GetTimestamp();
+            var lines = new List<string>(12)
+            {
+                $"Camera Acceptance | FPS={diagnostics.SmoothedFps:F1} | Frame={diagnostics.SmoothedFrameMs:F2}ms",
+                $"F6 Panel[{OnOff(renderDebug.DrawSkiaUi)}]  F7 HUD[{OnOff(diagnostics.HudEnabled)}]  F8 Select[{OnOff(diagnostics.TextEnabled)}]",
+                $"Build panel={diagnostics.PanelSyncMs:F2}ms  hud={diagnostics.HudBuildMs:F2}ms  text={diagnostics.TextBuildMs:F2}ms",
+                $"Panel diff={diagnostics.PanelLastApplyMode}  nodes={diagnostics.PanelLastPatchedNodes}  rows={diagnostics.PanelLastSelectionRowsTouched}/{diagnostics.PanelRowPoolSize}  virt={diagnostics.PanelVirtualizedComposedItems}/{diagnostics.PanelVirtualizedTotalItems}  full={diagnostics.PanelFullRecomposeCount}  incr={diagnostics.PanelIncrementalPatchCount}"
+            };
+
+            if (string.Equals(mapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
+            {
+                lines.Add($"Hotpath build bars={diagnostics.HotpathBarBuildMs:F2}ms  hudText={diagnostics.HotpathHudTextBuildMs:F2}ms  prims={diagnostics.HotpathPrimitiveBuildMs:F2}ms");
+                lines.Add($"F9 Bars[{OnOff(diagnostics.HotpathBarsEnabled)}]  F10 HudText[{OnOff(diagnostics.HotpathHudTextEnabled)}]  F12 Prim[{OnOff(renderDebug.DrawPrimitives)}]  C Crowd[{OnOff(diagnostics.HotpathCullCrowdEnabled)}]");
+                lines.Add($"Hotpath crowd={diagnostics.HotpathCrowdCount}  visible={diagnostics.HotpathVisibleCrowdCount}  bars={diagnostics.HotpathBarItemCount}  hudText={diagnostics.HotpathHudTextItemCount}  prims={diagnostics.HotpathPrimitiveItemCount}  select={diagnostics.HotpathSelectionLabelCount}");
+                if (engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer) is WorldHudBatchBuffer worldHud &&
+                    engine.GetService(CoreServiceKeys.PresentationScreenHudBuffer) is ScreenHudBatchBuffer screenHud)
+                {
+                    lines.Add($"HUD buffers world={worldHud.Count}/{worldHud.Capacity} drop={worldHud.DroppedSinceClear}  screen={screenHud.Count}/{screenHud.Capacity} drop={screenHud.DroppedSinceClear}");
+                }
+            }
+
+            if (timings != null)
+            {
+                lines.Add($"Adapter uiIn={timings.UiInputMs:F2}ms  uiRender={timings.UiRenderMs:F2}ms  uiUpload={timings.UiUploadMs:F2}ms");
+                lines.Add($"Adapter overlayBuild={timings.ScreenOverlayBuildMs:F2}ms  draw={timings.ScreenOverlayDrawMs:F2}ms  dirty={timings.ScreenOverlayDirtyLanesLastFrame}  rebuilt={timings.ScreenOverlayRebuiltLanesLastFrame}  cache={timings.ScreenOverlayTextLayoutCacheCount}");
+                lines.Add($"Core cull={timings.CameraCullingMs:F2}ms  vis={visibleEntities}  cam={timings.CameraPresenterMs:F2}ms  hudProj={timings.WorldHudProjectionMs:F2}ms");
+                lines.Add($"Terrain render={timings.TerrainRenderMs:F2}ms  build={timings.TerrainChunkBuildMs:F2}ms  chunks={timings.TerrainChunksDrawnLastFrame}  built={timings.TerrainChunksBuiltLastFrame}");
+                lines.Add($"Primitive draw={timings.PrimitiveRenderMs:F2}ms  instances={timings.PrimitiveInstancesLastFrame}  batches={timings.PrimitiveBatchesLastFrame}");
+            }
+
+            if (string.Equals(mapId, CameraAcceptanceIds.ProjectionMapId, StringComparison.OrdinalIgnoreCase))
+            {
+                lines.Add($"Spawn Batch={CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine)} | Q/E +/-{CameraAcceptanceIds.ProjectionSpawnCountStep}");
+            }
+
+            diagnostics.ObserveHudBuild((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
+            return CacheDiagnosticsSnapshot(
+                mapId,
+                diagnostics,
+                renderDebug,
+                currentTick,
+                visibleEntities,
+                projectionSpawnCount,
+                lines);
+        }
+
+        private bool ShouldRefreshDiagnosticsSnapshot(
+            string mapId,
+            CameraAcceptanceDiagnosticsState diagnostics,
+            RenderDebugState renderDebug,
+            long currentTick,
+            int visibleEntities,
+            int projectionSpawnCount)
+        {
+            if (_cachedDiagnosticsLines.Length == 0 ||
+                !string.Equals(_cachedDiagnosticsMapId, mapId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (_cachedPanelEnabled != renderDebug.DrawSkiaUi ||
+                _cachedHudEnabled != diagnostics.HudEnabled ||
+                _cachedSelectionTextEnabled != diagnostics.TextEnabled ||
+                _cachedHotpathBarsEnabled != diagnostics.HotpathBarsEnabled ||
+                _cachedHotpathHudTextEnabled != diagnostics.HotpathHudTextEnabled ||
+                _cachedPrimitivesEnabled != renderDebug.DrawPrimitives ||
+                _cachedHotpathCullCrowdEnabled != diagnostics.HotpathCullCrowdEnabled)
+            {
+                return true;
+            }
+
+            if (_cachedVisibleEntities != visibleEntities ||
+                _cachedProjectionSpawnCount != projectionSpawnCount ||
+                _cachedHotpathCrowdCount != diagnostics.HotpathCrowdCount ||
+                _cachedHotpathVisibleCrowdCount != diagnostics.HotpathVisibleCrowdCount)
+            {
+                return true;
+            }
+
+            return currentTick - _cachedDiagnosticsTick >= DiagnosticsRefreshIntervalTicks;
+        }
+
+        private static int ResolveVisibleEntityCount(GameEngine engine, PresentationTimingDiagnostics? timings)
+        {
+            if (engine.GetService(CoreServiceKeys.CameraCullingDebugState) is CameraCullingDebugState culling)
+            {
+                return culling.VisibleEntityCount;
+            }
+
+            return timings?.VisibleEntitiesLastFrame ?? int.MinValue;
+        }
+
+        private string[] CacheDiagnosticsSnapshot(
+            string mapId,
+            CameraAcceptanceDiagnosticsState diagnostics,
+            RenderDebugState renderDebug,
+            long currentTick,
+            int visibleEntities,
+            int projectionSpawnCount,
+            List<string> lines)
+        {
+            _cachedDiagnosticsMapId = mapId;
+            _cachedDiagnosticsTick = currentTick;
+            _cachedVisibleEntities = visibleEntities;
+            _cachedProjectionSpawnCount = projectionSpawnCount;
+            _cachedHotpathCrowdCount = diagnostics.HotpathCrowdCount;
+            _cachedHotpathVisibleCrowdCount = diagnostics.HotpathVisibleCrowdCount;
+            _cachedPanelEnabled = renderDebug.DrawSkiaUi;
+            _cachedHudEnabled = diagnostics.HudEnabled;
+            _cachedSelectionTextEnabled = diagnostics.TextEnabled;
+            _cachedHotpathBarsEnabled = diagnostics.HotpathBarsEnabled;
+            _cachedHotpathHudTextEnabled = diagnostics.HotpathHudTextEnabled;
+            _cachedPrimitivesEnabled = renderDebug.DrawPrimitives;
+            _cachedHotpathCullCrowdEnabled = diagnostics.HotpathCullCrowdEnabled;
+            _cachedDiagnosticsLines = lines.ToArray();
+            return _cachedDiagnosticsLines;
+        }
+
+        private void ResetDiagnosticsCache()
+        {
+            _cachedDiagnosticsLines = Array.Empty<string>();
+            _cachedDiagnosticsMapId = string.Empty;
+            _cachedDiagnosticsTick = -1;
+            _cachedVisibleEntities = int.MinValue;
+            _cachedProjectionSpawnCount = int.MinValue;
+            _cachedHotpathCrowdCount = int.MinValue;
+            _cachedHotpathVisibleCrowdCount = int.MinValue;
+            _cachedPanelEnabled = true;
+            _cachedHudEnabled = true;
+            _cachedSelectionTextEnabled = true;
+            _cachedHotpathBarsEnabled = true;
+            _cachedHotpathHudTextEnabled = true;
+            _cachedPrimitivesEnabled = true;
+            _cachedHotpathCullCrowdEnabled = true;
         }
 
         private void LoadAcceptanceMap(string mapId)
@@ -599,12 +830,16 @@ namespace CameraAcceptanceMod.UI
                 !string.Equals(left.ActiveBlendCameraId, right.ActiveBlendCameraId, StringComparison.Ordinal) ||
                 left.ProjectionSpawnCount != right.ProjectionSpawnCount ||
                 !string.Equals(left.VisibleEntitySummary, right.VisibleEntitySummary, StringComparison.Ordinal) ||
+                left.ViewportWidth != right.ViewportWidth ||
+                left.ViewportHeight != right.ViewportHeight ||
+                left.DiagnosticsCardLeft != right.DiagnosticsCardLeft ||
                 left.PanelEnabled != right.PanelEnabled ||
                 left.DiagnosticsHudEnabled != right.DiagnosticsHudEnabled ||
                 left.SelectionTextEnabled != right.SelectionTextEnabled ||
                 left.HotpathBarsEnabled != right.HotpathBarsEnabled ||
                 left.HotpathHudTextEnabled != right.HotpathHudTextEnabled ||
                 left.PrimitivesEnabled != right.PrimitivesEnabled ||
+                left.DiagnosticsLines.Length != right.DiagnosticsLines.Length ||
                 left.HotpathCullCrowdEnabled != right.HotpathCullCrowdEnabled)
             {
                 return false;
@@ -631,6 +866,14 @@ namespace CameraAcceptanceMod.UI
             for (int i = 0; i < left.VisibleEntityRows.Length; i++)
             {
                 if (!string.Equals(left.VisibleEntityRows[i], right.VisibleEntityRows[i], StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < left.DiagnosticsLines.Length; i++)
+            {
+                if (!string.Equals(left.DiagnosticsLines[i], right.DiagnosticsLines[i], StringComparison.Ordinal))
                 {
                     return false;
                 }
@@ -778,6 +1021,47 @@ namespace CameraAcceptanceMod.UI
                 : $"Visible on screen: {visibleEntityRows.Count}";
         }
 
+        private static Vector2 ResolveViewportSize(GameEngine engine)
+        {
+            if (engine.GetService(CoreServiceKeys.UIRoot) is UIRoot root &&
+                root.Width > 0f &&
+                root.Height > 0f)
+            {
+                return new Vector2(root.Width, root.Height);
+            }
+
+            if (engine.GetService(CoreServiceKeys.ViewController) is IViewController view &&
+                view.Resolution.X > 0f &&
+                view.Resolution.Y > 0f)
+            {
+                return view.Resolution;
+            }
+
+            return new Vector2(1920f, 1080f);
+        }
+
+        private static float ComputeDiagnosticsCardLeft(float viewportWidth, IReadOnlyList<string> diagnosticsLines)
+        {
+            if (viewportWidth <= 0f)
+            {
+                return PanelWidth + DiagnosticsCardMargin;
+            }
+
+            int maxLength = 0;
+            for (int i = 0; i < diagnosticsLines.Count; i++)
+            {
+                if (diagnosticsLines[i].Length > maxLength)
+                {
+                    maxLength = diagnosticsLines[i].Length;
+                }
+            }
+
+            float estimatedWidth = diagnosticsLines.Count == 0
+                ? 280f
+                : MathF.Ceiling((maxLength * DiagnosticsAverageGlyphWidthPx) + 28f);
+            return Math.Max(DiagnosticsCardMargin, viewportWidth - estimatedWidth - DiagnosticsCardMargin);
+        }
+
         private static string SummarizeSelectedIds(IReadOnlyList<string> selectedIds)
         {
             if (selectedIds.Count == 0)
@@ -874,6 +1158,10 @@ namespace CameraAcceptanceMod.UI
             int ProjectionSpawnCount,
             string VisibleEntitySummary,
             string[] VisibleEntityRows,
+            float ViewportWidth,
+            float ViewportHeight,
+            float DiagnosticsCardLeft,
+            string[] DiagnosticsLines,
             bool PanelEnabled,
             bool DiagnosticsHudEnabled,
             bool SelectionTextEnabled,
@@ -895,6 +1183,10 @@ namespace CameraAcceptanceMod.UI
                 CameraAcceptanceIds.BlendSmoothCameraId,
                 CameraAcceptanceIds.ProjectionSpawnCountDefault,
                 "Visible on screen: 0",
+                Array.Empty<string>(),
+                1920f,
+                1080f,
+                16f,
                 Array.Empty<string>(),
                 true,
                 true,

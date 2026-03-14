@@ -184,19 +184,29 @@ namespace Ludots.Tests.ThreeC.Acceptance
         public void CameraAcceptanceMod_AcceptanceMaps_DrawFpsOverlayInTopRight()
         {
             using var engine = CreateEngine(AcceptanceMods);
+            var uiRoot = new UIRoot();
+            uiRoot.Resize(1920f, 1080f);
+            engine.SetService(CoreServiceKeys.UIRoot, uiRoot);
+
             LoadMap(engine, CameraAcceptanceIds.ProjectionMapId);
 
-            var overlay = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
-            Assert.That(overlay, Is.Not.Null);
-            Assert.That(TryFindOverlayTextItem(overlay!, text => text.Contains("FPS=", StringComparison.Ordinal), out ScreenOverlayItem fpsItem, out string? fpsText), Is.True,
-                "Acceptance overlay should expose FPS telemetry.");
-            Assert.That(fpsText, Does.Contain("Camera Acceptance"));
-            Assert.That(fpsItem.X, Is.GreaterThanOrEqualTo(1400), "FPS telemetry should render in the right-side HUD region.");
-            Assert.That(fpsItem.Y, Is.LessThanOrEqualTo(24), "FPS telemetry should render near the top edge.");
-            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("Core cull=", StringComparison.Ordinal), out _, out _), Is.True,
-                "Acceptance overlay should expose core camera/culling timing diagnostics.");
-            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("Terrain render=", StringComparison.Ordinal), out _, out _), Is.True,
-                "Acceptance overlay should expose terrain render/build timing diagnostics.");
+            UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Acceptance panel should mount when a UIRoot service is present.");
+            scene.Layout(uiRoot.Width, uiRoot.Height);
+
+            UiNode diagnosticsCard = scene.FindByElementId("camera-diagnostics-card")
+                ?? throw new InvalidOperationException("Acceptance diagnostics card should be mounted inside the retained UI scene.");
+            string sceneText = ExtractUiSceneText(scene);
+
+            Assert.That(sceneText, Does.Contain("Camera Acceptance | FPS="),
+                "Acceptance diagnostics should expose FPS telemetry through the retained UI path.");
+            Assert.That(sceneText, Does.Contain("Core cull="),
+                "Acceptance diagnostics should expose core camera/culling timing diagnostics.");
+            Assert.That(sceneText, Does.Contain("Terrain render="),
+                "Acceptance diagnostics should expose terrain render/build timing diagnostics.");
+            Assert.That(diagnosticsCard.LayoutRect.X, Is.GreaterThanOrEqualTo(1400f),
+                "Diagnostics telemetry should render in the right-side HUD region.");
+            Assert.That(diagnosticsCard.LayoutRect.Y, Is.LessThanOrEqualTo(24f),
+                "Diagnostics telemetry should render near the top edge.");
         }
 
         [Test]
@@ -243,14 +253,15 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Assert.That(overlay, Is.Not.Null);
             Assert.That(renderDebug, Is.Not.Null);
             Assert.That(uiRoot.Scene, Is.Not.Null, "Projection acceptance should mount the reactive panel while Skia UI is enabled.");
+            Assert.That(uiRoot.Scene!.FindByElementId("camera-diagnostics-card"), Is.Not.Null,
+                "Projection acceptance should mount the retained diagnostics card while the acceptance HUD is enabled.");
 
             var backend = GetInputBackend(engine);
 
             PressButton(engine, backend, "<Keyboard>/f7");
-            overlay!.Clear();
             Tick(engine, 1);
-            Assert.That(TryFindOverlayTextItem(overlay, text => text.Contains("FPS=", StringComparison.Ordinal), out _, out _), Is.False,
-                "F7 should disable the acceptance HUD overlay.");
+            Assert.That(uiRoot.Scene!.FindByElementId("camera-diagnostics-card"), Is.Null,
+                "F7 should disable the retained acceptance diagnostics card.");
 
             PressButton(engine, backend, "<Keyboard>/f6");
             Assert.That(renderDebug!.DrawSkiaUi, Is.False, "F6 should disable the Skia panel path.");
@@ -554,12 +565,14 @@ namespace Ludots.Tests.ThreeC.Acceptance
 
             Assert.That(ReferenceEquals(scene, uiRoot.Scene), Is.True,
                 "Camera acceptance panel must keep one mounted UiScene and update it reactively instead of remounting every presentation tick.");
-            Assert.That(scene.Version, Is.EqualTo(initialVersion),
-                "Idle presentation ticks should not trigger unnecessary panel recomposition.");
+            Assert.That(scene.FindByElementId("camera-diagnostics-card"), Is.Not.Null,
+                "The retained diagnostics card should stay mounted inside the same UiScene across presentation ticks.");
+            Assert.That(scene.Version, Is.GreaterThanOrEqualTo(initialVersion),
+                "Presentation ticks may patch retained diagnostics content, but they must not remount a different UiScene.");
         }
 
         [Test]
-        public void CameraAcceptanceMod_Panel_DoesNotRecompose_WhenOnlyViewportTelemetryChanges()
+        public void CameraAcceptanceMod_Panel_RecomposesWithinMountedScene_WhenViewportTelemetryChanges()
         {
             using var engine = CreateEngine(AcceptanceMods);
             var uiRoot = new UIRoot();
@@ -576,9 +589,13 @@ namespace Ludots.Tests.ThreeC.Acceptance
             culling!.VisibleEntityCount += 17;
             Tick(engine, 1);
 
-            Assert.That(scene.Version, Is.EqualTo(initialVersion),
-                "Volatile viewport telemetry must stay out of the reactive acceptance panel so camera movement does not force panel recomposition.");
-            Assert.That(ExtractUiSceneText(scene), Does.Contain("Viewport telemetry: top-right HUD"));
+            Assert.That(ReferenceEquals(scene, uiRoot.Scene), Is.True,
+                "Viewport telemetry changes should stay within the mounted retained scene instead of remounting a new one.");
+            Assert.That(scene.Version, Is.GreaterThanOrEqualTo(initialVersion),
+                "Retained diagnostics may throttle volatile text updates, but they must stay inside the mounted scene.");
+            Assert.That(ExtractUiSceneText(scene), Does.Contain("Viewport telemetry: retained top-right diagnostics"));
+            Assert.That(ExtractUiSceneText(scene), Does.Contain("vis="),
+                "Retained diagnostics should surface culling telemetry inside the mounted scene.");
         }
 
         [Test]
@@ -1387,6 +1404,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             var overlayText = ExtractOverlayText(overlay!);
             string panelText = uiRoot.Scene != null ? ExtractUiSceneText(uiRoot.Scene) : string.Empty;
             MapId currentMapId = engine.CurrentMapSession?.MapId ?? default;
+            bool diagnosticsHudVisible = uiRoot.Scene?.FindByElementId("camera-diagnostics-card") != null;
 
             return new HotpathHarnessSnapshot(
                 Step: step,
@@ -1399,7 +1417,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 ScreenTextCount: CountScreenHudItems(screenHud, WorldHudItemKind.Text),
                 SelectionLabelCount: CountOverlayEntityLabelLines(overlay!),
                 PanelMounted: uiRoot.Scene != null,
-                DiagnosticsHudVisible: ContainsOverlayText(overlayText, "FPS="),
+                DiagnosticsHudVisible: diagnosticsHudVisible,
                 PanelEnabled: renderDebug!.DrawSkiaUi,
                 PrimitivesEnabled: renderDebug.DrawPrimitives,
                 CameraCullingMs: timings!.CameraCullingMs,
