@@ -7,6 +7,7 @@ using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Actions;
+using Ludots.UI.Skia;
 using SkiaSharp;
 
 namespace GasBenchmarkMod.Triggers
@@ -49,7 +50,7 @@ namespace GasBenchmarkMod.Triggers
 
         private static UiScene CreateScene(Action runBenchmark, Action backToEntry)
         {
-            var scene = new UiScene();
+            var scene = new UiScene(new SkiaTextMeasurer(), new SkiaImageSizeProvider());
             int nextId = 1;
             scene.Mount(
                 Ui.Column(

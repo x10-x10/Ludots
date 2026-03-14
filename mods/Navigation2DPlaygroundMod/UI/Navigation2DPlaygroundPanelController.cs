@@ -10,6 +10,7 @@ using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Reactive;
 using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 using Navigation2DPlaygroundMod.Runtime;
 using Navigation2DPlaygroundMod.Systems;
 
@@ -27,7 +28,7 @@ namespace Navigation2DPlaygroundMod.UI
 
         public Navigation2DPlaygroundPanelController()
         {
-            _page = new ReactivePage<Navigation2DPlaygroundPanelState>(Navigation2DPlaygroundPanelState.Empty, BuildRoot);
+            _page = new ReactivePage<Navigation2DPlaygroundPanelState>(new SkiaTextMeasurer(), new SkiaImageSizeProvider(), Navigation2DPlaygroundPanelState.Empty, BuildRoot);
         }
 
         public UiScene Scene => _page.Scene;

@@ -12,6 +12,7 @@ using Ludots.UI.Compose;
 using Ludots.UI.Reactive;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Actions;
+using Ludots.UI.Skia;
 
 namespace InteractionShowcaseMod.UI
 {
@@ -30,7 +31,7 @@ namespace InteractionShowcaseMod.UI
             var nextState = BuildState(engine, mapId, viewModeManager);
             if (_page == null)
             {
-                _page = new ReactivePage<InteractionShowcasePanelState>(nextState, BuildRoot);
+                _page = new ReactivePage<InteractionShowcasePanelState>(new SkiaTextMeasurer(), new SkiaImageSizeProvider(), nextState, BuildRoot);
             }
             else if (!_page.State.Equals(nextState))
             {

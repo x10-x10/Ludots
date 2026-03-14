@@ -5,6 +5,7 @@ using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Reactive;
 using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 using SkiaSharp;
 
 namespace ReactiveTestMod
@@ -43,6 +44,7 @@ namespace ReactiveTestMod
             }
 
             var page = new ReactivePage<CounterState>(
+                new SkiaTextMeasurer(), new SkiaImageSizeProvider(),
                 new CounterState(0),
                 BuildCounterScene);
             uiRoot.MountScene(page.Scene);

@@ -8,6 +8,7 @@ using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Actions;
+using Ludots.UI.Skia;
 using SkiaSharp;
 
 namespace PerformanceVisualizationMod.Triggers
@@ -39,7 +40,7 @@ namespace PerformanceVisualizationMod.Triggers
 
         private static UiScene CreateScene(Action openVisualBenchmark)
         {
-            var scene = new UiScene();
+            var scene = new UiScene(new SkiaTextMeasurer(), new SkiaImageSizeProvider());
             int nextId = 1;
             scene.Mount(
                 Ui.Column(

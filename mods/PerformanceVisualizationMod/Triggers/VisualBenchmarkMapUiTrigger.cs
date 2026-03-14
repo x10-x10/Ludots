@@ -15,6 +15,7 @@ using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Actions;
+using Ludots.UI.Skia;
 using SkiaSharp;
 
 namespace PerformanceVisualizationMod.Triggers
@@ -103,7 +104,7 @@ namespace PerformanceVisualizationMod.Triggers
 
         private static UiScene CreateScene(GameEngine engine, IScreenProjector? screenProjector)
         {
-            var scene = new UiScene();
+            var scene = new UiScene(new SkiaTextMeasurer(), new SkiaImageSizeProvider());
             int nextId = 1;
             scene.Mount(BuildRoot(engine, screenProjector).Build(scene.Dispatcher, ref nextId));
             return scene;
@@ -115,7 +116,7 @@ namespace PerformanceVisualizationMod.Triggers
                 .WidthPercent(100f)
                 .HeightPercent(100f)
                 .Children(
-                    Ui.Canvas((canvas, rect) => DrawOverlay(canvas, rect, engine, screenProjector))
+                    Ui.Canvas(new UiCanvasContent((canvas, rect) => DrawOverlay(canvas, rect, engine, screenProjector)))
                         .WidthPercent(100f)
                         .HeightPercent(100f)
                         .Absolute(0f, 0f),

@@ -20,6 +20,7 @@ using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Reactive;
 using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 using Ludots.Platform.Abstractions;
 using SkiaSharp;
 
@@ -70,7 +71,7 @@ namespace CameraAcceptanceMod.UI
 
         public CameraAcceptancePanelController()
         {
-            _page = new ReactivePage<CameraAcceptancePanelState>(CameraAcceptancePanelState.Empty, BuildRoot);
+            _page = new ReactivePage<CameraAcceptancePanelState>(new SkiaTextMeasurer(), new SkiaImageSizeProvider(), CameraAcceptancePanelState.Empty, BuildRoot);
         }
 
         public UiScene Scene => _page.Scene;

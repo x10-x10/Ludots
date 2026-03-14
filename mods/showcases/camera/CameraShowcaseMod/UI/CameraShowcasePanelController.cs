@@ -6,6 +6,7 @@ using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Actions;
+using Ludots.UI.Skia;
 
 namespace CameraShowcaseMod.UI
 {
@@ -15,7 +16,7 @@ namespace CameraShowcaseMod.UI
 
         public UiScene BuildScene(GameEngine engine, string mapId, ViewModeManager? viewModeManager)
         {
-            var scene = new UiScene();
+            var scene = new UiScene(new SkiaTextMeasurer(), new SkiaImageSizeProvider());
             int nextId = 1;
             scene.Mount(BuildRoot(engine, mapId, viewModeManager).Build(scene.Dispatcher, ref nextId));
             _mountedScene = scene;
