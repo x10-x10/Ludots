@@ -1,9 +1,10 @@
 using System;
+using Ludots.UI.Runtime;
 using SkiaSharp;
 
-namespace Ludots.UI.Runtime;
+namespace Ludots.UI.Skia;
 
-public sealed class UiCanvasContent
+public sealed class UiCanvasContent : IUiCanvasContent
 {
 	private readonly Action<SKCanvas, SKRect> _draw;
 

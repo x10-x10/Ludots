@@ -2,14 +2,25 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Ludots.UI.Skia;
+using Ludots.UI.Runtime;
 using SkiaSharp;
 
-namespace Ludots.UI.Runtime;
+namespace Ludots.UI.Skia;
 
-public sealed class UiSceneRenderer
+public sealed class SkiaUiRenderer : IUiRenderer
 {
-	public void Render(UiScene scene, SKCanvas canvas, float width, float height)
+	private SKCanvas? _canvas;
+
+	public void SetCanvas(SKCanvas canvas) => _canvas = canvas ?? throw new ArgumentNullException(nameof(canvas));
+
+	public void Render(UiScene scene, float width, float height)
+	{
+		ArgumentNullException.ThrowIfNull(scene, "scene");
+		SKCanvas canvas = _canvas ?? throw new InvalidOperationException("SetCanvas must be called before Render.");
+		RenderToCanvas(scene, canvas, width, height);
+	}
+
+	public void RenderToCanvas(UiScene scene, SKCanvas canvas, float width, float height)
 	{
 		ArgumentNullException.ThrowIfNull(scene, "scene");
 		ArgumentNullException.ThrowIfNull(canvas, "canvas");
@@ -33,7 +44,7 @@ public sealed class UiSceneRenderer
 		using SKBitmap bitmap = new SKBitmap(width, height);
 		using SKCanvas sKCanvas = new SKCanvas(bitmap);
 		sKCanvas.Clear(SKColors.Transparent);
-		Render(scene, sKCanvas, width, height);
+		RenderToCanvas(scene, sKCanvas, width, height);
 		using SKImage sKImage = SKImage.FromBitmap(bitmap);
 		using SKData sKData = sKImage.Encode(SKEncodedImageFormat.Png, 100);
 		using FileStream target = File.Open(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
@@ -499,14 +510,14 @@ public sealed class UiSceneRenderer
 
 	private static void DrawCanvas(UiNode node, SKRect rect, UiStyle style, SKCanvas canvas)
 	{
-		if (node.CanvasContent != null)
+		if (node.CanvasContent is UiCanvasContent skiaCanvas)
 		{
 			SKRect rect2 = new SKRect(rect.Left + style.Padding.Left, rect.Top + style.Padding.Top, rect.Right - style.Padding.Right, rect.Bottom - style.Padding.Bottom);
 			if (!(rect2.Width <= 0.01f) && !(rect2.Height <= 0.01f))
 			{
 				int count = canvas.Save();
 				ClipNodeBounds(canvas, rect2, style);
-				node.CanvasContent.Draw(canvas, rect2);
+				skiaCanvas.Draw(canvas, rect2);
 				canvas.RestoreToCount(count);
 			}
 		}

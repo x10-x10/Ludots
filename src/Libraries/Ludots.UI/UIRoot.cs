@@ -2,13 +2,12 @@ using System;
 using Ludots.UI.Input;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Events;
-using SkiaSharp;
 
 namespace Ludots.UI;
 
 public class UIRoot
 {
-	private readonly UiSceneRenderer _sceneRenderer = new UiSceneRenderer();
+	private readonly IUiRenderer _renderer;
 
 	private UiNodeId? _pressedNodeId;
 
@@ -19,6 +18,11 @@ public class UIRoot
 	public float Height { get; private set; }
 
 	public bool IsDirty { get; set; } = true;
+
+	public UIRoot(IUiRenderer renderer)
+	{
+		_renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
+	}
 
 	public void MountScene(UiScene scene)
 	{
@@ -39,7 +43,7 @@ public class UIRoot
 		IsDirty = true;
 	}
 
-	public void Render(SKCanvas canvas)
+	public void Render()
 	{
 		if (Scene == null)
 		{
@@ -47,7 +51,7 @@ public class UIRoot
 			return;
 		}
 		RefreshReactiveSceneRuntime();
-		_sceneRenderer.Render(Scene, canvas, Width, Height);
+		_renderer.Render(Scene, Width, Height);
 		IsDirty = false;
 	}
 

@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Events;
+using Ludots.UI.Skia;
 using SkiaSharp;
 
 internal sealed class CaptureSuite
@@ -159,7 +160,7 @@ internal sealed class CaptureSuite
 		canvas.DrawText(text, 16f, 28f, SKTextAlign.Left, font, paint2);
 	}
 
-	private static string FormatColor(SKColor color)
+	private static string FormatColor(UiColor color)
 	{
 		return $"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}{color.Alpha:X2}";
 	}
@@ -170,13 +171,13 @@ internal sealed class CaptureSuite
 		{
 			return SKColors.White;
 		}
-		SKColor backgroundColor = scene.Root.RenderStyle.BackgroundColor;
-		if (backgroundColor != SKColors.Transparent)
+		UiColor backgroundColor = scene.Root.RenderStyle.BackgroundColor;
+		if (backgroundColor != UiColor.Transparent)
 		{
-			return backgroundColor;
+			return backgroundColor.ToSKColor();
 		}
 		backgroundColor = scene.Root.Style.BackgroundColor;
-		return (backgroundColor != SKColors.Transparent) ? backgroundColor : SKColors.White;
+		return (backgroundColor != UiColor.Transparent) ? backgroundColor.ToSKColor() : SKColors.White;
 	}
 
 	private string BuildReport(IEnumerable<string> verdictLines)

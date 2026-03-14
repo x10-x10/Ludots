@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using Ludots.UI;
 using Ludots.UI.Compose;
 using Ludots.UI.Input;
-using SkiaSharp;
 using Ludots.UI.Reactive;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Events;
@@ -110,12 +109,12 @@ public sealed class UiShowcaseAcceptanceTests
     {
         var page = UiShowcaseFactory.CreateReactivePage();
         page.Scene.Layout(1280, 720);
-        SKColor before = page.Scene.Root!.Style.BackgroundColor;
+        UiColor before = page.Scene.Root!.Style.BackgroundColor;
         UiNode button = page.Scene.FindByElementId("reactive-theme-light")!;
 
         UiEventResult result = page.Scene.Dispatch(new UiPointerEvent(UiPointerEventType.Click, 0, button.LayoutRect.X + 2, button.LayoutRect.Y + 2, button.Id));
         page.Scene.Layout(1280, 720);
-        SKColor after = page.Scene.Root!.Style.BackgroundColor;
+        UiColor after = page.Scene.Root!.Style.BackgroundColor;
 
         Assert.That(result.Handled, Is.True);
         Assert.That(after, Is.Not.EqualTo(before));
@@ -210,7 +209,7 @@ public sealed class UiShowcaseAcceptanceTests
         Assert.That(afterColor, Is.Not.EqualTo(beforeColor));
     }
 
-    private static double ContrastRatio(SKColor foreground, SKColor background)
+    private static double ContrastRatio(UiColor foreground, UiColor background)
     {
         double fg = RelativeLuminance(foreground);
         double bg = RelativeLuminance(background);
@@ -255,7 +254,7 @@ public sealed class UiShowcaseAcceptanceTests
             .Gap(10f);
     }
 
-    private static double RelativeLuminance(SKColor color)
+    private static double RelativeLuminance(UiColor color)
     {
         static double Linearize(byte channel)
         {

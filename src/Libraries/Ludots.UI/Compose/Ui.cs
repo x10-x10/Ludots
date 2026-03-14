@@ -1,7 +1,6 @@
 using System;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Actions;
-using SkiaSharp;
 
 namespace Ludots.UI.Compose;
 
@@ -47,9 +46,9 @@ public static class Ui
 		return new UiElementBuilder(UiNodeKind.Image, "img").Src(source);
 	}
 
-	public static UiElementBuilder Canvas(Action<SKCanvas, SKRect> draw)
+	public static UiElementBuilder Canvas(IUiCanvasContent content)
 	{
-		return new UiElementBuilder(UiNodeKind.Custom, "canvas").CanvasContent(draw);
+		return new UiElementBuilder(UiNodeKind.Custom, "canvas").CanvasContent(content);
 	}
 
 	public static UiElementBuilder Button(string text, Action<UiActionContext>? onClick = null)

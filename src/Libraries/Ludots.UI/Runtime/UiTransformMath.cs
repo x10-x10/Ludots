@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace Ludots.UI.Runtime;
 
-internal static class UiTransformMath
+public static class UiTransformMath
 {
 	public static Matrix3x2 CreateMatrix(UiStyle style, UiRect rect)
 	{

@@ -5,10 +5,10 @@ namespace Ludots.UI.Compose;
 
 public static class UiSceneComposer
 {
-	public static UiScene Compose(UiElementBuilder root, UiThemePack? theme = null, params UiStyleSheet[] styleSheets)
+	public static UiScene Compose(IUiTextMeasurer textMeasurer, IUiImageSizeProvider imageSizeProvider, UiElementBuilder root, UiThemePack? theme = null, params UiStyleSheet[] styleSheets)
 	{
 		ArgumentNullException.ThrowIfNull(root, "root");
-		UiScene uiScene = new UiScene();
+		UiScene uiScene = new UiScene(textMeasurer, imageSizeProvider);
 		int nextId = 1;
 		uiScene.Mount(root.Build(uiScene.Dispatcher, ref nextId));
 		if (styleSheets != null && styleSheets.Length != 0)

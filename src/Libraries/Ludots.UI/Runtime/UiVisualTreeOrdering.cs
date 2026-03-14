@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace Ludots.UI.Runtime;
 
-internal static class UiVisualTreeOrdering
+public static class UiVisualTreeOrdering
 {
 	public static IReadOnlyList<UiNode> BackToFront(IReadOnlyList<UiNode> children)
 	{

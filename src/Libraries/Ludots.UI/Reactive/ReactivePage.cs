@@ -29,12 +29,12 @@ public sealed class ReactivePage<TState>
 
 	public long IncrementalPatchCount { get; private set; }
 
-	public ReactivePage(TState initialState, Func<ReactiveContext<TState>, UiElementBuilder> render, UiThemePack? theme = null, params UiStyleSheet[] styleSheets)
+	public ReactivePage(IUiTextMeasurer textMeasurer, IUiImageSizeProvider imageSizeProvider, TState initialState, Func<ReactiveContext<TState>, UiElementBuilder> render, UiThemePack? theme = null, params UiStyleSheet[] styleSheets)
 	{
 		State = initialState;
 		_render = render ?? throw new ArgumentNullException("render");
 		Theme = theme;
-		Scene = new UiScene();
+		Scene = new UiScene(textMeasurer, imageSizeProvider);
 		Scene.SetReactiveRuntimeRefresh(RefreshRuntimeDependencies);
 		_context = new ReactiveContext<TState>(this);
 		if (styleSheets != null && styleSheets.Length != 0)

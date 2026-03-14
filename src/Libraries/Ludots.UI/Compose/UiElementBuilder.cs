@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using Ludots.UI.Runtime;
 using Ludots.UI.Runtime.Actions;
-using SkiaSharp;
 
 namespace Ludots.UI.Compose;
 
@@ -17,7 +16,7 @@ public sealed class UiElementBuilder
 
 	private Action<UiActionContext>? _onClick;
 
-	private UiCanvasContent? _canvasContent;
+	private IUiCanvasContent? _canvasContent;
 
 	private UiStyle _style;
 
@@ -715,15 +714,9 @@ public sealed class UiElementBuilder
 		return this;
 	}
 
-	public UiElementBuilder CanvasContent(UiCanvasContent content)
+	public UiElementBuilder CanvasContent(IUiCanvasContent content)
 	{
 		_canvasContent = content ?? throw new ArgumentNullException("content");
-		return this;
-	}
-
-	public UiElementBuilder CanvasContent(Action<SKCanvas, SKRect> draw)
-	{
-		_canvasContent = new UiCanvasContent(draw);
 		return this;
 	}
 

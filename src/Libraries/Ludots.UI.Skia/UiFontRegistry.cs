@@ -4,7 +4,9 @@ using System.Linq;
 using System.Text;
 using SkiaSharp;
 
-namespace Ludots.UI.Runtime;
+using Ludots.UI.Runtime;
+
+namespace Ludots.UI.Skia;
 
 public static class UiFontRegistry
 {

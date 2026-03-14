@@ -8,8 +8,4 @@
     <LangVersion>12.0</LangVersion>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\SkiaSharp\SkiaSharp\SkiaSharp.csproj" />
-    <ProjectReference Include="..\Svg.Skia\Svg.Skia\Svg.Skia.csproj" PrivateAssets="all" />
-  </ItemGroup>
 </Project>

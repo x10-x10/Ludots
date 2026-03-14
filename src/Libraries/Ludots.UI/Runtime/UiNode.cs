@@ -53,7 +53,7 @@ public sealed class UiNode
 
 	public string? TextContent { get; private set; }
 
-	public UiCanvasContent? CanvasContent { get; private set; }
+	public IUiCanvasContent? CanvasContent { get; private set; }
 
 	public IReadOnlyList<string> ClassNames => _classNames;
 
@@ -69,7 +69,7 @@ public sealed class UiNode
 
 	public bool CanScrollVertically => Style.Overflow == UiOverflow.Scroll && MaxScrollY > 0.01f;
 
-	public UiNode(UiNodeId id, UiNodeKind kind, UiStyle? style = null, string? textContent = null, IEnumerable<UiNode>? children = null, IEnumerable<UiActionHandle>? actionHandles = null, string? tagName = null, string? elementId = null, IEnumerable<string>? classNames = null, UiAttributeBag? attributes = null, UiStyleDeclaration? inlineStyle = null, UiCanvasContent? canvasContent = null)
+	public UiNode(UiNodeId id, UiNodeKind kind, UiStyle? style = null, string? textContent = null, IEnumerable<UiNode>? children = null, IEnumerable<UiActionHandle>? actionHandles = null, string? tagName = null, string? elementId = null, IEnumerable<string>? classNames = null, UiAttributeBag? attributes = null, UiStyleDeclaration? inlineStyle = null, IUiCanvasContent? canvasContent = null)
 	{
 		if (!id.IsValid)
 		{
@@ -249,7 +249,7 @@ public sealed class UiNode
 		PseudoState &= (UiPseudoState)(ushort)(~(int)state);
 	}
 
-	public void SetCanvasContent(UiCanvasContent? canvasContent)
+	public void SetCanvasContent(IUiCanvasContent? canvasContent)
 	{
 		CanvasContent = canvasContent;
 	}

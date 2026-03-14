@@ -16,7 +16,7 @@ public sealed class UiScene
 
 	private readonly UiStyleResolver _styleResolver = new UiStyleResolver();
 
-	private readonly UiLayoutEngine _layoutEngine = new UiLayoutEngine();
+	private readonly UiLayoutEngine _layoutEngine;
 
 	private readonly List<UiStyleSheet> _styleSheets = new List<UiStyleSheet>();
 
@@ -64,8 +64,11 @@ public sealed class UiScene
 
 	public UiReactiveUpdateMetrics LastReactiveUpdateMetrics { get; internal set; } = UiReactiveUpdateMetrics.None;
 
-	public UiScene(UiDispatcher? dispatcher = null)
+	public UiScene(IUiTextMeasurer textMeasurer, IUiImageSizeProvider imageSizeProvider, UiDispatcher? dispatcher = null)
 	{
+		_layoutEngine = new UiLayoutEngine(
+			textMeasurer ?? throw new ArgumentNullException(nameof(textMeasurer)),
+			imageSizeProvider ?? throw new ArgumentNullException(nameof(imageSizeProvider)));
 		Dispatcher = dispatcher ?? new UiDispatcher();
 	}
 

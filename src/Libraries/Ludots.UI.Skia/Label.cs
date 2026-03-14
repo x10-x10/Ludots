@@ -1,6 +1,6 @@
 using SkiaSharp;
 
-namespace Ludots.UI.Widgets;
+namespace Ludots.UI.Skia.Widgets;
 
 public class Label : Widget
 {

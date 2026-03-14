@@ -7,6 +7,15 @@ namespace Ludots.UI.Runtime;
 
 public sealed class UiLayoutEngine
 {
+	private readonly IUiTextMeasurer _textMeasurer;
+	private readonly IUiImageSizeProvider _imageSizeProvider;
+
+	public UiLayoutEngine(IUiTextMeasurer textMeasurer, IUiImageSizeProvider imageSizeProvider)
+	{
+		_textMeasurer = textMeasurer ?? throw new ArgumentNullException(nameof(textMeasurer));
+		_imageSizeProvider = imageSizeProvider ?? throw new ArgumentNullException(nameof(imageSizeProvider));
+	}
+
 	private sealed class TableRowInfo
 	{
 		public UiNode? Section { get; }
@@ -675,7 +684,7 @@ public sealed class UiLayoutEngine
 		if (!string.IsNullOrWhiteSpace(textContent))
 		{
 			float availableWidth = ((widthMode == MeasureMode.Undefined) ? float.PositiveInfinity : Math.Max(0f, width - style.Padding.Horizontal));
-			UiTextLayoutResult uiTextLayoutResult = UiTextLayout.Measure(textContent, style, availableWidth, widthMode != MeasureMode.Undefined);
+			UiTextLayoutResult uiTextLayoutResult = _textMeasurer.Measure(textContent, style, availableWidth, widthMode != MeasureMode.Undefined);
 			float measured = uiTextLayoutResult.Width + style.Padding.Horizontal;
 			float measured2 = uiTextLayoutResult.Height + style.Padding.Vertical;
 			return new Size(ResolveMeasuredAxis(measured, width, widthMode), ResolveMeasuredAxis(measured2, height, heightMode));
@@ -734,9 +743,9 @@ public sealed class UiLayoutEngine
 		return result;
 	}
 
-	private static (float Width, float Height) ResolveImageIntrinsicSize(UiNode node)
+	private (float Width, float Height) ResolveImageIntrinsicSize(UiNode node)
 	{
-		if (UiImageSourceCache.TryGetSize(node.Attributes["src"], out var width, out var height))
+		if (_imageSizeProvider.TryGetSize(node.Attributes["src"], out var width, out var height))
 		{
 			return (Width: width, Height: height);
 		}

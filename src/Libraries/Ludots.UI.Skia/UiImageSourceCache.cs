@@ -6,7 +6,9 @@ using System.Threading;
 using SkiaSharp;
 using Svg.Skia;
 
-namespace Ludots.UI.Runtime;
+using Ludots.UI.Runtime;
+
+namespace Ludots.UI.Skia;
 
 internal static class UiImageSourceCache
 {

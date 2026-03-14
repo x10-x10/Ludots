@@ -2,10 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using Ludots.UI.Skia;
+using Ludots.UI.Runtime;
 using SkiaSharp;
 
-namespace Ludots.UI.Runtime;
+namespace Ludots.UI.Skia;
+
+public sealed class SkiaTextMeasurer : IUiTextMeasurer
+{
+	UiTextLayoutResult IUiTextMeasurer.Measure(string? text, UiStyle style, float availableWidth, bool constrainWidth)
+		=> UiTextLayout.Measure(text, style, availableWidth, constrainWidth);
+
+	float IUiTextMeasurer.MeasureWidth(string? text, UiStyle style)
+		=> UiTextLayout.MeasureWidth(text, style);
+}
 
 public static class UiTextLayout
 {
