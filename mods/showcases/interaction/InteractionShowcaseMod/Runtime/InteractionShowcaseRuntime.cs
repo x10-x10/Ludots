@@ -158,7 +158,7 @@ namespace InteractionShowcaseMod.Runtime
                 return;
             }
 
-            OpenOrUpdate(
+            bool createdComponentPanel = OpenOrUpdate(
                 context,
                 handles,
                 InteractionShowcaseIds.SelectedComponentUiHandleKey,
@@ -170,6 +170,12 @@ namespace InteractionShowcaseMod.Runtime
                     EntityInfoGasDetailFlags.None,
                     true));
 
+            if (createdComponentPanel &&
+                handles.TryGet(InteractionShowcaseIds.SelectedComponentUiHandleKey, out EntityInfoPanelHandle componentHandle) &&
+                engine.GetService(EntityInfoPanelServiceKeys.Service) is EntityInfoPanelService panelService)
+            {
+                panelService.SetAllComponentsEnabled(componentHandle, false);
+            }
             OpenOrUpdate(
                 context,
                 handles,
@@ -208,7 +214,7 @@ namespace InteractionShowcaseMod.Runtime
             return EntityInfoPanelTarget.Fixed(selected);
         }
 
-        private static void OpenOrUpdate(
+        private static bool OpenOrUpdate(
             ScriptContext context,
             EntityInfoPanelHandleStore handles,
             string handleKey,
@@ -224,7 +230,7 @@ namespace InteractionShowcaseMod.Runtime
                     Target = request.Target,
                     GasDetailFlags = request.GasDetailFlags
                 }.ExecuteAsync(context).GetAwaiter().GetResult();
-                return;
+                return false;
             }
 
             new OpenEntityInfoPanelCommand
@@ -232,6 +238,7 @@ namespace InteractionShowcaseMod.Runtime
                 HandleSlotKey = handleKey,
                 Request = request
             }.ExecuteAsync(context).GetAwaiter().GetResult();
+            return true;
         }
 
         private static void CloseEntityInfoPanels(ScriptContext context)

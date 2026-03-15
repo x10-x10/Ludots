@@ -369,6 +369,10 @@ namespace Raylib_cs
         public static extern bool IsKeyDown(KeyboardKey key);
 
         [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        public static extern bool IsWindowFocused();
+
+        [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
         public static extern Vector2 GetMousePosition();
 
         [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]

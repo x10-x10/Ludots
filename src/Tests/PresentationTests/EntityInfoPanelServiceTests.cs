@@ -202,6 +202,43 @@ public sealed class EntityInfoPanelServiceTests
         Assert.That(compactLines.Any(line => line.Contains("state=Committed", System.StringComparison.Ordinal)), Is.False);
     }
 
+    [Test]
+    public void Close_ThenReopen_ResetsComponentToggleStateForReusedSlots()
+    {
+        using var world = World.Create();
+        Entity entity = world.Create(new Name { Value = "Commander" });
+
+        var service = new EntityInfoPanelService();
+        var globals = new Dictionary<string, object>();
+
+        EntityInfoPanelHandle firstHandle = service.Open(new EntityInfoPanelRequest(
+            EntityInfoPanelKind.ComponentInspector,
+            EntityInfoPanelSurface.Ui,
+            EntityInfoPanelTarget.Fixed(entity),
+            new EntityInfoPanelLayout(EntityInfoPanelAnchor.TopLeft, 0f, 0f, 320f, 240f),
+            EntityInfoGasDetailFlags.None,
+            true));
+
+        service.Refresh(world, globals);
+        Assert.That(service.SetAllComponentsEnabled(firstHandle, false), Is.True);
+        service.Refresh(world, globals);
+        Assert.That(service.GetComponentSectionLineCount(firstHandle.Slot, 0), Is.EqualTo(0));
+
+        Assert.That(service.Close(firstHandle), Is.True);
+
+        EntityInfoPanelHandle secondHandle = service.Open(new EntityInfoPanelRequest(
+            EntityInfoPanelKind.ComponentInspector,
+            EntityInfoPanelSurface.Ui,
+            EntityInfoPanelTarget.Fixed(entity),
+            new EntityInfoPanelLayout(EntityInfoPanelAnchor.TopLeft, 0f, 0f, 320f, 240f),
+            EntityInfoGasDetailFlags.None,
+            true));
+
+        service.Refresh(world, globals);
+
+        Assert.That(secondHandle.Slot, Is.EqualTo(firstHandle.Slot));
+        Assert.That(service.GetComponentSectionLineCount(secondHandle.Slot, 0), Is.GreaterThan(0));
+    }
     private static string[] GetOverlayStrings(ScreenOverlayBuffer overlay, ReadOnlySpan<ScreenOverlayItem> items)
     {
         var lines = new List<string>(items.Length);

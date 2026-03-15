@@ -72,6 +72,7 @@ public sealed partial class EntityInfoPanelService
         _titles[slot] = string.Empty;
         _subtitles[slot] = string.Empty;
         _contentSerials[slot] = 1;
+        ResetComponentToggleState(slot, enabled: true);
         ClearComponentState(slot);
         ClearGasState(slot);
         InvalidateSurface(request.Surface);
@@ -93,6 +94,7 @@ public sealed partial class EntityInfoPanelService
         _resolvedTargets[slot] = Entity.Null;
         _titles[slot] = string.Empty;
         _subtitles[slot] = string.Empty;
+        ResetComponentToggleState(slot, enabled: true);
         ClearComponentState(slot);
         ClearGasState(slot);
         InvalidateSurface(surface);
@@ -246,6 +248,15 @@ public sealed partial class EntityInfoPanelService
         return -1;
     }
 
+    private void ResetComponentToggleState(int slot, bool enabled)
+    {
+        int baseIndex = slot * ComponentToggleWordCount;
+        ulong value = enabled ? 0UL : ulong.MaxValue;
+        for (int i = 0; i < ComponentToggleWordCount; i++)
+        {
+            _componentDisabled[baseIndex + i] = value;
+        }
+    }
     private void InvalidateSurface(EntityInfoPanelSurface surface)
     {
         if ((surface & EntityInfoPanelSurface.Ui) != 0)
