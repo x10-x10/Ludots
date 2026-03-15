@@ -281,20 +281,31 @@ namespace Ludots.Adapter.Raylib
                         int currentTopOverlayVersion = overlayScene?.GetLayerVersion(PresentationOverlayLayer.TopMost) ?? 0;
                         bool refreshUnderlay = overlayScene != null && (hasUnderlay || underlayHadContent) &&
                             (currentUnderlayVersion != underlayLayerVersion || hasUnderlay != underlayHadContent);
+                        bool underlayCanvasChanged = false;
                         if (refreshUnderlay)
                         {
-                            underlayLayer.Clear();
+                            PresentationOverlayLanePacer.LaneRefreshPlan underlayPlan = default;
                             if (hasUnderlay)
                             {
-                                PresentationOverlayLanePacer.LaneRefreshPlan underlayPlan = underlayPacer.BuildPlan(overlayScene!);
-                                overlaySkiaRenderer.Render(overlayScene!, underlayLayer.Canvas, PresentationOverlayLayer.UnderUi, underlayPlan);
-                                underlayPacer.MarkPresented(overlayScene!, underlayPlan);
-                                underlayLayer.SetHasContent(true);
+                                underlayPlan = underlayPacer.BuildPlan(overlayScene!);
                             }
-                            else
+
+                            if (!hasUnderlay || underlayPlan.HasAnyRefresh)
                             {
-                                underlayPacer.Reset();
+                                underlayLayer.Clear();
+                                if (hasUnderlay)
+                                {
+                                    overlaySkiaRenderer.Render(overlayScene!, underlayLayer.Canvas,
+                                        PresentationOverlayLayer.UnderUi, underlayPlan);
+                                    underlayLayer.SetHasContent(true);
+                                }
+                                underlayCanvasChanged = true;
                             }
+
+                            if (hasUnderlay)
+                                underlayPacer.MarkPresented(overlayScene!, underlayPlan);
+                            else
+                                underlayPacer.Reset();
 
                             underlayHadContent = hasUnderlay;
                             underlayLayerVersion = currentUnderlayVersion;
@@ -334,7 +345,8 @@ namespace Ludots.Adapter.Raylib
                         }
 
                         bool hasCompositeContent = hasUnderlay || hasUiLayer || hasTopOverlay;
-                        bool refreshComposite = refreshUnderlay || refreshUiLayer || refreshTopOverlay || hasCompositeContent != compositeHadContent;
+                        bool refreshComposite = underlayCanvasChanged || refreshUiLayer || refreshTopOverlay
+                            || hasCompositeContent != compositeHadContent;
                         if (refreshComposite)
                         {
                             compositeRenderer.Canvas.Clear(SKColors.Transparent);
@@ -368,6 +380,7 @@ namespace Ludots.Adapter.Raylib
                             compositeRenderer.Draw();
                         }
 
+                        presentationTiming?.ObserveCompositeSkip(!refreshComposite);
                         screenOverlayBuffer?.Clear();
                         presentationTiming?.ObserveScreenOverlayDraw(
                             ElapsedMs(overlayStart),
