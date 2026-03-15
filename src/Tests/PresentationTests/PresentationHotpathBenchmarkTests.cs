@@ -118,6 +118,7 @@ namespace Ludots.Tests.Presentation
         {
             var harness = new UnderUiHostHarness();
             Warmup(screenHud, builder, scene, renderer, surface, harness, configFactory);
+            harness.ResetCompositeSkipCount();
 
             double[] frameTotals = new double[MeasuredFrames];
             double[] buildTimes = new double[MeasuredFrames];
@@ -145,7 +146,8 @@ namespace Ludots.Tests.Presentation
                 renderTimes,
                 dirtyLanes,
                 rebuiltLanes,
-                allocatedBytes);
+                allocatedBytes,
+                harness.CompositeSkipCount);
         }
 
         private static void Warmup(
@@ -305,6 +307,7 @@ namespace Ludots.Tests.Presentation
             sb.AppendLine($"- alloc per frame: `{scenario.AllocatedBytesPerFrame:F1} B`");
             sb.AppendLine($"- avg dirty lanes: `{scenario.AverageDirtyLanes:F2}`");
             sb.AppendLine($"- avg rebuilt lanes: `{scenario.AverageRebuiltLanes:F2}`");
+            sb.AppendLine($"- composite skip rate: `{scenario.CompositeSkipRate:P1}`");
             sb.AppendLine($"- 120 Hz pass: `{(scenario.P95TotalMs <= TargetFrameBudgetMs ? "yes" : "no")}`");
             sb.AppendLine();
         }
@@ -386,7 +389,11 @@ namespace Ludots.Tests.Presentation
         {
             private bool _hadContent;
             private int _lastLayerVersion = -1;
+            private int _compositeSkipCount;
             private readonly PresentationOverlayLanePacer _pacer = new(PresentationOverlayLayer.UnderUi);
+
+            public int CompositeSkipCount => _compositeSkipCount;
+            public void ResetCompositeSkipCount() => _compositeSkipCount = 0;
 
             public double Render(
                 PresentationOverlayScene scene,
@@ -403,6 +410,7 @@ namespace Ludots.Tests.Presentation
 
                 if (!refresh)
                 {
+                    _compositeSkipCount++;
                     rebuiltLaneCount = 0;
                     return 0d;
                 }
@@ -436,7 +444,8 @@ namespace Ludots.Tests.Presentation
                 double[] renderTimes,
                 int[] dirtyLanes,
                 int[] rebuiltLanes,
-                long allocatedBytes)
+                long allocatedBytes,
+                int compositeSkipCount)
             {
                 Name = name;
                 FrameTotals = frameTotals;
@@ -445,6 +454,7 @@ namespace Ludots.Tests.Presentation
                 DirtyLanes = dirtyLanes;
                 RebuiltLanes = rebuiltLanes;
                 AllocatedBytes = allocatedBytes;
+                CompositeSkipCount = compositeSkipCount;
             }
 
             public string Name { get; }
@@ -454,6 +464,7 @@ namespace Ludots.Tests.Presentation
             public int[] DirtyLanes { get; }
             public int[] RebuiltLanes { get; }
             public long AllocatedBytes { get; }
+            public int CompositeSkipCount { get; }
 
             public double AverageTotalMs => Average(FrameTotals);
             public double P95TotalMs => Percentile(FrameTotals, 0.95);
@@ -464,6 +475,7 @@ namespace Ludots.Tests.Presentation
             public double AllocatedBytesPerFrame => FrameTotals.Length == 0 ? 0d : AllocatedBytes / (double)FrameTotals.Length;
             public double AverageDirtyLanes => Average(DirtyLanes);
             public double AverageRebuiltLanes => Average(RebuiltLanes);
+            public double CompositeSkipRate => FrameTotals.Length == 0 ? 0d : CompositeSkipCount / (double)FrameTotals.Length;
 
             private static double Average(double[] values)
             {

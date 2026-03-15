@@ -7,6 +7,9 @@ namespace Ludots.Core.Presentation.Hud
     public sealed class PresentationTimingDiagnostics
     {
         private const float SampleWeight = 0.18f;
+        private const int CompositeWindowSize = 60;
+        private int _compositeSkipAccumulator;
+        private int _compositeFrameAccumulator;
 
         public float UiInputMs { get; private set; }
         public float UiRenderMs { get; private set; }
@@ -29,6 +32,7 @@ namespace Ludots.Core.Presentation.Hud
         public int TerrainChunksBuiltLastFrame { get; private set; }
         public int PrimitiveInstancesLastFrame { get; private set; }
         public int PrimitiveBatchesLastFrame { get; private set; }
+        public int CompositeSkipCountLastSecond { get; private set; }
 
         public void ObserveUiInput(double sampleMs) => UiInputMs = Smooth(UiInputMs, (float)sampleMs);
         public void ObserveUiRender(double sampleMs) => UiRenderMs = Smooth(UiRenderMs, (float)sampleMs);
@@ -69,6 +73,18 @@ namespace Ludots.Core.Presentation.Hud
             PrimitiveRenderMs = Smooth(PrimitiveRenderMs, (float)sampleMs);
             PrimitiveInstancesLastFrame = instances;
             PrimitiveBatchesLastFrame = batches;
+        }
+
+        public void ObserveCompositeSkip(bool skipped)
+        {
+            if (skipped) _compositeSkipAccumulator++;
+            _compositeFrameAccumulator++;
+            if (_compositeFrameAccumulator >= CompositeWindowSize)
+            {
+                CompositeSkipCountLastSecond = _compositeSkipAccumulator;
+                _compositeSkipAccumulator = 0;
+                _compositeFrameAccumulator = 0;
+            }
         }
 
         private static float Smooth(float current, float sampleMs)
