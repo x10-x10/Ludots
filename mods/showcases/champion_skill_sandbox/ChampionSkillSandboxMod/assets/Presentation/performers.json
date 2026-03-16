@@ -15,5 +15,22 @@
       { "paramKey": 11, "source": "constant", "constantValue": 0.98 },
       { "paramKey": 12, "source": "constant", "constantValue": 0.035 }
     ]
+  },
+  {
+    "id": "champion_skill_sandbox.hover_indicator",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [1.0, 0.73, 0.24, 0.2],
+    "defaultScale": 1.16,
+    "defaultLifetime": -1,
+    "positionOffset": [0, 0.06, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.8 },
+      { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.74 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.24 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.045 }
+    ]
   }
 ]

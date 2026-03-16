@@ -28,7 +28,7 @@ namespace ChampionSkillSandboxMod.Runtime
         }
 
         public string Title => "Cast Mode";
-        public string Subtitle => "Map / 3C global setting";
+        public string Subtitle => "RMB Move · Map / 3C global setting";
 
         public void Bind(GameEngine engine)
         {

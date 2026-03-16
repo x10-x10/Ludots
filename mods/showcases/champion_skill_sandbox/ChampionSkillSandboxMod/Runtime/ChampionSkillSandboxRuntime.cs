@@ -11,6 +11,7 @@ using Ludots.Core.Presentation.Commands;
 using Ludots.Core.Presentation.Performers;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
+using Ludots.Core.Input.Orders;
 
 namespace ChampionSkillSandboxMod.Runtime
 {
@@ -19,6 +20,7 @@ namespace ChampionSkillSandboxMod.Runtime
         private EntityCommandPanelHandle _focusPanelHandle = EntityCommandPanelHandle.Invalid;
         private Entity _lastPanelTarget = Entity.Null;
         private Entity _selectionIndicatorTarget = Entity.Null;
+        private Entity _hoverIndicatorTarget = Entity.Null;
         private string _lastMapId = string.Empty;
         private bool _scenarioTagsApplied;
         private bool _initialSelectionApplied;
@@ -68,6 +70,7 @@ namespace ChampionSkillSandboxMod.Runtime
             EnsureMode(engine);
             EnsureScenarioState(engine);
             SyncFocusPanel(engine);
+            SyncHoverIndicator(engine);
         }
 
         private void EnsureScenarioState(GameEngine engine)
@@ -280,6 +283,7 @@ namespace ChampionSkillSandboxMod.Runtime
         private void Disable(GameEngine engine)
         {
             DestroySelectionIndicator(engine);
+            DestroyHoverIndicator(engine);
 
             if (_focusPanelHandle.IsValid &&
                 engine.GetService(CoreServiceKeys.EntityCommandPanelService) is IEntityCommandPanelService service)
@@ -297,6 +301,7 @@ namespace ChampionSkillSandboxMod.Runtime
             _focusPanelHandle = EntityCommandPanelHandle.Invalid;
             _lastPanelTarget = Entity.Null;
             _selectionIndicatorTarget = Entity.Null;
+            _hoverIndicatorTarget = Entity.Null;
             _scenarioTagsApplied = false;
             _initialSelectionApplied = false;
             _lastMapId = string.Empty;
@@ -350,6 +355,101 @@ namespace ChampionSkillSandboxMod.Runtime
             {
                 Kind = PresentationCommandKind.DestroyPerformerScope,
                 IdA = ChampionSkillSandboxIds.SelectionIndicatorScopeId,
+            });
+        }
+
+        private void SyncHoverIndicator(GameEngine engine)
+        {
+            SyncIndicator(
+                engine,
+                ResolveHoverIndicatorTarget(engine),
+                ref _hoverIndicatorTarget,
+                ChampionSkillSandboxIds.HoverIndicatorPerformerKey,
+                ChampionSkillSandboxIds.HoverIndicatorScopeId);
+        }
+
+        private static Entity ResolveHoverIndicatorTarget(GameEngine engine)
+        {
+            if (engine.GetService(CoreServiceKeys.ActiveInputOrderMapping) is not InputOrderMappingSystem mapping ||
+                !mapping.IsAiming ||
+                !engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) ||
+                hoveredObj is not Entity hovered ||
+                hovered == Entity.Null ||
+                !engine.World.IsAlive(hovered))
+            {
+                return Entity.Null;
+            }
+
+            return hovered;
+        }
+
+        private void DestroyHoverIndicator(GameEngine engine)
+        {
+            if (engine.GetService(CoreServiceKeys.PresentationCommandBuffer) is not PresentationCommandBuffer commands)
+            {
+                return;
+            }
+
+            commands.TryAdd(new PresentationCommand
+            {
+                Kind = PresentationCommandKind.DestroyPerformerScope,
+                IdA = ChampionSkillSandboxIds.HoverIndicatorScopeId,
+            });
+        }
+
+        private void SyncIndicator(
+            GameEngine engine,
+            Entity target,
+            ref Entity currentTarget,
+            string performerKey,
+            int scopeId)
+        {
+            if (currentTarget == target)
+            {
+                return;
+            }
+
+            DestroyIndicator(engine, scopeId);
+            currentTarget = target;
+            if (target == Entity.Null)
+            {
+                return;
+            }
+
+            PresentationCommandBuffer? commands = engine.GetService(CoreServiceKeys.PresentationCommandBuffer);
+            PerformerDefinitionRegistry? performers = engine.GetService(CoreServiceKeys.PerformerDefinitionRegistry);
+            if (commands == null || performers == null)
+            {
+                return;
+            }
+
+            int definitionId = performers.GetId(performerKey);
+            if (definitionId <= 0)
+            {
+                throw new InvalidOperationException(
+                    $"Performer '{performerKey}' is required by ChampionSkillSandboxMod.");
+            }
+
+            commands.TryAdd(new PresentationCommand
+            {
+                Kind = PresentationCommandKind.CreatePerformer,
+                IdA = definitionId,
+                IdB = scopeId,
+                Source = target,
+            });
+        }
+
+        private static void DestroyIndicator(GameEngine engine, int scopeId)
+        {
+            if (engine.GetService(CoreServiceKeys.PresentationCommandBuffer) is not PresentationCommandBuffer commands)
+            {
+                return;
+            }
+
+            commands.TryAdd(new PresentationCommand
+            {
+                Kind = PresentationCommandKind.DestroyPerformerScope,
+                IdA = scopeId,
             });
         }
     }

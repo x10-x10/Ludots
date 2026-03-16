@@ -118,6 +118,10 @@ namespace Ludots.Tests.GAS.Production
                 performerRegistry.GetId("champion_skill_sandbox.selection_indicator"),
                 Is.GreaterThan(0),
                 "Sandbox performer config should register a dedicated selection indicator.");
+            Assert.That(
+                performerRegistry.GetId("champion_skill_sandbox.hover_indicator"),
+                Is.GreaterThan(0),
+                "Sandbox performer config should register a dedicated hover indicator.");
             var overlays = engine.GetService(CoreServiceKeys.GroundOverlayBuffer)
                 ?? throw new InvalidOperationException("GroundOverlayBuffer missing.");
             Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Initial sandbox selection should render a visible ring.");
@@ -165,6 +169,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(buttonCount, Is.EqualTo(3));
             Assert.That(buttons[0].ButtonId, Is.EqualTo("ChampionSkillSandbox.Mode.SmartCast"));
             Assert.That(buttons[0].Active, Is.True);
+            Assert.That(toolbar.Subtitle, Does.Contain("RMB Move"));
 
             var source = ResolveGasPanelSource(engine);
             Entity ezreal = FindEntityByName(engine.World, "Ezreal Alpha");
@@ -190,6 +195,11 @@ namespace Ludots.Tests.GAS.Production
 
             source.CopySlots(ezreal, 0, slots);
             Assert.That(slots[0].DetailLabel, Is.EqualTo("Release key, then confirm line shot"));
+
+            InputOrderMapping? command = mapping.GetMapping("Command");
+            Assert.That(command, Is.Not.Null);
+            Assert.That(command!.OrderTypeKey, Is.EqualTo("moveTo"));
+            Assert.That(command.SelectionType, Is.EqualTo(OrderSelectionType.Position));
         }
 
         private static GameEngine CreateEngine()

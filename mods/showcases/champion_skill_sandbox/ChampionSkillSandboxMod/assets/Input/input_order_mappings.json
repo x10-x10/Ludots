@@ -42,6 +42,16 @@
       "modifierBehavior": "QueueOnModifier"
     },
     {
+      "actionId": "Command",
+      "trigger": "PressedThisFrame",
+      "orderTypeKey": "moveTo",
+      "argsTemplate": {},
+      "requireSelection": true,
+      "selectionType": "Position",
+      "isSkillMapping": false,
+      "modifierBehavior": "QueueOnModifier"
+    },
+    {
       "actionId": "Stop",
       "trigger": "PressedThisFrame",
       "orderTypeKey": "stop",

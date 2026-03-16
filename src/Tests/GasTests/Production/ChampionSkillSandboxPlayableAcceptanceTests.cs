@@ -131,6 +131,19 @@ namespace Ludots.Tests.GAS.Production
             timeline.Add("[T+004] Select(Jayce Hammer) -> panel routes to hammer-form Q/W/E/R");
 
             SelectNamedEntity(engine, backend, "Ezreal Alpha", frameTimesMs);
+            Vector2 ezrealStart = ReadPosition(engine.World, "Ezreal Alpha");
+            Vector2 moveTargetScreen = GetGroundScreenFromWorld(engine, ezrealStart + new Vector2(220f, 0f));
+            RightClickWorld(engine, backend, moveTargetScreen, frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => ReadPosition(engine.World, "Ezreal Alpha").X > ezrealStart.X + 80f,
+                maxFrames: 32);
+            Vector2 ezrealAfterMove = ReadPosition(engine.World, "Ezreal Alpha");
+            Assert.That(ezrealAfterMove.X, Is.GreaterThan(ezrealStart.X + 80f), "Right-click move should let the selected champion create distance.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "move_reposition");
+            timeline.Add($"[T+005] Ezreal Alpha.Move(RMB) -> X {ezrealStart.X:0} to {ezrealAfterMove.X:0} to create spacing");
+
             float ezrealDistanceToDummy = ReadDistance(engine.World, "Ezreal Alpha", "Target Dummy A");
             Assert.That(ezrealDistanceToDummy, Is.LessThanOrEqualTo(840f), "Sandbox layout should keep Target Dummy A inside Ezreal Q range for the opening smart-cast proof.");
             float dummyHealthBeforeQ = ReadHealth(engine.World, "Target Dummy A");
@@ -150,13 +163,27 @@ namespace Ludots.Tests.GAS.Production
             toolbar.Activate(IndicatorModeId);
             Tick(engine, 1, frameTimesMs);
             Assert.That(GetActiveModeId(engine), Is.EqualTo(IndicatorModeId));
-            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy A"), frameTimesMs);
+            Vector2 dummyHoverPoint = FindHoverScreenPoint(engine, backend, "Target Dummy A", GetEntityScreen(engine, "Target Dummy A"), frameTimesMs);
+            Assert.That(ReadHoveredEntityName(engine), Is.EqualTo("Target Dummy A"));
+            SetMouseWorld(engine, backend, dummyHoverPoint, frameTimesMs);
             int baselineIndicatorLines = CountOverlays(overlays, GroundOverlayShape.Line);
+            int baselineIndicatorRings = CountOverlays(overlays, GroundOverlayShape.Ring);
             HoldButton(engine, backend, "<Keyboard>/r", holdFrames: 2, frameTimesMs);
             Assert.That(
                 CountOverlays(overlays, GroundOverlayShape.Line),
                 Is.GreaterThan(baselineIndicatorLines),
                 $"{BuildInputActionDiagnostics(engine, "SkillR")} || {BuildAbilityDiagnostics(engine, "Ezreal Alpha")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)}");
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => CountOverlays(overlays, GroundOverlayShape.Ring) > baselineIndicatorRings,
+                maxFrames: 8);
+            Assert.That(
+                CountOverlays(overlays, GroundOverlayShape.Ring),
+                Is.GreaterThan(baselineIndicatorRings),
+                "Indicator hover should add a dedicated marker on the hovered target.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_hover_target");
+            timeline.Add("[T+007] Indicator hover over Target Dummy A shows an extra target marker before release");
             float dummyHealthBeforeR = ReadHealth(engine.World, "Target Dummy A");
             ReleaseButton(engine, backend, "<Keyboard>/r", frameTimesMs);
             Tick(engine, 4, frameTimesMs);
@@ -168,7 +195,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Indicator release hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Indicator release hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_release_hit");
-            timeline.Add($"[T+006] Indicator mode hold-release previews Trueshot Barrage, then fires on release | HP {dummyHealthBeforeR:0} -> {dummyHealthAfterR:0}");
+            timeline.Add($"[T+008] Indicator mode hold-release previews Trueshot Barrage, then fires on release | HP {dummyHealthBeforeR:0} -> {dummyHealthAfterR:0}");
 
             SelectNamedEntity(engine, backend, "Jayce Cannon", frameTimesMs);
             toolbar.Activate(PressReleaseModeId);
@@ -211,7 +238,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Press-release confirm hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Press-release confirm hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "press_release_confirm_hit");
-            timeline.Add($"[T+007] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
+            timeline.Add($"[T+009] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
 
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildTraceJsonl(snapshots));
             File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildBattleReport(timeline, snapshots, frameTimesMs));
@@ -526,8 +553,9 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine($"- final_feedback_world_text: {finalSnapshot.WorldTextCount}");
             sb.AppendLine();
             sb.AppendLine("## Summary Stats");
-            sb.AppendLine("- total_actions: 7");
+            sb.AppendLine("- total_actions: 9");
             sb.AppendLine("- selection_switches: 4");
+            sb.AppendLine("- move_commands: 1");
             sb.AppendLine("- successful_hits: 3");
             sb.AppendLine("- cancelled_casts: 1");
             sb.AppendLine($"- median_tick_ms: {medianTickMs:0.###}");
@@ -543,11 +571,13 @@ namespace Ludots.Tests.GAS.Production
                 "    A[\"MapLoaded: sandbox boot -> Ezreal Alpha selected\"] --> B[\"Selection: Ezreal Cooldown -> R blocked\"]",
                 "    B --> C[\"Selection: Garen Courage -> W active\"]",
                 "    C --> D[\"Selection: Jayce Hammer -> hammer form routed\"]",
-                "    D --> E[\"SmartCast: Ezreal Q -> Target Dummy A hit\"]",
-                "    E --> F[\"Indicator: toolbar switch -> hold R shows line -> release hit\"]",
-                "    F --> G[\"PressReleaseAim: toolbar switch -> Jayce Cannon Q preview\"]",
-                "    G --> H[\"RightClick confirm branch: cancel -> HP unchanged\"]",
-                "    G --> I[\"LeftClick confirm branch: hit -> HP reduced\"]"
+                "    D --> E[\"Move: RMB command repositions Ezreal Alpha\"]",
+                "    E --> F[\"SmartCast: Ezreal Q -> Target Dummy A hit\"]",
+                "    F --> G[\"Indicator: hold R on dummy -> hover marker appears\"]",
+                "    G --> H[\"Indicator: release -> Trueshot Barrage hit\"]",
+                "    H --> I[\"PressReleaseAim: toolbar switch -> Jayce Cannon Q preview\"]",
+                "    I --> J[\"RightClick confirm branch: cancel -> HP unchanged\"]",
+                "    I --> K[\"LeftClick confirm branch: hit -> HP reduced\"]"
             });
         }
 
@@ -682,6 +712,13 @@ namespace Ludots.Tests.GAS.Production
 
             ref var position = ref engine.World.Get<WorldPositionCm>(entity);
             return projector.WorldToScreen(WorldUnits.WorldCmToVisualMeters(position.Value, yMeters: 0f));
+        }
+
+        private static Vector2 GetGroundScreenFromWorld(GameEngine engine, Vector2 worldCm)
+        {
+            var projector = engine.GetService(CoreServiceKeys.ScreenProjector)
+                ?? throw new InvalidOperationException("ScreenProjector was not installed.");
+            return projector.WorldToScreen(new Vector3(WorldUnits.CmToM(worldCm.X), 0f, WorldUnits.CmToM(worldCm.Y)));
         }
 
         private static Entity FindEntityByName(World world, string entityName)
