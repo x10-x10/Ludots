@@ -179,6 +179,12 @@ namespace Ludots.Core.Gameplay.GAS
             ref readonly var proj = ref templateData.Projectile;
             if (proj.Speed <= 0) return;
 
+            bool hasLaunchOrigin = world.IsAlive(context.Source) && world.Has<WorldPositionCm>(context.Source);
+            Fix64Vec2 launchOrigin = hasLaunchOrigin
+                ? world.Get<WorldPositionCm>(context.Source).Value
+                : Fix64Vec2.Zero;
+            bool hasTargetPoint = TryResolveProjectileTargetPoint(world, in context, in mergedParams, out var targetPointCm);
+
             Entity projectile = EntityCreationHelper.CreateProjectile(world,
                 new ProjectileState
                 {
@@ -188,12 +194,15 @@ namespace Ludots.Core.Gameplay.GAS
                     ImpactEffectTemplateId = proj.ImpactEffectTemplateId,
                     Source = context.Source,
                     Target = context.Target,
+                    LaunchOriginCm = launchOrigin,
+                    HasLaunchOrigin = (byte)(hasLaunchOrigin ? 1 : 0),
+                    TargetPointCm = targetPointCm,
+                    HasTargetPoint = (byte)(hasTargetPoint ? 1 : 0),
                 });
-            if (world.IsAlive(context.Source) && world.Has<WorldPositionCm>(context.Source))
+            if (hasLaunchOrigin)
             {
-                var pos = world.Get<WorldPositionCm>(context.Source);
-                world.Add(projectile, pos);
-                world.Add(projectile, new PreviousWorldPositionCm { Value = pos.Value });
+                world.Add(projectile, new WorldPositionCm { Value = launchOrigin });
+                world.Add(projectile, new PreviousWorldPositionCm { Value = launchOrigin });
             }
         }
 
@@ -332,6 +341,29 @@ namespace Ludots.Core.Gameplay.GAS
             return false;
         }
 
+        private static bool TryResolveProjectileTargetPoint(World world, in EffectContext context, in EffectConfigParams mergedParams, out Fix64Vec2 targetPointCm)
+        {
+            if (world.IsAlive(context.TargetContext) && world.Has<WorldPositionCm>(context.TargetContext))
+            {
+                targetPointCm = world.Get<WorldPositionCm>(context.TargetContext).Value;
+                return true;
+            }
+
+            if (TryResolvePreservedTargetPoint(in mergedParams, out targetPointCm))
+            {
+                return true;
+            }
+
+            if (world.IsAlive(context.Target) && world.Has<WorldPositionCm>(context.Target))
+            {
+                targetPointCm = world.Get<WorldPositionCm>(context.Target).Value;
+                return true;
+            }
+
+            targetPointCm = default;
+            return false;
+        }
+
         private static Fix64Vec2 ComputeScatterOffsetCm(Entity source, int unitTypeId, int index, int radiusCm)
         {
             if (radiusCm <= 0)
@@ -372,6 +404,10 @@ namespace Ludots.Core.Gameplay.GAS
         public int ImpactEffectTemplateId;
         public Entity Source;
         public Entity Target;
+        public Fix64Vec2 LaunchOriginCm;
+        public byte HasLaunchOrigin;
+        public Fix64Vec2 TargetPointCm;
+        public byte HasTargetPoint;
         public Fix64 TraveledCm;
     }
 

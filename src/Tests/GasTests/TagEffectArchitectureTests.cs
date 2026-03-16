@@ -3,6 +3,7 @@ using System.IO;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Ludots.Core.Config;
+using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Config;
@@ -349,7 +350,7 @@ namespace Ludots.Tests.GAS
         public void BuiltinHandlers_CreateProjectile_CreatesEntity()
         {
             using var world = World.Create();
-            var caster = world.Create();
+            var caster = world.Create(WorldPositionCm.FromCm(1200, 800));
             var target = world.Create();
             var effect = world.Create();
 
@@ -370,6 +371,81 @@ namespace Ludots.Tests.GAS
                 That(ps.ImpactEffectTemplateId, Is.EqualTo(42));
             });
             That(count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BuiltinHandlers_CreateProjectile_PreservesTargetPointAndLaunchOrigin()
+        {
+            using var world = World.Create();
+            var caster = world.Create(WorldPositionCm.FromCm(300, 500));
+            var effect = world.Create();
+
+            var ctx = new EffectContext { Source = caster, Target = Entity.Null };
+            var tpl = new EffectTemplateData();
+            tpl.Projectile = new ProjectileDescriptor { Speed = 600, Range = 1200, ArcHeight = 0, ImpactEffectTemplateId = 0 };
+
+            var mergedParams = new EffectConfigParams();
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosX, 950f);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosY, 640f);
+
+            BuiltinHandlers.HandleCreateProjectile(world, effect, ref ctx, in mergedParams, in tpl);
+
+            var query = new QueryDescription().WithAll<ProjectileState>();
+            int count = 0;
+            world.Query(in query, (ref ProjectileState ps) =>
+            {
+                count++;
+                That(ps.HasLaunchOrigin, Is.EqualTo(1));
+                That(ps.LaunchOriginCm.X.ToFloat(), Is.EqualTo(300f).Within(0.01f));
+                That(ps.LaunchOriginCm.Y.ToFloat(), Is.EqualTo(500f).Within(0.01f));
+                That(ps.HasTargetPoint, Is.EqualTo(1));
+                That(ps.TargetPointCm.X.ToFloat(), Is.EqualTo(950f).Within(0.01f));
+                That(ps.TargetPointCm.Y.ToFloat(), Is.EqualTo(640f).Within(0.01f));
+            });
+
+            That(count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ProjectileRuntimeSystem_TargetPointImpact_PublishesCallerParams()
+        {
+            using var world = World.Create();
+            var requests = new EffectRequestQueue();
+            var caster = world.Create(WorldPositionCm.FromCm(100, 200));
+            var projectile = world.Create(
+                new ProjectileState
+                {
+                    Speed = Fix64.FromInt(400),
+                    Range = 1200,
+                    ArcHeight = 0,
+                    ImpactEffectTemplateId = 77,
+                    Source = caster,
+                    Target = Entity.Null,
+                    LaunchOriginCm = Fix64Vec2.FromFloat(100f, 200f),
+                    HasLaunchOrigin = 1,
+                    TargetPointCm = Fix64Vec2.FromFloat(160f, 240f),
+                    HasTargetPoint = 1,
+                },
+                WorldPositionCm.FromCm(100, 200),
+                new PreviousWorldPositionCm { Value = WorldPositionCm.FromCm(100, 200).Value });
+
+            using var system = new ProjectileRuntimeSystem(world, new DiscreteClock(), requests);
+            system.Update(0.2f);
+
+            That(world.IsAlive(projectile), Is.False, "Projectile should despawn after reaching the preserved target point.");
+            That(requests.Count, Is.EqualTo(1));
+
+            var request = requests[0];
+            That(request.TemplateId, Is.EqualTo(77));
+            That(request.HasCallerParams, Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetOriginX, out float originX), Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetOriginY, out float originY), Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetPosX, out float targetX), Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetPosY, out float targetY), Is.True);
+            That(originX, Is.EqualTo(100f).Within(0.01f));
+            That(originY, Is.EqualTo(200f).Within(0.01f));
+            That(targetX, Is.EqualTo(160f).Within(0.01f));
+            That(targetY, Is.EqualTo(240f).Within(0.01f));
         }
 
         [Test]
