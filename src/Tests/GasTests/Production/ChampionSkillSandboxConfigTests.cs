@@ -15,6 +15,7 @@ using Ludots.Core.Gameplay.GAS.Systems;
 using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
+using Ludots.Core.Input.Selection;
 using Ludots.Core.Presentation.Performers;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
@@ -32,6 +33,9 @@ namespace Ludots.Tests.GAS.Production
     {
         private const float DeltaTime = 1f / 60f;
         private const string SandboxTacticalCameraId = "ChampionSkillSandbox.Camera.Tactical";
+        private const string FreeCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Free";
+        private const string FollowSelectionToolbarButtonId = "ChampionSkillSandbox.Camera.Selection";
+        private const string FollowSelectionGroupToolbarButtonId = "ChampionSkillSandbox.Camera.SelectionGroup";
         private const string ResetCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Reset";
         private static readonly string[] SandboxMods =
         {
@@ -135,6 +139,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(sandboxCamera, Is.Not.Null);
             Assert.That(sandboxCamera!.ConfineTargetToWorldBounds, Is.True, "Sandbox tactical camera should clamp target to map bounds.");
             Assert.That(sandboxCamera.EdgePanRequiresPointerInsideViewport, Is.True, "Sandbox tactical camera should ignore edge pan when cursor is outside the viewport.");
+            Assert.That(sandboxCamera.FollowMode, Is.EqualTo(CameraFollowMode.AlwaysFollow), "Sandbox tactical camera should allow dynamic follow targets from the toolbar.");
             Assert.That(
                 engine.CurrentMapSession?.MapConfig?.DefaultCamera?.VirtualCameraId,
                 Is.EqualTo(SandboxTacticalCameraId),
@@ -183,11 +188,17 @@ namespace Ludots.Tests.GAS.Production
 
             var buttons = new EntityCommandPanelToolbarButtonView[5];
             int buttonCount = toolbar.CopyButtons(buttons);
-            Assert.That(buttonCount, Is.EqualTo(4));
+            Assert.That(buttonCount, Is.EqualTo(5), "Small buffers should safely truncate the toolbar.");
+
+            buttons = new EntityCommandPanelToolbarButtonView[8];
+            buttonCount = toolbar.CopyButtons(buttons);
+            Assert.That(buttonCount, Is.EqualTo(7));
             Assert.That(buttons[0].ButtonId, Is.EqualTo("ChampionSkillSandbox.Mode.SmartCast"));
             Assert.That(buttons[0].Active, Is.True);
-            Assert.That(buttons[3].ButtonId, Is.EqualTo(ResetCameraToolbarButtonId));
-            Assert.That(toolbar.Subtitle, Does.Contain("F4 Reset"));
+            Assert.That(buttons[3].ButtonId, Is.EqualTo(FreeCameraToolbarButtonId));
+            Assert.That(buttons[3].Active, Is.True);
+            Assert.That(buttons[6].ButtonId, Is.EqualTo(ResetCameraToolbarButtonId));
+            Assert.That(toolbar.Subtitle, Does.Contain("RMB Move"));
 
             var source = ResolveGasPanelSource(engine);
             Entity ezreal = FindEntityByName(engine.World, "Ezreal Alpha");
@@ -219,6 +230,45 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(command!.OrderTypeKey, Is.EqualTo("moveTo"));
             Assert.That(command.SelectionType, Is.EqualTo(OrderSelectionType.Position));
 
+            Entity localPlayer = engine.GetService(CoreServiceKeys.LocalPlayerEntity);
+            Entity ezrealCooldown = FindEntityByName(engine.World, "Ezreal Cooldown");
+            Entity garenAlpha = FindEntityByName(engine.World, "Garen Alpha");
+            ref var selection = ref engine.World.Get<SelectionBuffer>(localPlayer);
+            selection.Clear();
+            selection.Add(ezreal);
+            selection.Add(garenAlpha);
+            engine.World.Set(localPlayer, selection);
+
+            engine.World.Add(ezreal, new CameraFollowWeight { Value = 1f });
+            engine.World.Add(garenAlpha, new CameraFollowWeight { Value = 3f });
+
+            toolbar.Activate(FollowSelectionToolbarButtonId);
+            Tick(engine, 2);
+            toolbar.CopyButtons(buttons);
+            Assert.That(buttons[3].Active, Is.False);
+            Assert.That(buttons[4].Active, Is.True);
+
+            engine.GameSession.Camera.Update(DeltaTime);
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm.HasValue, Is.True);
+
+            toolbar.Activate(FollowSelectionGroupToolbarButtonId);
+            Tick(engine, 2);
+            toolbar.CopyButtons(buttons);
+            Assert.That(buttons[5].Active, Is.True);
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm.HasValue, Is.True);
+
+            Vector2 ezrealPos = engine.World.Get<WorldPositionCm>(ezreal).Value.ToVector2();
+            Vector2 garenPos = engine.World.Get<WorldPositionCm>(garenAlpha).Value.ToVector2();
+            Vector2 expectedGroup = (ezrealPos + (garenPos * 3f)) / 4f;
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm!.Value.X, Is.EqualTo(expectedGroup.X).Within(0.01f));
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm!.Value.Y, Is.EqualTo(expectedGroup.Y).Within(0.01f));
+
+            toolbar.Activate(FreeCameraToolbarButtonId);
+            Tick(engine, 2);
+            toolbar.CopyButtons(buttons);
+            Assert.That(buttons[3].Active, Is.True);
+            Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.Null);
+
             engine.GameSession.Camera.ApplyPose(new CameraPoseRequest
             {
                 VirtualCameraId = SandboxTacticalCameraId,
@@ -230,7 +280,7 @@ namespace Ludots.Tests.GAS.Production
             Tick(engine, 1);
 
             toolbar.Activate(ResetCameraToolbarButtonId);
-            Tick(engine, 2);
+            Tick(engine, 4);
 
             Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(SandboxTacticalCameraId));
             Assert.That(engine.GameSession.Camera.State.TargetCm.X, Is.EqualTo(1850f).Within(0.01f));

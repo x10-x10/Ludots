@@ -1,5 +1,11 @@
 using System.Numerics;
+using System.Collections.Generic;
+using Arch.Core;
+using Ludots.Core.Components;
+using Ludots.Core.Input.Selection;
+using Ludots.Core.Scripting;
 using Ludots.Core.Gameplay.Camera;
+using Ludots.Core.Gameplay.Camera.FollowTargets;
 using Ludots.Core.Presentation.Camera;
 using NUnit.Framework;
 
@@ -53,6 +59,39 @@ namespace Ludots.Tests.ThreeC
             Assert.That(manager.State.IsFollowing, Is.True);
             Assert.That(manager.State.TargetCm, Is.EqualTo(target.PositionCm.Value));
             Assert.That(manager.FollowTargetPositionCm, Is.EqualTo(target.PositionCm.Value));
+        }
+
+        [Test]
+        public void SelectedGroupFollowTarget_UsesWeightedSelectionCentroid_AndFallsBackToSelectedEntity()
+        {
+            using var world = World.Create();
+            var globals = new Dictionary<string, object>();
+
+            Entity selector = world.Create(default(SelectionBuffer));
+            globals[CoreServiceKeys.LocalPlayerEntity.Name] = selector;
+
+            Entity light = world.Create(new WorldPositionCm { Value = new Ludots.Core.Mathematics.FixedPoint.Fix64Vec2(1000, 2000) });
+            Entity heavy = world.Create(
+                new WorldPositionCm { Value = new Ludots.Core.Mathematics.FixedPoint.Fix64Vec2(4000, 5000) },
+                new CameraFollowWeight { Value = 3f });
+
+            ref var selection = ref world.Get<SelectionBuffer>(selector);
+            selection.Add(light);
+            selection.Add(heavy);
+            world.Set(selector, selection);
+
+            var target = new SelectedGroupFollowTarget(world, globals);
+            Assert.That(target.TryGetPosition(out var centroid), Is.True);
+            Assert.That(centroid.X, Is.EqualTo(3250f).Within(0.01f));
+            Assert.That(centroid.Y, Is.EqualTo(4250f).Within(0.01f));
+
+            selection.Clear();
+            world.Set(selector, selection);
+            globals[CoreServiceKeys.SelectedEntity.Name] = light;
+
+            Assert.That(target.TryGetPosition(out var fallback), Is.True);
+            Assert.That(fallback.X, Is.EqualTo(1000f).Within(0.01f));
+            Assert.That(fallback.Y, Is.EqualTo(2000f).Within(0.01f));
         }
 
         [Test]

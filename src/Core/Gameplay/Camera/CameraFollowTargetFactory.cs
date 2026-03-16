@@ -21,6 +21,7 @@ namespace Ludots.Core.Gameplay.Camera
                 CameraFollowTargetKind.None => null,
                 CameraFollowTargetKind.LocalPlayer => new GlobalEntityFollowTarget(world, globals, CoreServiceKeys.LocalPlayerEntity.Name),
                 CameraFollowTargetKind.SelectedEntity => new GlobalEntityFollowTarget(world, globals, CoreServiceKeys.SelectedEntity.Name),
+                CameraFollowTargetKind.SelectedGroup => new SelectedGroupFollowTarget(world, globals),
                 _ => throw new InvalidOperationException($"Unsupported camera follow target kind: {kind}")
             };
         }

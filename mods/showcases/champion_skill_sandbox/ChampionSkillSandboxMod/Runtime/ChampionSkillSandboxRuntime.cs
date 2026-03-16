@@ -73,6 +73,7 @@ namespace ChampionSkillSandboxMod.Runtime
             EnsureMode(engine);
             EnsureScenarioState(engine);
             ConsumeResetCameraRequest(engine);
+            SyncCameraFollow(engine);
             SyncFocusPanel(engine);
             SyncHoverIndicator(engine);
         }
@@ -98,6 +99,11 @@ namespace ChampionSkillSandboxMod.Runtime
             if (!_initialSelectionApplied)
             {
                 _initialSelectionApplied = SeedInitialSelection(engine);
+            }
+
+            if (!engine.GlobalContext.ContainsKey(ChampionSkillSandboxIds.CameraFollowModeKey))
+            {
+                engine.GlobalContext[ChampionSkillSandboxIds.CameraFollowModeKey] = ChampionSkillSandboxIds.FreeCameraToolbarButtonId;
             }
         }
 
@@ -254,6 +260,39 @@ namespace ChampionSkillSandboxMod.Runtime
             });
         }
 
+        private static void SyncCameraFollow(GameEngine engine)
+        {
+            string followModeId = ResolveCameraFollowMode(engine);
+            string activeCameraId = engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(activeCameraId))
+            {
+                return;
+            }
+
+            ICameraFollowTarget? followTarget = followModeId switch
+            {
+                var id when string.Equals(id, ChampionSkillSandboxIds.FollowSelectionToolbarButtonId, StringComparison.OrdinalIgnoreCase)
+                    => CameraFollowTargetFactory.Build(engine.World, engine.GlobalContext, CameraFollowTargetKind.SelectedEntity),
+                var id when string.Equals(id, ChampionSkillSandboxIds.FollowSelectionGroupToolbarButtonId, StringComparison.OrdinalIgnoreCase)
+                    => CameraFollowTargetFactory.Build(engine.World, engine.GlobalContext, CameraFollowTargetKind.SelectedGroup),
+                _ => null
+            };
+
+            engine.GameSession.Camera.SetFollowTarget(activeCameraId, followTarget, snapToFollowTargetWhenAvailable: false);
+        }
+
+        private static string ResolveCameraFollowMode(GameEngine engine)
+        {
+            if (engine.GlobalContext.TryGetValue(ChampionSkillSandboxIds.CameraFollowModeKey, out var modeObj) &&
+                modeObj is string modeId &&
+                ChampionSkillSandboxIds.IsCameraFollowMode(modeId))
+            {
+                return modeId;
+            }
+
+            return ChampionSkillSandboxIds.FreeCameraToolbarButtonId;
+        }
+
         private void SyncFocusPanel(GameEngine engine)
         {
             IEntityCommandPanelService? service = engine.GetService(CoreServiceKeys.EntityCommandPanelService);
@@ -378,6 +417,7 @@ namespace ChampionSkillSandboxMod.Runtime
             _initialSelectionApplied = false;
             _lastMapId = string.Empty;
             engine.GlobalContext.Remove(ChampionSkillSandboxIds.ResetCameraRequestKey);
+            engine.GlobalContext.Remove(ChampionSkillSandboxIds.CameraFollowModeKey);
         }
 
         private void SyncSelectionIndicator(GameEngine engine, Entity target)

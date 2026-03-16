@@ -16,8 +16,12 @@ namespace ChampionSkillSandboxMod
         public const string IndicatorActionId = "CastModeIndicator";
         public const string PressReleaseActionId = "CastModePressRelease";
         public const string ResetCameraActionId = "ResetCamera";
+        public const string FreeCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Free";
+        public const string FollowSelectionToolbarButtonId = "ChampionSkillSandbox.Camera.Selection";
+        public const string FollowSelectionGroupToolbarButtonId = "ChampionSkillSandbox.Camera.SelectionGroup";
         public const string ResetCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Reset";
         public const string ResetCameraRequestKey = "ChampionSkillSandbox.Camera.ResetRequested";
+        public const string CameraFollowModeKey = "ChampionSkillSandbox.Camera.FollowMode";
         public const string SelectionIndicatorPerformerKey = "champion_skill_sandbox.selection_indicator";
         public const string HoverIndicatorPerformerKey = "champion_skill_sandbox.hover_indicator";
         public const int SelectionIndicatorScopeId = 4101;
@@ -44,6 +48,13 @@ namespace ChampionSkillSandboxMod
             return string.Equals(modeId, SmartCastModeId, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(modeId, IndicatorModeId, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(modeId, PressReleaseModeId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool IsCameraFollowMode(string? buttonId)
+        {
+            return string.Equals(buttonId, FreeCameraToolbarButtonId, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(buttonId, FollowSelectionToolbarButtonId, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(buttonId, FollowSelectionGroupToolbarButtonId, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

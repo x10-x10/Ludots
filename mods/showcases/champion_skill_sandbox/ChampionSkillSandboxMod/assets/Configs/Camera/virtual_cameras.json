@@ -23,7 +23,7 @@
     "rotateMode": "None",
     "enableZoom": true,
     "zoomCmPerWheel": 1200,
-    "followMode": "None",
+    "followMode": "AlwaysFollow",
     "defaultBlendDuration": 0.25,
     "blendCurve": "SmoothStep",
     "allowUserInput": true
