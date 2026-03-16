@@ -54,7 +54,9 @@ namespace Ludots.Core.UI.EntityCommandPanels
         Base = 1 << 1,
         FormOverride = 1 << 2,
         GrantedOverride = 1 << 3,
-        TemplateBacked = 1 << 4
+        TemplateBacked = 1 << 4,
+        Blocked = 1 << 5,
+        Active = 1 << 6
     }
 
     public readonly struct EntityCommandPanelOpenRequest
@@ -123,7 +125,10 @@ namespace Ludots.Core.UI.EntityCommandPanels
             EntityCommandSlotStateFlags stateFlags,
             short cooldownPermille,
             short chargesCurrent,
-            short chargesMax)
+            short chargesMax,
+            string displayLabel = "",
+            string detailLabel = "",
+            string actionId = "")
         {
             SlotIndex = slotIndex;
             AbilityId = abilityId;
@@ -132,6 +137,9 @@ namespace Ludots.Core.UI.EntityCommandPanels
             CooldownPermille = cooldownPermille;
             ChargesCurrent = chargesCurrent;
             ChargesMax = chargesMax;
+            DisplayLabel = displayLabel ?? string.Empty;
+            DetailLabel = detailLabel ?? string.Empty;
+            ActionId = actionId ?? string.Empty;
         }
 
         public int SlotIndex { get; }
@@ -141,6 +149,9 @@ namespace Ludots.Core.UI.EntityCommandPanels
         public short CooldownPermille { get; }
         public short ChargesCurrent { get; }
         public short ChargesMax { get; }
+        public string DisplayLabel { get; }
+        public string DetailLabel { get; }
+        public string ActionId { get; }
     }
 
     public interface IEntityCommandPanelSource
@@ -149,6 +160,11 @@ namespace Ludots.Core.UI.EntityCommandPanels
         int GetGroupCount(Entity target);
         bool TryGetGroup(Entity target, int groupIndex, out EntityCommandPanelGroupView group);
         int CopySlots(Entity target, int groupIndex, Span<EntityCommandPanelSlotView> destination);
+    }
+
+    public interface IEntityCommandPanelActionSource
+    {
+        bool ActivateSlot(Entity target, int groupIndex, int slotIndex);
     }
 
     public interface IEntityCommandPanelSourceRegistry
@@ -175,5 +191,31 @@ namespace Ludots.Core.UI.EntityCommandPanels
         bool SetAnchor(EntityCommandPanelHandle handle, in EntityCommandPanelAnchor anchor);
         bool SetSize(EntityCommandPanelHandle handle, in EntityCommandPanelSize size);
         bool TryGetState(EntityCommandPanelHandle handle, out EntityCommandPanelInstanceState state);
+    }
+
+    public readonly struct EntityCommandPanelToolbarButtonView
+    {
+        public EntityCommandPanelToolbarButtonView(string buttonId, string label, bool active, string accentColorHex)
+        {
+            ButtonId = buttonId ?? string.Empty;
+            Label = label ?? string.Empty;
+            Active = active;
+            AccentColorHex = accentColorHex ?? string.Empty;
+        }
+
+        public string ButtonId { get; }
+        public string Label { get; }
+        public bool Active { get; }
+        public string AccentColorHex { get; }
+    }
+
+    public interface IEntityCommandPanelToolbarProvider
+    {
+        bool IsVisible { get; }
+        uint Revision { get; }
+        string Title { get; }
+        string Subtitle { get; }
+        int CopyButtons(Span<EntityCommandPanelToolbarButtonView> destination);
+        void Activate(string buttonId);
     }
 }

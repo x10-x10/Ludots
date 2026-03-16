@@ -154,6 +154,12 @@ namespace Ludots.Core.Gameplay.GAS.Config
                 def.HasIndicator = true;
             }
 
+            if (obj["presentation"] is JsonObject presentationObj)
+            {
+                def.Presentation = CompilePresentation(presentationObj);
+                def.HasPresentation = def.Presentation != null;
+            }
+
             return def;
         }
 
@@ -387,6 +393,68 @@ namespace Ludots.Core.Gameplay.GAS.Config
             }
 
             return indicator;
+        }
+
+        private static AbilityPresentationConfig? CompilePresentation(JsonObject presentationObj)
+        {
+            var displayName = presentationObj["displayName"]?.GetValue<string>() ?? string.Empty;
+            var iconGlyph = presentationObj["iconGlyph"]?.GetValue<string>() ?? string.Empty;
+            var accentColorHex = presentationObj["accentColor"]?.GetValue<string>() ?? string.Empty;
+            var hintText = presentationObj["hintText"]?.GetValue<string>() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(displayName) &&
+                string.IsNullOrWhiteSpace(iconGlyph) &&
+                string.IsNullOrWhiteSpace(accentColorHex) &&
+                string.IsNullOrWhiteSpace(hintText) &&
+                presentationObj["modeIconGlyphs"] is not JsonObject &&
+                presentationObj["modeHints"] is not JsonObject)
+            {
+                return null;
+            }
+
+            var config = new AbilityPresentationConfig
+            {
+                DisplayName = displayName,
+                IconGlyph = iconGlyph,
+                AccentColorHex = accentColorHex,
+                HintText = hintText
+            };
+
+            if (presentationObj["modeIconGlyphs"] is JsonObject modeIconGlyphs)
+            {
+                foreach ((string? modeKey, JsonNode? valueNode) in modeIconGlyphs)
+                {
+                    if (string.IsNullOrWhiteSpace(modeKey) || valueNode == null)
+                    {
+                        continue;
+                    }
+
+                    string glyph = valueNode.GetValue<string>();
+                    if (!string.IsNullOrWhiteSpace(glyph))
+                    {
+                        config.ModeIconGlyphOverrides[modeKey] = glyph;
+                    }
+                }
+            }
+
+            if (presentationObj["modeHints"] is JsonObject modeHints)
+            {
+                foreach ((string? modeKey, JsonNode? valueNode) in modeHints)
+                {
+                    if (string.IsNullOrWhiteSpace(modeKey) || valueNode == null)
+                    {
+                        continue;
+                    }
+
+                    string hint = valueNode.GetValue<string>();
+                    if (!string.IsNullOrWhiteSpace(hint))
+                    {
+                        config.ModeHintOverrides[modeKey] = hint;
+                    }
+                }
+            }
+
+            return config;
         }
 
         private static TargetShape ParseTargetShape(string value, string id, string path)

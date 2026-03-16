@@ -1,10 +1,50 @@
 using System.Numerics;
+using System.Collections.Generic;
 using Arch.Core;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Gameplay.GAS.Components;
 
 namespace Ludots.Core.Gameplay.GAS
 {
+    public sealed class AbilityPresentationConfig
+    {
+        public string DisplayName { get; init; } = string.Empty;
+        public string IconGlyph { get; init; } = string.Empty;
+        public string AccentColorHex { get; init; } = string.Empty;
+        public string HintText { get; init; } = string.Empty;
+        public Dictionary<string, string> ModeIconGlyphOverrides { get; } = new(System.StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> ModeHintOverrides { get; } = new(System.StringComparer.OrdinalIgnoreCase);
+
+        public string ResolveDisplayName(string fallback)
+        {
+            return string.IsNullOrWhiteSpace(DisplayName) ? fallback : DisplayName;
+        }
+
+        public string ResolveIconGlyph(string? interactionMode, string fallback)
+        {
+            if (!string.IsNullOrWhiteSpace(interactionMode) &&
+                ModeIconGlyphOverrides.TryGetValue(interactionMode, out string? overrideGlyph) &&
+                !string.IsNullOrWhiteSpace(overrideGlyph))
+            {
+                return overrideGlyph;
+            }
+
+            return string.IsNullOrWhiteSpace(IconGlyph) ? fallback : IconGlyph;
+        }
+
+        public string ResolveHintText(string? interactionMode, string fallback)
+        {
+            if (!string.IsNullOrWhiteSpace(interactionMode) &&
+                ModeHintOverrides.TryGetValue(interactionMode, out string? overrideHint) &&
+                !string.IsNullOrWhiteSpace(overrideHint))
+            {
+                return overrideHint;
+            }
+
+            return string.IsNullOrWhiteSpace(HintText) ? fallback : HintText;
+        }
+    }
+
     /// <summary>
     /// Visual indicator configuration for an ability (range circles, cones, etc.).
     /// </summary>
@@ -67,6 +107,8 @@ namespace Ludots.Core.Gameplay.GAS
         // 鈹€鈹€ Presentation metadata 鈹€鈹€
         public bool HasIndicator;
         public AbilityIndicatorConfig Indicator;
+        public bool HasPresentation;
+        public AbilityPresentationConfig? Presentation;
     }
 
     public sealed class AbilityDefinitionRegistry

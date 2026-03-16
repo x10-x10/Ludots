@@ -80,6 +80,7 @@ namespace Ludots.Core.Scripting
         public static readonly ServiceKey<IEntityCommandPanelService> EntityCommandPanelService = new("EntityCommandPanelService");
         public static readonly ServiceKey<IEntityCommandPanelHandleStore> EntityCommandPanelHandleStore = new("EntityCommandPanelHandleStore");
         public static readonly ServiceKey<IEntityCommandPanelSourceRegistry> EntityCommandPanelSourceRegistry = new("EntityCommandPanelSourceRegistry");
+        public static readonly ServiceKey<IEntityCommandPanelToolbarProvider> EntityCommandPanelToolbarProvider = new("EntityCommandPanelToolbarProvider");
         public static readonly ServiceKey<object> UiTextMeasurer = new("UiTextMeasurer");
         public static readonly ServiceKey<object> UiImageSizeProvider = new("UiImageSizeProvider");
 

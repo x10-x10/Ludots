@@ -5,12 +5,13 @@ using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
+using Ludots.Core.Input.Orders;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
 
 namespace EntityCommandPanelMod.Runtime
 {
-    internal sealed class GasEntityCommandPanelSource : IEntityCommandPanelSource
+    internal sealed class GasEntityCommandPanelSource : IEntityCommandPanelSource, IEntityCommandPanelActionSource
     {
         private readonly GameEngine _engine;
         private readonly Dictionary<int, string[]> _routeLabelCache = new();
@@ -61,6 +62,27 @@ namespace EntityCommandPanelMod.Runtime
             if (_engine.World.Has<AbilityFormSetRef>(target))
             {
                 revision = HashCombine(revision, (uint)_engine.World.Get<AbilityFormSetRef>(target).FormSetId);
+            }
+
+            ref var actorTags = ref _engine.World.TryGetRef<GameplayTagContainer>(target, out bool hasActorTags);
+            if (hasActorTags)
+            {
+                revision = HashTagContainer(revision, in actorTags);
+            }
+
+            InputOrderMappingSystem? inputMapping = _engine.GetService(CoreServiceKeys.ActiveInputOrderMapping);
+            if (inputMapping != null)
+            {
+                revision = HashCombine(revision, (uint)inputMapping.InteractionMode);
+                int displayedSlots = ResolveDisplayedSlotCount(target, in baseSlots);
+                for (int slotIndex = 0; slotIndex < displayedSlots; slotIndex++)
+                {
+                    string actionId = ResolvePrimarySkillActionId(inputMapping, slotIndex);
+                    if (!string.IsNullOrWhiteSpace(actionId))
+                    {
+                        revision = HashCombine(revision, (uint)actionId.GetHashCode(StringComparison.Ordinal));
+                    }
+                }
             }
 
             return true;
@@ -134,6 +156,10 @@ namespace EntityCommandPanelMod.Runtime
             ref var baseSlots = ref _engine.World.Get<AbilityStateBuffer>(target);
             ref var formSlots = ref _engine.World.TryGetRef<AbilityFormSlotBuffer>(target, out bool hasFormSlots);
             ref var grantedSlots = ref _engine.World.TryGetRef<GrantedSlotBuffer>(target, out bool hasGrantedSlots);
+            ref var actorTags = ref _engine.World.TryGetRef<GameplayTagContainer>(target, out bool hasActorTags);
+            AbilityDefinitionRegistry? abilityDefinitions = _engine.GetService(CoreServiceKeys.AbilityDefinitionRegistry);
+            InputOrderMappingSystem? inputMapping = _engine.GetService(CoreServiceKeys.ActiveInputOrderMapping);
+            string interactionModeKey = inputMapping?.InteractionMode.ToString() ?? string.Empty;
 
             if (!TryResolveGroup(target, groupIndex, out var kind, out int routeIndex, out AbilityFormSetDefinition formSet, out _))
             {
@@ -214,6 +240,45 @@ namespace EntityCommandPanelMod.Runtime
                     flags |= EntityCommandSlotStateFlags.TemplateBacked;
                 }
 
+                string actionId = ResolvePrimarySkillActionId(inputMapping, slotIndex);
+                string displayLabel = string.Empty;
+                string detailLabel = BuildEmptyDetailLabel(actionId);
+                if (effective.AbilityId > 0 &&
+                    abilityDefinitions != null &&
+                    abilityDefinitions.TryGet(effective.AbilityId, out var abilityDefinition))
+                {
+                    if (abilityDefinition.HasActivationBlockTags &&
+                        IsBlocked(abilityDefinition.ActivationBlockTags, in actorTags, hasActorTags))
+                    {
+                        flags |= EntityCommandSlotStateFlags.Blocked;
+                    }
+
+                    if (abilityDefinition.HasToggleSpec &&
+                        abilityDefinition.ToggleSpec.ToggleTagId > 0 &&
+                        hasActorTags &&
+                        actorTags.HasTag(abilityDefinition.ToggleSpec.ToggleTagId))
+                    {
+                        flags |= EntityCommandSlotStateFlags.Active;
+                    }
+
+                    string fallbackLabel = ResolveFallbackLabel(effective.AbilityId, effective.TemplateEntityId);
+                    string fallbackDetail = BuildDefaultDetailLabel(actionId, interactionModeKey);
+                    if (abilityDefinition.HasPresentation && abilityDefinition.Presentation != null)
+                    {
+                        displayLabel = abilityDefinition.Presentation.ResolveDisplayName(fallbackLabel);
+                        detailLabel = abilityDefinition.Presentation.ResolveHintText(interactionModeKey, fallbackDetail);
+                    }
+                    else
+                    {
+                        displayLabel = fallbackLabel;
+                        detailLabel = fallbackDetail;
+                    }
+                }
+                else if (!HasContent(in effective))
+                {
+                    detailLabel = BuildEmptyDetailLabel(actionId);
+                }
+
                 destination[slotIndex] = new EntityCommandPanelSlotView(
                     slotIndex,
                     effective.AbilityId,
@@ -221,10 +286,37 @@ namespace EntityCommandPanelMod.Runtime
                     flags,
                     0,
                     0,
-                    0);
+                    0,
+                    displayLabel,
+                    detailLabel,
+                    actionId);
             }
 
             return count;
+        }
+
+        public bool ActivateSlot(Entity target, int groupIndex, int slotIndex)
+        {
+            if (groupIndex != 0 ||
+                slotIndex < 0 ||
+                !_engine.World.IsAlive(target))
+            {
+                return false;
+            }
+
+            InputOrderMappingSystem? inputMapping = _engine.GetService(CoreServiceKeys.ActiveInputOrderMapping);
+            if (inputMapping == null)
+            {
+                return false;
+            }
+
+            string actionId = ResolvePrimarySkillActionId(inputMapping, slotIndex);
+            if (string.IsNullOrWhiteSpace(actionId))
+            {
+                return false;
+            }
+
+            return inputMapping.TryActivateMappedAction(actionId, preferUiAiming: true);
         }
 
         private bool TryResolveGroup(
@@ -433,6 +525,145 @@ namespace EntityCommandPanelMod.Runtime
             return slot.AbilityId != 0 || slot.TemplateEntityId != 0;
         }
 
+        private static bool IsBlocked(in AbilityActivationBlockTags blockTags, in GameplayTagContainer actorTags, bool hasActorTags)
+        {
+            if (!blockTags.RequiredAll.IsEmpty && (!hasActorTags || !actorTags.ContainsAll(in blockTags.RequiredAll)))
+            {
+                return true;
+            }
+
+            return hasActorTags &&
+                   !blockTags.BlockedAny.IsEmpty &&
+                   actorTags.Intersects(in blockTags.BlockedAny);
+        }
+
+        private static string ResolveFallbackLabel(int abilityId, int templateEntityId)
+        {
+            if (abilityId > 0)
+            {
+                string raw = AbilityIdRegistry.GetName(abilityId);
+                if (!string.IsNullOrWhiteSpace(raw))
+                {
+                    int lastDot = raw.LastIndexOf('.');
+                    return lastDot >= 0 && lastDot + 1 < raw.Length ? raw[(lastDot + 1)..] : raw;
+                }
+
+                return $"Ability#{abilityId}";
+            }
+
+            if (templateEntityId > 0)
+            {
+                return $"Template#{templateEntityId}";
+            }
+
+            return "(empty)";
+        }
+
+        private static string BuildDefaultDetailLabel(string actionId, string interactionModeKey)
+        {
+            string actionLabel = ResolveActionLabel(actionId);
+            string modeLabel = ResolveInteractionModeLabel(interactionModeKey);
+
+            if (!string.IsNullOrWhiteSpace(actionLabel) && !string.IsNullOrWhiteSpace(modeLabel))
+            {
+                return $"{actionLabel} · {modeLabel}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(actionLabel))
+            {
+                return actionLabel;
+            }
+
+            return string.IsNullOrWhiteSpace(modeLabel) ? "Ready" : modeLabel;
+        }
+
+        private static string BuildEmptyDetailLabel(string actionId)
+        {
+            string actionLabel = ResolveActionLabel(actionId);
+            return string.IsNullOrWhiteSpace(actionLabel)
+                ? "No ability assigned"
+                : $"{actionLabel} · No ability assigned";
+        }
+
+        private static string ResolveInteractionModeLabel(string interactionModeKey)
+        {
+            return interactionModeKey switch
+            {
+                nameof(InteractionModeType.TargetFirst) => "Target First",
+                nameof(InteractionModeType.SmartCast) => "Smart Cast",
+                nameof(InteractionModeType.AimCast) => "Aim Then Confirm",
+                nameof(InteractionModeType.SmartCastWithIndicator) => "Release To Cast",
+                nameof(InteractionModeType.PressReleaseAimCast) => "Release Then Confirm",
+                nameof(InteractionModeType.ContextScored) => "Context Scored",
+                _ => string.Empty
+            };
+        }
+
+        private static string ResolveActionLabel(string actionId)
+        {
+            if (string.IsNullOrWhiteSpace(actionId))
+            {
+                return string.Empty;
+            }
+
+            if (actionId.StartsWith("Skill", StringComparison.OrdinalIgnoreCase) &&
+                actionId.Length > "Skill".Length)
+            {
+                return actionId["Skill".Length..].ToUpperInvariant();
+            }
+
+            return actionId;
+        }
+
+        private static string ResolvePrimarySkillActionId(InputOrderMappingSystem? inputMapping, int slotIndex)
+        {
+            if (inputMapping == null || slotIndex < 0)
+            {
+                return string.Empty;
+            }
+
+            string best = string.Empty;
+            int bestPriority = int.MaxValue;
+            foreach (string actionId in inputMapping.GetMappedActionIds())
+            {
+                InputOrderMapping? mapping = inputMapping.GetMapping(actionId);
+                if (!IsSkillSlotMapping(mapping, slotIndex))
+                {
+                    continue;
+                }
+
+                int priority = ResolveActionPriority(actionId);
+                if (priority < bestPriority ||
+                    (priority == bestPriority && string.CompareOrdinal(actionId, best) < 0))
+                {
+                    best = actionId;
+                    bestPriority = priority;
+                }
+            }
+
+            return best;
+        }
+
+        private static bool IsSkillSlotMapping(InputOrderMapping? mapping, int slotIndex)
+        {
+            return mapping != null &&
+                   mapping.IsSkillMapping &&
+                   mapping.ArgsTemplate.I0.HasValue &&
+                   mapping.ArgsTemplate.I0.Value == slotIndex;
+        }
+
+        private static int ResolveActionPriority(string actionId)
+        {
+            return actionId switch
+            {
+                "SkillQ" => 0,
+                "SkillW" => 1,
+                "SkillE" => 2,
+                "SkillR" => 3,
+                _ => 100
+            };
+        }
+
         private static uint HashSlot(uint current, in AbilitySlotState slot)
         {
             current = HashCombine(current, (uint)slot.AbilityId);
@@ -448,6 +679,19 @@ namespace EntityCommandPanelMod.Runtime
             {
                 return ((current ^ value) * 16777619u) + 1u;
             }
+        }
+
+        private static uint HashTagContainer(uint current, in GameplayTagContainer tags)
+        {
+            for (int tagId = 1; tagId <= GameplayTagContainer.MAX_TAG_ID; tagId++)
+            {
+                if (tags.HasTag(tagId))
+                {
+                    current = HashCombine(current, (uint)tagId);
+                }
+            }
+
+            return current;
         }
 
         private enum GasPanelGroupKind : byte

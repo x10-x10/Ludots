@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using Arch.Core;
 using EntityCommandPanelMod.Runtime;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
+using Ludots.Core.Input.Orders;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
 using Ludots.UI;
@@ -17,14 +20,19 @@ namespace EntityCommandPanelMod.UI
     {
         private readonly GameEngine _engine;
         private readonly EntityCommandPanelRuntime _runtime;
+        private readonly AbilityDefinitionRegistry? _abilityDefinitions;
+        private readonly AbilityPresentationIconFactory _iconFactory = new();
         private readonly Dictionary<int, string> _abilityLabelCache = new();
         private readonly ReactivePage<HostState> _page;
         private uint _lastRevision;
+        private uint _lastToolbarRevision;
+        private bool _lastToolbarVisible;
 
         public EntityCommandPanelController(GameEngine engine, EntityCommandPanelRuntime runtime)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+            _abilityDefinitions = engine.GetService(CoreServiceKeys.AbilityDefinitionRegistry);
             var textMeasurer = engine.GetService(CoreServiceKeys.UiTextMeasurer) as IUiTextMeasurer
                 ?? throw new InvalidOperationException("UiTextMeasurer service not registered.");
             var imageSizeProvider = engine.GetService(CoreServiceKeys.UiImageSizeProvider) as IUiImageSizeProvider
@@ -38,15 +46,23 @@ namespace EntityCommandPanelMod.UI
 
         public void Sync(UIRoot root)
         {
-            if (!_runtime.HasVisiblePanels)
+            IEntityCommandPanelToolbarProvider? toolbar = ResolveToolbarProvider();
+            bool toolbarVisible = toolbar?.IsVisible == true;
+            uint toolbarRevision = toolbarVisible ? toolbar!.Revision : 0u;
+
+            if (!_runtime.HasVisiblePanels && !toolbarVisible)
             {
                 ClearIfOwned(root);
                 return;
             }
 
-            if (_lastRevision != _runtime.Revision)
+            if (_lastRevision != _runtime.Revision ||
+                _lastToolbarRevision != toolbarRevision ||
+                _lastToolbarVisible != toolbarVisible)
             {
                 _lastRevision = _runtime.Revision;
+                _lastToolbarRevision = toolbarRevision;
+                _lastToolbarVisible = toolbarVisible;
                 _page.SetState(_ => new HostState(_lastRevision));
                 root.IsDirty = true;
             }
@@ -70,22 +86,71 @@ namespace EntityCommandPanelMod.UI
         {
             Span<int> visibleSlots = stackalloc int[EntityCommandPanelRuntime.MaxInstances];
             int count = _runtime.CopyVisibleSlotIndices(visibleSlots);
-            if (count == 0)
+            IEntityCommandPanelToolbarProvider? toolbar = ResolveToolbarProvider();
+            bool hasToolbar = toolbar?.IsVisible == true;
+            if (count == 0 && !hasToolbar)
             {
                 return Ui.Panel();
             }
 
-            var children = new UiElementBuilder[count];
             float viewportWidth = ResolveViewportWidth();
             float viewportHeight = ResolveViewportHeight();
+            var children = new UiElementBuilder[count + (hasToolbar ? 1 : 0)];
+            int childIndex = 0;
+            if (hasToolbar)
+            {
+                children[childIndex++] = BuildGlobalToolbar(toolbar!, viewportWidth);
+            }
+
             for (int i = 0; i < count; i++)
             {
-                children[i] = BuildPanel(visibleSlots[i], viewportWidth, viewportHeight);
+                children[childIndex++] = BuildPanel(visibleSlots[i], viewportWidth, viewportHeight);
             }
 
             return Ui.Panel(children)
                 .Width(0f)
                 .Height(0f);
+        }
+
+        private UiElementBuilder BuildGlobalToolbar(IEntityCommandPanelToolbarProvider provider, float viewportWidth)
+        {
+            var buttons = new EntityCommandPanelToolbarButtonView[12];
+            int buttonCount = provider.CopyButtons(buttons);
+            var buttonElements = new UiElementBuilder[buttonCount];
+            for (int i = 0; i < buttonCount; i++)
+            {
+                var button = buttons[i];
+                string accent = NormalizeColor(button.AccentColorHex, button.Active ? "#F6D37A" : "#4FA9E6");
+                buttonElements[i] = Ui.Button(button.Label, _ => { provider.Activate(button.ButtonId); })
+                    .Padding(10f, 7f)
+                    .Radius(999f)
+                    .Background(button.Active ? accent : "#132232")
+                    .Color(button.Active ? "#0B1520" : "#E6EEF5");
+            }
+
+            float width = Math.Max(320f, Math.Min(560f, viewportWidth - 48f));
+            return Ui.Card(
+                    Ui.Column(
+                            Ui.Text(string.IsNullOrWhiteSpace(provider.Title) ? "Cast Mode" : provider.Title)
+                                .FontSize(14f)
+                                .Bold()
+                                .Color("#F5F7FA"),
+                            Ui.Text(string.IsNullOrWhiteSpace(provider.Subtitle) ? "Global interaction profile" : provider.Subtitle)
+                                .FontSize(11f)
+                                .Color("#8FA6BD"))
+                        .Gap(4f),
+                    Ui.Row(buttonElements)
+                        .Gap(8f)
+                        .Wrap())
+                .Id("entity-command-panel-toolbar")
+                .Width(width)
+                .Padding(14f)
+                .Gap(10f)
+                .Radius(18f)
+                .Background("#09131C")
+                .Border(1f, new UiColor(0x2B, 0x45, 0x59))
+                .Absolute(Math.Max(24f, (viewportWidth - width) * 0.5f), 22f)
+                .ZIndex(48);
         }
 
         private UiElementBuilder BuildPanel(int slot, float viewportWidth, float viewportHeight)
@@ -103,7 +168,7 @@ namespace EntityCommandPanelMod.UI
                 source!.TryGetGroup(state.TargetEntity, state.GroupIndex, out group);
             }
 
-            Span<EntityCommandPanelSlotView> slots = stackalloc EntityCommandPanelSlotView[AbilityStateBuffer.CAPACITY];
+            var slots = new EntityCommandPanelSlotView[AbilityStateBuffer.CAPACITY];
             int slotCount = source == null ? 0 : source.CopySlots(state.TargetEntity, state.GroupIndex, slots);
             float slotSectionHeight = ResolveSlotSectionHeight(state.Size.HeightPx, slotCount);
 
@@ -112,7 +177,7 @@ namespace EntityCommandPanelMod.UI
             return Ui.Card(
                     BuildHeader(state, group, groupCount),
                     BuildToolbar(state),
-                    BuildSlotSection(slotCount, slots, slotSectionHeight))
+                    BuildSlotSection(state.TargetEntity, state.GroupIndex, source, slotCount, slots, slotSectionHeight))
                 .Id($"entity-command-panel-{slot}")
                 .Width(Math.Max(220f, state.Size.WidthPx))
                 .Height(Math.Max(180f, state.Size.HeightPx))
@@ -172,7 +237,13 @@ namespace EntityCommandPanelMod.UI
                 .Wrap();
         }
 
-        private UiElementBuilder BuildSlotSection(int slotCount, Span<EntityCommandPanelSlotView> slots, float sectionHeight)
+        private UiElementBuilder BuildSlotSection(
+            Entity target,
+            int groupIndex,
+            IEntityCommandPanelSource? source,
+            int slotCount,
+            Span<EntityCommandPanelSlotView> slots,
+            float sectionHeight)
         {
             if (slotCount <= 0)
             {
@@ -188,7 +259,7 @@ namespace EntityCommandPanelMod.UI
             var rows = new UiElementBuilder[slotCount];
             for (int i = 0; i < slotCount; i++)
             {
-                rows[i] = BuildSlotRow(in slots[i]);
+                rows[i] = BuildSlotRow(target, groupIndex, source, in slots[i]);
             }
 
             return Ui.ScrollView(rows)
@@ -210,31 +281,33 @@ namespace EntityCommandPanelMod.UI
             return Math.Max(96f, panelHeight - reservedHeightPx);
         }
 
-        private UiElementBuilder BuildSlotRow(in EntityCommandPanelSlotView slot)
+        private UiElementBuilder BuildSlotRow(
+            Entity target,
+            int groupIndex,
+            IEntityCommandPanelSource? source,
+            in EntityCommandPanelSlotView slot)
         {
+            string interactionModeKey = ResolveInteractionModeKey();
             string abilityLabel = ResolveAbilityLabel(in slot);
             string detailLabel = ResolveDetailLabel(in slot);
+            string actionKey = ResolveActionKeyLabel(slot.ActionId);
 
             var flags = new List<UiElementBuilder>(4);
             AppendFlag(flags, slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Base), "BASE", "#1C3345", "#D6E6F4");
             AppendFlag(flags, slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.FormOverride), "FORM", "#3A3017", "#F7D38F");
             AppendFlag(flags, slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.GrantedOverride), "GRANT", "#193521", "#B4F0C2");
             AppendFlag(flags, slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.TemplateBacked), "TPL", "#2A2040", "#D7C5FF");
+            AppendFlag(flags, slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Blocked), "BLOCK", "#4A1D21", "#FFB8B8");
+            AppendFlag(flags, slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Active), "ACTIVE", "#173B2D", "#B8FFD8");
             AppendFlag(flags, slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Empty), "EMPTY", "#2C3640", "#A7B4C0");
 
             UiElementBuilder flagRow = flags.Count == 0
                 ? Ui.Text(string.Empty)
                 : Ui.Row(flags.ToArray()).Gap(6f).Wrap();
 
-            return Ui.Card(
+            UiElementBuilder row = Ui.Card(
                     Ui.Row(
-                            Ui.Text($"{slot.SlotIndex + 1:00}")
-                                .FontSize(11f)
-                                .Bold()
-                                .Color("#0B1520")
-                                .Padding(8f, 6f)
-                                .Radius(999f)
-                                .Background("#F2C36B"),
+                            BuildAbilityIcon(in slot, interactionModeKey),
                             Ui.Column(
                                     Ui.Text(abilityLabel)
                                         .FontSize(13f)
@@ -243,17 +316,64 @@ namespace EntityCommandPanelMod.UI
                                     Ui.Text(detailLabel)
                                         .FontSize(11f)
                                         .Color("#8FA6BD"))
-                                .Gap(4f))
+                                .Gap(4f)
+                                .FlexGrow(1f)
+                                .FlexBasis(0f),
+                            BuildActionPill(slot.SlotIndex, actionKey))
                         .Gap(10f),
                     flagRow)
                 .Padding(10f)
                 .Gap(8f)
                 .Radius(12f)
                 .Background("#10202F");
+
+            if (source is IEntityCommandPanelActionSource actions &&
+                !slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Empty))
+            {
+                int slotIndex = slot.SlotIndex;
+                row.OnClick(_ => { actions.ActivateSlot(target, groupIndex, slotIndex); });
+            }
+
+            return row;
+        }
+
+        private UiElementBuilder BuildAbilityIcon(in EntityCommandPanelSlotView slot, string interactionModeKey)
+        {
+            string glyph = ResolveAbilityGlyph(in slot, interactionModeKey);
+            string accent = ResolveAbilityAccent(in slot);
+            string iconUri = _iconFactory.Build(
+                glyph,
+                accent,
+                ResolveModeBadge(interactionModeKey),
+                slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Blocked),
+                slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Active),
+                slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Empty));
+
+            return Ui.Image(iconUri)
+                .Width(46f)
+                .Height(46f)
+                .FlexShrink(0f);
+        }
+
+        private static UiElementBuilder BuildActionPill(int slotIndex, string actionKey)
+        {
+            string text = string.IsNullOrWhiteSpace(actionKey) ? $"{slotIndex + 1:00}" : actionKey;
+            return Ui.Text(text)
+                .FontSize(11f)
+                .Bold()
+                .Color("#0B1520")
+                .Padding(8f, 6f)
+                .Radius(999f)
+                .Background("#F2C36B");
         }
 
         private string ResolveAbilityLabel(in EntityCommandPanelSlotView slot)
         {
+            if (!string.IsNullOrWhiteSpace(slot.DisplayLabel))
+            {
+                return slot.DisplayLabel;
+            }
+
             if (slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Empty))
             {
                 return "(empty)";
@@ -282,6 +402,10 @@ namespace EntityCommandPanelMod.UI
 
         private static string ResolveDetailLabel(in EntityCommandPanelSlotView slot)
         {
+            if (!string.IsNullOrWhiteSpace(slot.DetailLabel))
+            {
+                return slot.DetailLabel;
+            }
             if (slot.CooldownPermille > 0 || slot.ChargesMax > 0)
             {
                 return $"CD {slot.CooldownPermille / 10f:0.#}% · Charges {slot.ChargesCurrent}/{slot.ChargesMax}";
@@ -328,10 +452,131 @@ namespace EntityCommandPanelMod.UI
                 .Background("#13202C");
         }
 
+        private string ResolveAbilityGlyph(in EntityCommandPanelSlotView slot, string interactionModeKey)
+        {
+            if (slot.AbilityId > 0 &&
+                _abilityDefinitions != null &&
+                _abilityDefinitions.TryGet(slot.AbilityId, out var definition) &&
+                definition.HasPresentation &&
+                definition.Presentation != null)
+            {
+                return definition.Presentation.ResolveIconGlyph(interactionModeKey, ResolveFallbackGlyph(slot));
+            }
+
+            return ResolveFallbackGlyph(slot);
+        }
+
+        private string ResolveAbilityAccent(in EntityCommandPanelSlotView slot)
+        {
+            if (slot.AbilityId > 0 &&
+                _abilityDefinitions != null &&
+                _abilityDefinitions.TryGet(slot.AbilityId, out var definition) &&
+                definition.HasPresentation &&
+                definition.Presentation != null &&
+                !string.IsNullOrWhiteSpace(definition.Presentation.AccentColorHex))
+            {
+                return NormalizeColor(definition.Presentation.AccentColorHex, "#58B7FF");
+            }
+
+            if (slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.GrantedOverride))
+            {
+                return "#61D99D";
+            }
+
+            if (slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.FormOverride))
+            {
+                return "#F1C96D";
+            }
+
+            if (slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.TemplateBacked))
+            {
+                return "#C2A5FF";
+            }
+
+            return "#58B7FF";
+        }
+
+        private string ResolveFallbackGlyph(in EntityCommandPanelSlotView slot)
+        {
+            string actionKey = ResolveActionKeyLabel(slot.ActionId);
+            if (!string.IsNullOrWhiteSpace(actionKey))
+            {
+                return actionKey;
+            }
+
+            if (slot.StateFlags.HasFlag(EntityCommandSlotStateFlags.Empty))
+            {
+                return "-";
+            }
+
+            string label = ResolveAbilityLabel(in slot);
+            return !string.IsNullOrWhiteSpace(label) ? label[..1].ToUpperInvariant() : "?";
+        }
+
+        private static string ResolveActionKeyLabel(string actionId)
+        {
+            if (string.IsNullOrWhiteSpace(actionId))
+            {
+                return string.Empty;
+            }
+
+            if (actionId.StartsWith("Skill", StringComparison.OrdinalIgnoreCase) &&
+                actionId.Length > "Skill".Length)
+            {
+                return actionId["Skill".Length..].ToUpperInvariant();
+            }
+
+            return actionId;
+        }
+
+        private static string ResolveModeBadge(string interactionModeKey)
+        {
+            return interactionModeKey switch
+            {
+                nameof(InteractionModeType.SmartCast) => "SC",
+                nameof(InteractionModeType.SmartCastWithIndicator) => "RC",
+                nameof(InteractionModeType.AimCast) => "RTS",
+                nameof(InteractionModeType.PressReleaseAimCast) => "PR",
+                nameof(InteractionModeType.ContextScored) => "CTX",
+                _ => "TF"
+            };
+        }
+
         private static string ShortenName(string value)
         {
             int lastDot = value.LastIndexOf('.');
             return lastDot >= 0 && lastDot + 1 < value.Length ? value[(lastDot + 1)..] : value;
+        }
+
+        private IEntityCommandPanelToolbarProvider? ResolveToolbarProvider()
+        {
+            return _engine.GetService(CoreServiceKeys.EntityCommandPanelToolbarProvider);
+        }
+
+        private string ResolveInteractionModeKey()
+        {
+            if (_engine.GetService(CoreServiceKeys.ActiveInputOrderMapping) is InputOrderMappingSystem mapping)
+            {
+                return mapping.InteractionMode.ToString();
+            }
+
+            return nameof(InteractionModeType.TargetFirst);
+        }
+
+        private static string NormalizeColor(string? value, string fallback)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return fallback;
+            }
+
+            string trimmed = value.Trim();
+            if (!trimmed.StartsWith('#'))
+            {
+                trimmed = "#" + trimmed;
+            }
+
+            return trimmed.Length >= 7 ? trimmed[..7] : fallback;
         }
 
         private static void ResolvePanelPosition(

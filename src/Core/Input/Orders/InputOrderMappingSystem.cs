@@ -163,6 +163,11 @@ namespace Ludots.Core.Input.Orders
         
         // SmartCastWithIndicator state
         private bool _smartCastWithIndicatorActive;
+
+        // PressReleaseAimCast state
+        private bool _pressReleaseAimPending;
+        private string _pressReleaseAimActionId = string.Empty;
+        private InputOrderMapping? _pressReleaseAimMapping;
         
         // Vector aim state (two-point targeting)
         private VectorAimPhase _vectorAimPhase;
@@ -177,6 +182,7 @@ namespace Ludots.Core.Input.Orders
         {
             if (_config.InteractionMode == mode) return;
             if (_isAiming) ExitAimingState();
+            ClearPressReleaseAimPending();
             _config.InteractionMode = mode;
         }
 
@@ -277,6 +283,8 @@ namespace Ludots.Core.Input.Orders
                 HandleAimingState();
                 return; // While aiming, don't process other mappings
             }
+
+            ProcessPressReleaseAimPending();
             
             // 2. Process all mappings
             foreach (var (actionId, mapping) in _mappingsByActionId)
@@ -419,6 +427,10 @@ namespace Ludots.Core.Input.Orders
                     _smartCastWithIndicatorActive = true;
                     break;
 
+                case InteractionModeType.PressReleaseAimCast:
+                    QueuePressReleaseAim(actionId, mapping);
+                    break;
+
                 case InteractionModeType.ContextScored:
                     HandleContextScored(mapping);
                     break;
@@ -484,6 +496,50 @@ namespace Ludots.Core.Input.Orders
             _vectorAimPhase = VectorAimPhase.Origin;
             _vectorAimOrigin = default;
             _aimingStateChangedHandler?.Invoke(false, mapping);
+        }
+
+        private void QueuePressReleaseAim(string actionId, InputOrderMapping mapping)
+        {
+            _pressReleaseAimPending = true;
+            _pressReleaseAimActionId = actionId ?? string.Empty;
+            _pressReleaseAimMapping = mapping;
+        }
+
+        private void ClearPressReleaseAimPending()
+        {
+            _pressReleaseAimPending = false;
+            _pressReleaseAimActionId = string.Empty;
+            _pressReleaseAimMapping = null;
+        }
+
+        private void ProcessPressReleaseAimPending()
+        {
+            if (!_pressReleaseAimPending || _pressReleaseAimMapping == null)
+            {
+                return;
+            }
+
+            if (_input.PressedThisFrame(CancelActionId) || _input.PressedThisFrame(CommandActionId))
+            {
+                ClearPressReleaseAimPending();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_pressReleaseAimActionId))
+            {
+                ClearPressReleaseAimPending();
+                return;
+            }
+
+            if (!_input.ReleasedThisFrame(_pressReleaseAimActionId))
+            {
+                return;
+            }
+
+            string actionId = _pressReleaseAimActionId;
+            InputOrderMapping mapping = _pressReleaseAimMapping;
+            ClearPressReleaseAimPending();
+            EnterAimingState(actionId, mapping);
         }
 
         /// <summary>
@@ -1027,9 +1083,57 @@ namespace Ludots.Core.Input.Orders
             if (_mappingsByActionId.TryGetValue(actionId, out var mapping)) return mapping;
             return null;
         }
-        
+
         public IEnumerable<string> GetMappedActionIds() => _mappingsByActionId.Keys;
-        
+
+        /// <summary>
+        /// Activates a mapped action programmatically.
+        /// UI callers may prefer aiming over hold/release semantics when no key lifecycle exists.
+        /// </summary>
+        public bool TryActivateMappedAction(string actionId, bool preferUiAiming = false)
+        {
+            if (string.IsNullOrWhiteSpace(actionId) ||
+                _orderSubmitHandler == null ||
+                _orderTypeKeyResolver == null)
+            {
+                return false;
+            }
+
+            if (!_mappingsByActionId.TryGetValue(actionId, out var mapping))
+            {
+                return false;
+            }
+
+            var effectiveMapping = _userOverrides.TryGetValue(actionId, out var overrideMapping)
+                ? overrideMapping
+                : mapping;
+
+            if (effectiveMapping.IsSkillMapping)
+            {
+                var effectiveMode = effectiveMapping.CastModeOverride ?? _config.InteractionMode;
+                if (preferUiAiming &&
+                    (effectiveMode == InteractionModeType.SmartCastWithIndicator ||
+                     effectiveMode == InteractionModeType.PressReleaseAimCast))
+                {
+                    effectiveMode = InteractionModeType.AimCast;
+                }
+
+                if (effectiveMode != InteractionModeType.TargetFirst)
+                {
+                    HandleSkillMappingWithMode(actionId, effectiveMapping, effectiveMode);
+                    return true;
+                }
+            }
+
+            if (!TryBuildOrder(effectiveMapping, out var order))
+            {
+                return false;
+            }
+
+            SubmitOrder(effectiveMapping, in order);
+            return true;
+        }
+
         public void SaveUserPreferences(string? path = null)
         {
             var effectivePath = path ?? _config.UserOverrides.PersistPath;

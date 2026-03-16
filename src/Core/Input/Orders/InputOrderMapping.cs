@@ -35,6 +35,11 @@ namespace Ludots.Core.Input.Orders
         /// Action-game style: system scores the current context and chooses the best cast slot + target.
         /// </summary>
         ContextScored = 4,
+
+        /// <summary>
+        /// Press and release the skill key first, then enter aiming and wait for mouse confirm.
+        /// </summary>
+        PressReleaseAimCast = 5,
     }
 
     /// <summary>
