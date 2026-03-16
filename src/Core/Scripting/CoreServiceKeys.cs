@@ -37,6 +37,7 @@ using Ludots.Core.Presentation.DebugDraw;
 using Ludots.Core.Presentation.Events;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Performers;
+using Ludots.Core.Presentation.Projectiles;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Registry;
@@ -170,6 +171,7 @@ namespace Ludots.Core.Scripting
         public static readonly ServiceKey<GasPresentationEventBuffer> GasPresentationEventBuffer = new("GasPresentationEventBuffer");
         public static readonly ServiceKey<GroundOverlayBuffer> GroundOverlayBuffer = new("GroundOverlayBuffer");
         public static readonly ServiceKey<DebugDrawCommandBuffer> DebugDrawCommandBuffer = new("DebugDrawCommandBuffer");
+        public static readonly ServiceKey<ProjectilePresentationBindingRegistry> ProjectilePresentationBindingRegistry = new("ProjectilePresentationBindingRegistry");
 
         // --- Performers ---
         public static readonly ServiceKey<PerformerDefinitionRegistry> PerformerDefinitionRegistry = new("PerformerDefinitionRegistry");

@@ -43,6 +43,7 @@ using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Gameplay.GAS.Presentation;
 // Indicators directory removed — unified into Performers
 using Ludots.Core.Presentation.Performers;
+using Ludots.Core.Presentation.Projectiles;
 using Ludots.Core.NodeLibraries.GASGraph;
 using Ludots.Core.Gameplay.Teams;
 using Ludots.Core.Spatial;
@@ -487,6 +488,7 @@ namespace Ludots.Core.Engine
             var worldHudBuffer = new WorldHudBatchBuffer();
             var performerDefinitions = new PerformerDefinitionRegistry();
             var performerInstances = new PerformerInstanceBuffer();
+            var projectilePresentationBindings = new ProjectilePresentationBindingRegistry();
             var performerGraphApi = new GasGraphRuntimeApi(World, spatialQueries: null, coords: null, eventBus: null);
             new MeshAssetConfigLoader(ConfigPipeline, meshAssets, presentationPrefabs).Load();
             new VisualTemplateConfigLoader(ConfigPipeline, visualTemplates, meshAssets, animatorControllers).Load();
@@ -504,6 +506,11 @@ namespace Ludots.Core.Engine
                 meshAssets.GetId,
                 presentationTextCatalog.GetTokenId,
                 visualTemplates.GetId).Load();
+            new ProjectilePresentationBindingConfigLoader(
+                ConfigPipeline,
+                projectilePresentationBindings,
+                EffectTemplateIdRegistry.GetId,
+                performerDefinitions.GetId).Load(ConfigCatalog, ConfigConflictReport);
             var presentationAuthoring = new PresentationAuthoringContext(visualTemplates, performerDefinitions, animatorControllers, presentationStableIds);
             MapLoader.PresentationAuthoringContext = presentationAuthoring;
 
@@ -654,6 +661,7 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.TransientMarkerBuffer, transientMarkerBuffer);
             SetService(CoreServiceKeys.GasPresentationEventBuffer, gasPresentationEvents);
             SetService(CoreServiceKeys.GroundOverlayBuffer, groundOverlayBuffer);
+            SetService(CoreServiceKeys.ProjectilePresentationBindingRegistry, projectilePresentationBindings);
             SetService(CoreServiceKeys.PerformerDefinitionRegistry, performerDefinitions);
             SetService(CoreServiceKeys.PerformerInstanceBuffer, performerInstances);
             var virtualCameraRegistry = new VirtualCameraRegistry();
@@ -755,6 +763,7 @@ namespace Ludots.Core.Engine
             RegisterPresentationSystem(presentationFrameSetup);
             SetService(CoreServiceKeys.PresentationFrameSetup, presentationFrameSetup);
             
+            RegisterPresentationSystem(new ProjectilePresentationBootstrapSystem(World, projectilePresentationBindings, presentationStableIds));
             // WorldToVisualSyncSystem: 插值 WorldPositionCm → VisualTransform（必须在 PresentationFrameSetup 之后）
             RegisterPresentationSystem(new WorldToVisualSyncSystem(World));
             // TerrainHeightSyncSystem: 采样地形高度写入 VisualTransform.Y，使实体贴附地表
