@@ -20,6 +20,7 @@ using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Presentation.Systems;
@@ -89,6 +90,10 @@ namespace Ludots.Tests.GAS.Production
             using var engine = CreateEngine();
             var overlays = engine.GetService(CoreServiceKeys.GroundOverlayBuffer)
                 ?? throw new InvalidOperationException("GroundOverlayBuffer missing.");
+            var primitives = engine.GetService(CoreServiceKeys.PresentationPrimitiveDrawBuffer)
+                ?? throw new InvalidOperationException("PrimitiveDrawBuffer missing.");
+            var worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer)
+                ?? throw new InvalidOperationException("WorldHudBatchBuffer missing.");
             var toolbar = engine.GetService(CoreServiceKeys.EntityCommandPanelToolbarProvider)
                 ?? throw new InvalidOperationException("Toolbar provider missing.");
             var backend = GetInputBackend(engine);
@@ -97,28 +102,32 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(engine.TriggerManager.Errors.Count, Is.EqualTo(0));
             Assert.That(GetActiveModeId(engine), Is.EqualTo(SmartCastModeId));
             Assert.That(GetSelectedEntityName(engine), Is.EqualTo("Ezreal Alpha"));
-            CaptureSnapshot(engine, overlays, snapshots, "map_loaded");
+            Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Sandbox should show a visible selection ring for the current focus unit.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "map_loaded");
             timeline.Add("[T+001] champion_skill_sandbox loaded | default mode Quick Cast | default focus Ezreal Alpha");
 
             SelectNamedEntity(engine, backend, "Ezreal Cooldown", frameTimesMs);
             var ezrealCooldownSlots = CopySelectedSlots(engine);
             Assert.That(ezrealCooldownSlots[3].Label, Is.EqualTo("Trueshot Barrage"));
             Assert.That(ezrealCooldownSlots[3].Flags, Does.Contain("Blocked"));
-            CaptureSnapshot(engine, overlays, snapshots, "select_ezreal_cooldown");
+            Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Selection ring should survive champion switching.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "select_ezreal_cooldown");
             timeline.Add("[T+002] Select(Ezreal Cooldown) -> panel shows R blocked by cooldown state");
 
             SelectNamedEntity(engine, backend, "Garen Courage", frameTimesMs);
             var garenSlots = CopySelectedSlots(engine);
             Assert.That(garenSlots[1].Label, Is.EqualTo("Courage"));
             Assert.That(garenSlots[1].Flags, Does.Contain("Active"));
-            CaptureSnapshot(engine, overlays, snapshots, "select_garen_courage");
+            Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Selection ring should stay visible on Garen.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "select_garen_courage");
             timeline.Add("[T+003] Select(Garen Courage) -> panel shows W active from toggle state");
 
             SelectNamedEntity(engine, backend, "Jayce Hammer", frameTimesMs);
             var jayceHammerSlots = CopySelectedSlots(engine);
             Assert.That(jayceHammerSlots[0].Label, Is.EqualTo("To The Skies!"));
             Assert.That(jayceHammerSlots[0].Flags, Does.Contain("FormOverride"));
-            CaptureSnapshot(engine, overlays, snapshots, "select_jayce_hammer");
+            Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Selection ring should stay visible on Jayce.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "select_jayce_hammer");
             timeline.Add("[T+004] Select(Jayce Hammer) -> panel routes to hammer-form Q/W/E/R");
 
             SelectNamedEntity(engine, backend, "Ezreal Alpha", frameTimesMs);
@@ -132,8 +141,10 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(
                 dummyHealthAfterQ,
                 Is.LessThan(dummyHealthBeforeQ),
-                $"{BuildInputActionDiagnostics(engine, "SkillQ")} || {BuildAbilityDiagnostics(engine, "Ezreal Alpha")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)} || distanceToDummy={ezrealDistanceToDummy:0.##}");
-            CaptureSnapshot(engine, overlays, snapshots, "smartcast_hit");
+                $"{BuildInputActionDiagnostics(engine, "SkillQ")} || {BuildAbilityDiagnostics(engine, "Ezreal Alpha")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)} || {BuildFeedbackDiagnostics(primitives, worldHud)} || distanceToDummy={ezrealDistanceToDummy:0.##}");
+            Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Smart cast hit should emit visible pulse markers.");
+            Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Smart cast hit should emit visible world text feedback.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "smartcast_hit");
             timeline.Add($"[T+005] Ezreal Alpha.Cast(Mystic Shot) -> Target Dummy A | Hit | HP {dummyHealthBeforeQ:0} -> {dummyHealthAfterQ:0}");
 
             toolbar.Activate(IndicatorModeId);
@@ -153,8 +164,10 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(
                 dummyHealthAfterR,
                 Is.LessThan(dummyHealthBeforeR),
-                $"{BuildInputActionDiagnostics(engine, "SkillR")} || {BuildAbilityDiagnostics(engine, "Ezreal Alpha")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)}");
-            CaptureSnapshot(engine, overlays, snapshots, "indicator_release_hit");
+                $"{BuildInputActionDiagnostics(engine, "SkillR")} || {BuildAbilityDiagnostics(engine, "Ezreal Alpha")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)} || {BuildFeedbackDiagnostics(primitives, worldHud)}");
+            Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Indicator release hit should emit visible pulse markers.");
+            Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Indicator release hit should emit visible world text feedback.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_release_hit");
             timeline.Add($"[T+006] Indicator mode hold-release previews Trueshot Barrage, then fires on release | HP {dummyHealthBeforeR:0} -> {dummyHealthAfterR:0}");
 
             SelectNamedEntity(engine, backend, "Jayce Cannon", frameTimesMs);
@@ -194,8 +207,10 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(
                 dummyHealthAfterConfirm,
                 Is.LessThan(dummyHealthAfterCancel),
-                $"{BuildInputActionDiagnostics(engine, "SkillQ")} || {BuildAbilityDiagnostics(engine, "Jayce Cannon")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)}");
-            CaptureSnapshot(engine, overlays, snapshots, "press_release_confirm_hit");
+                $"{BuildInputActionDiagnostics(engine, "SkillQ")} || {BuildAbilityDiagnostics(engine, "Jayce Cannon")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)} || {BuildFeedbackDiagnostics(primitives, worldHud)}");
+            Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Press-release confirm hit should emit visible pulse markers.");
+            Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Press-release confirm hit should emit visible world text feedback.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "press_release_confirm_hit");
             timeline.Add($"[T+007] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
 
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildTraceJsonl(snapshots));
@@ -404,7 +419,13 @@ namespace Ludots.Tests.GAS.Production
             return string.Join("|", values);
         }
 
-        private static void CaptureSnapshot(GameEngine engine, GroundOverlayBuffer overlays, List<AcceptanceSnapshot> snapshots, string step)
+        private static void CaptureSnapshot(
+            GameEngine engine,
+            GroundOverlayBuffer overlays,
+            PrimitiveDrawBuffer primitives,
+            WorldHudBatchBuffer worldHud,
+            List<AcceptanceSnapshot> snapshots,
+            string step)
         {
             string selectedName = GetSelectedEntityName(engine);
             var trackedEntities = new[]
@@ -434,6 +455,8 @@ namespace Ludots.Tests.GAS.Production
                     ["line"] = CountOverlays(overlays, GroundOverlayShape.Line),
                     ["ring"] = CountOverlays(overlays, GroundOverlayShape.Ring)
                 },
+                PrimitiveCount: CountPrimitiveMarkers(primitives),
+                WorldTextCount: CountWorldHudItems(worldHud, WorldHudItemKind.Text),
                 Entities: states));
         }
 
@@ -456,11 +479,13 @@ namespace Ludots.Tests.GAS.Production
                         label = slot.Label,
                         detail = slot.Detail,
                         flags = slot.Flags
-                    }),
-                    overlay_counts = snapshot.OverlayCounts,
-                    entities = snapshot.Entities.Select(entity => new
-                    {
-                        name = entity.Name,
+                     }),
+                     overlay_counts = snapshot.OverlayCounts,
+                     primitive_count = snapshot.PrimitiveCount,
+                     world_text_count = snapshot.WorldTextCount,
+                     entities = snapshot.Entities.Select(entity => new
+                     {
+                         name = entity.Name,
                         health = entity.Health
                     })
                 }));
@@ -496,6 +521,9 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine("- failure_branch: press-release aim cancel preserved target HP before confirm");
             sb.AppendLine($"- final_selected: {finalSnapshot.SelectedEntity}");
             sb.AppendLine($"- final_mode: {finalSnapshot.ActiveModeId}");
+            sb.AppendLine($"- final_selection_ring_count: {finalSnapshot.OverlayCounts["ring"]}");
+            sb.AppendLine($"- final_feedback_primitives: {finalSnapshot.PrimitiveCount}");
+            sb.AppendLine($"- final_feedback_world_text: {finalSnapshot.WorldTextCount}");
             sb.AppendLine();
             sb.AppendLine("## Summary Stats");
             sb.AppendLine("- total_actions: 7");
@@ -543,6 +571,25 @@ namespace Ludots.Tests.GAS.Production
             foreach (ref readonly var item in overlays.GetSpan())
             {
                 if (item.Shape == shape)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int CountPrimitiveMarkers(PrimitiveDrawBuffer primitives)
+        {
+            return primitives.GetSpan().Length;
+        }
+
+        private static int CountWorldHudItems(WorldHudBatchBuffer worldHud, WorldHudItemKind kind)
+        {
+            int count = 0;
+            foreach (ref readonly var item in worldHud.GetSpan())
+            {
+                if (item.Kind == kind)
                 {
                     count++;
                 }
@@ -807,6 +854,11 @@ namespace Ludots.Tests.GAS.Production
             return $"overlays=count:{overlays.Count},circle:{CountOverlays(overlays, GroundOverlayShape.Circle)},cone:{CountOverlays(overlays, GroundOverlayShape.Cone)},line:{CountOverlays(overlays, GroundOverlayShape.Line)},ring:{CountOverlays(overlays, GroundOverlayShape.Ring)}";
         }
 
+        private static string BuildFeedbackDiagnostics(PrimitiveDrawBuffer primitives, WorldHudBatchBuffer worldHud)
+        {
+            return $"feedback=primitives:{CountPrimitiveMarkers(primitives)},worldText:{CountWorldHudItems(worldHud, WorldHudItemKind.Text)}";
+        }
+
         private static string FindRepoRoot()
         {
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -831,6 +883,8 @@ namespace Ludots.Tests.GAS.Production
             string SelectedEntity,
             IReadOnlyList<PanelSlotSnapshot> PanelSlots,
             IReadOnlyDictionary<string, int> OverlayCounts,
+            int PrimitiveCount,
+            int WorldTextCount,
             IReadOnlyList<EntityState> Entities);
 
         private sealed record PanelSlotSnapshot(

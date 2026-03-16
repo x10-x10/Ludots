@@ -1,0 +1,19 @@
+[
+  {
+    "id": "champion_skill_sandbox.selection_indicator",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.28, 0.88, 1.0, 0.16],
+    "defaultScale": 1.05,
+    "defaultLifetime": -1,
+    "positionOffset": [0, 0.04, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.68 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.47 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.94 },
+      { "paramKey": 10, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.035 }
+    ]
+  }
+]

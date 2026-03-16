@@ -8,11 +8,13 @@ namespace ChampionSkillSandboxMod.Systems
     {
         private readonly GameEngine _engine;
         private readonly ChampionSkillSandboxRuntime _runtime;
+        private readonly ChampionSkillSandboxVisualFeedback _feedback;
 
         public ChampionSkillSandboxPresentationSystem(GameEngine engine, ChampionSkillSandboxRuntime runtime)
         {
             _engine = engine;
             _runtime = runtime;
+            _feedback = new ChampionSkillSandboxVisualFeedback();
         }
 
         public void Initialize() { }
@@ -23,6 +25,7 @@ namespace ChampionSkillSandboxMod.Systems
         public void Update(in float t)
         {
             _runtime.Update(_engine);
+            _feedback.Update(_engine, t);
         }
     }
 }

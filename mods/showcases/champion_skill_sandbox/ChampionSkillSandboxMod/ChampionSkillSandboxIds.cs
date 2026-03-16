@@ -14,6 +14,9 @@ namespace ChampionSkillSandboxMod
         public const string SmartCastActionId = "CastModeSmart";
         public const string IndicatorActionId = "CastModeIndicator";
         public const string PressReleaseActionId = "CastModePressRelease";
+        public const string SelectionIndicatorPerformerKey = "champion_skill_sandbox.selection_indicator";
+        public const int SelectionIndicatorScopeId = 4101;
+        public const int EffectAppliedHudDiscriminator = 41;
 
         public const string EzrealAlphaName = "Ezreal Alpha";
         public const string EzrealCooldownName = "Ezreal Cooldown";

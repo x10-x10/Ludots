@@ -13,6 +13,8 @@ using Ludots.Core.Gameplay.GAS.Systems;
 using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
+using Ludots.Core.Presentation.Performers;
+using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
 using Ludots.Platform.Abstractions;
@@ -110,6 +112,15 @@ namespace Ludots.Tests.GAS.Production
                 ? typedSelected
                 : Entity.Null;
             Assert.That(ReadEntityName(engine.World, selected), Is.EqualTo("Ezreal Alpha"), "Sandbox runtime should seed an initial controllable selection.");
+            var performerRegistry = engine.GetService(CoreServiceKeys.PerformerDefinitionRegistry)
+                ?? throw new InvalidOperationException("PerformerDefinitionRegistry missing.");
+            Assert.That(
+                performerRegistry.GetId("champion_skill_sandbox.selection_indicator"),
+                Is.GreaterThan(0),
+                "Sandbox performer config should register a dedicated selection indicator.");
+            var overlays = engine.GetService(CoreServiceKeys.GroundOverlayBuffer)
+                ?? throw new InvalidOperationException("GroundOverlayBuffer missing.");
+            Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Initial sandbox selection should render a visible ring.");
 
             var source = ResolveGasPanelSource(engine);
 
@@ -249,6 +260,20 @@ namespace Ludots.Tests.GAS.Production
             {
                 engine.Tick(DeltaTime);
             }
+        }
+
+        private static int CountOverlays(GroundOverlayBuffer overlays, GroundOverlayShape shape)
+        {
+            int count = 0;
+            foreach (ref readonly var item in overlays.GetSpan())
+            {
+                if (item.Shape == shape)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private static IEntityCommandPanelSource ResolveGasPanelSource(GameEngine engine)
