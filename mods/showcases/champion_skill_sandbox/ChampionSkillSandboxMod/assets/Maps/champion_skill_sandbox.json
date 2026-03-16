@@ -1,0 +1,97 @@
+{
+  "Id": "champion_skill_sandbox",
+  "Tags": ["champion.skill.sandbox", "showcase.3c"],
+  "DefaultCamera": {
+    "VirtualCameraId": "Camera.Profile.Tactical",
+    "TargetXCm": 1850,
+    "TargetYCm": 980,
+    "DistanceCm": 3900,
+    "Pitch": 54,
+    "FovYDeg": 42
+  },
+  "Entities": [
+    {
+      "Template": "champion_skill_sandbox_ezreal",
+      "Overrides": {
+        "Name": { "Value": "Ezreal Alpha" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 1180, "Y": 720 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_ezreal",
+      "Overrides": {
+        "Name": { "Value": "Ezreal Cooldown" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 1180, "Y": 1160 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_garen",
+      "Overrides": {
+        "Name": { "Value": "Garen Alpha" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 1500, "Y": 720 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_garen",
+      "Overrides": {
+        "Name": { "Value": "Garen Courage" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 1500, "Y": 1160 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_jayce",
+      "Overrides": {
+        "Name": { "Value": "Jayce Cannon" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 1820, "Y": 720 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_jayce",
+      "Overrides": {
+        "Name": { "Value": "Jayce Hammer" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 1820, "Y": 1160 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_dummy",
+      "Overrides": {
+        "Name": { "Value": "Target Dummy A" },
+        "WorldPositionCm": { "Value": { "X": 2330, "Y": 680 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_dummy",
+      "Overrides": {
+        "Name": { "Value": "Target Dummy B" },
+        "WorldPositionCm": { "Value": { "X": 2420, "Y": 860 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_dummy",
+      "Overrides": {
+        "Name": { "Value": "Target Dummy C" },
+        "WorldPositionCm": { "Value": { "X": 2330, "Y": 1040 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_brute",
+      "Overrides": {
+        "Name": { "Value": "Target Brute A" },
+        "WorldPositionCm": { "Value": { "X": 2640, "Y": 760 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_brute",
+      "Overrides": {
+        "Name": { "Value": "Target Brute B" },
+        "WorldPositionCm": { "Value": { "X": 2640, "Y": 1120 } }
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+using System.Threading.Tasks;
+using ChampionSkillSandboxMod.Runtime;
+using ChampionSkillSandboxMod.Systems;
+using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.GAS.Orders;
+using Ludots.Core.Gameplay.Teams;
+using Ludots.Core.Modding;
+using Ludots.Core.Scripting;
+
+namespace ChampionSkillSandboxMod.Triggers
+{
+    internal sealed class InstallChampionSkillSandboxOnGameStartTrigger : Trigger
+    {
+        private const string InstalledKey = "ChampionSkillSandboxMod.Installed";
+        private readonly IModContext _context;
+        private readonly ChampionSkillSandboxRuntime _runtime;
+        private readonly ChampionSkillCastModeToolbarProvider _toolbarProvider;
+
+        public InstallChampionSkillSandboxOnGameStartTrigger(
+            IModContext context,
+            ChampionSkillSandboxRuntime runtime,
+            ChampionSkillCastModeToolbarProvider toolbarProvider)
+        {
+            _context = context;
+            _runtime = runtime;
+            _toolbarProvider = toolbarProvider;
+            EventKey = GameEvents.GameStart;
+        }
+
+        public override Task ExecuteAsync(ScriptContext context)
+        {
+            GameEngine? engine = context.GetEngine();
+            if (engine == null)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (engine.GlobalContext.TryGetValue(InstalledKey, out var installedObj) &&
+                installedObj is bool installed &&
+                installed)
+            {
+                return Task.CompletedTask;
+            }
+
+            engine.GlobalContext[InstalledKey] = true;
+            TeamManager.SetRelationshipSymmetric(1, 2, TeamRelationship.Hostile);
+
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.OrderQueue.Name, out var ordersObj) &&
+                ordersObj is OrderQueue orders)
+            {
+                engine.RegisterSystem(
+                    new ChampionSkillSandboxLocalOrderSourceSystem(engine.World, engine.GlobalContext, orders, _context),
+                    SystemGroup.InputCollection);
+            }
+
+            _toolbarProvider.Bind(engine);
+            engine.SetService(CoreServiceKeys.EntityCommandPanelToolbarProvider, _toolbarProvider);
+            engine.RegisterPresentationSystem(new ChampionSkillSandboxPresentationSystem(engine, _runtime));
+
+            _context.Log("[ChampionSkillSandboxMod] Local order source, command panel focus runtime, and cast mode toolbar registered.");
+            return Task.CompletedTask;
+        }
+    }
+}
