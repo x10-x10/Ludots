@@ -8,6 +8,13 @@ namespace Ludots.Launcher.Backend;
 
 public sealed class LauncherService
 {
+    private sealed record ActiveLaunchProcessRecord(
+        int Pid,
+        long StartedAtUtcTicks,
+        string AdapterId,
+        string AppAssemblyPath,
+        string BootstrapPath);
+
     private readonly string _repoRoot;
     private readonly LauncherConfigService _configService;
 
@@ -368,6 +375,7 @@ public sealed class LauncherService
         }
 
         var bootstrapPath = WriteRuntimeBootstrap(resolveResult.Plan);
+        ReplacePreviousActiveProcess(resolveResult.Plan);
         var startInfo = new ProcessStartInfo("dotnet", $"\"{resolveResult.Plan.AppAssemblyPath}\" \"{bootstrapPath}\"")
         {
             WorkingDirectory = resolveResult.Plan.AppOutputDirectory,
@@ -380,6 +388,7 @@ public sealed class LauncherService
             return new LauncherLaunchResult(false, "Failed to start platform process.", -1, string.Empty, bootstrapPath, resolveResult.Plan);
         }
 
+        PersistActiveProcess(resolveResult.Plan, bootstrapPath, process);
         return new LauncherLaunchResult(true, string.Empty, process.Id, resolveResult.Plan.LaunchUrl, bootstrapPath, resolveResult.Plan);
     }
 
@@ -1231,6 +1240,122 @@ public sealed class LauncherService
         var json = JsonSerializer.Serialize(new { ModPaths = modPaths }, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(plan.BootstrapArtifactPath, json);
         return plan.BootstrapArtifactPath;
+    }
+
+    private void ReplacePreviousActiveProcess(LauncherLaunchPlan plan)
+    {
+        var recordPath = GetActiveProcessRecordPath(plan.AdapterId);
+        var record = ReadActiveProcessRecord(recordPath);
+        if (record == null)
+        {
+            return;
+        }
+
+        if (!PathsEqual(record.AppAssemblyPath, plan.AppAssemblyPath))
+        {
+            DeleteActiveProcessRecord(recordPath);
+            return;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(record.Pid);
+            if (process.HasExited || !StartTimeMatches(process, record.StartedAtUtcTicks))
+            {
+                DeleteActiveProcessRecord(recordPath);
+                return;
+            }
+
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(5000);
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        finally
+        {
+            DeleteActiveProcessRecord(recordPath);
+        }
+    }
+
+    private void PersistActiveProcess(LauncherLaunchPlan plan, string bootstrapPath, Process process)
+    {
+        var record = new ActiveLaunchProcessRecord(
+            process.Id,
+            process.StartTime.ToUniversalTime().Ticks,
+            plan.AdapterId,
+            Path.GetFullPath(plan.AppAssemblyPath),
+            Path.GetFullPath(bootstrapPath));
+        var recordPath = GetActiveProcessRecordPath(plan.AdapterId);
+        var directory = Path.GetDirectoryName(recordPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var json = JsonSerializer.Serialize(record, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(recordPath, json);
+    }
+
+    private static ActiveLaunchProcessRecord? ReadActiveProcessRecord(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var json = File.ReadAllText(path);
+            return JsonSerializer.Deserialize<ActiveLaunchProcessRecord>(json);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void DeleteActiveProcessRecord(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static bool StartTimeMatches(Process process, long startedAtUtcTicks)
+    {
+        try
+        {
+            return process.StartTime.ToUniversalTime().Ticks == startedAtUtcTicks;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string GetActiveProcessRecordPath(string adapterId)
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var safeAdapterId = string.IsNullOrWhiteSpace(adapterId)
+            ? "default"
+            : string.Concat(adapterId.Where(char.IsLetterOrDigit));
+        if (string.IsNullOrWhiteSpace(safeAdapterId))
+        {
+            safeAdapterId = "default";
+        }
+
+        return Path.Combine(appData, "Ludots", "Launcher", "active-processes", $"{safeAdapterId}.json");
     }
 
     private string? ResolveBuildProjectPath(LauncherConfig config, string rootPath, string modId, string preferredProjectPath)
