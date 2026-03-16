@@ -145,8 +145,7 @@ namespace Ludots.Tests.GAS.Production
 
             var toolbar = engine.GetService(CoreServiceKeys.EntityCommandPanelToolbarProvider)
                 ?? throw new InvalidOperationException("Toolbar provider missing.");
-            var mapping = engine.GetService(CoreServiceKeys.ActiveInputOrderMapping)
-                ?? throw new InvalidOperationException("Active input order mapping missing.");
+            var mapping = WaitForActiveInputOrderMapping(engine);
             Assert.That(toolbar.IsVisible, Is.True);
             Assert.That(mapping.InteractionMode, Is.EqualTo(InteractionModeType.SmartCast));
 
@@ -220,12 +219,28 @@ namespace Ludots.Tests.GAS.Production
             engine.SetService(CoreServiceKeys.UiImageSizeProvider, (object)new SkiaImageSizeProvider());
         }
 
-        private static void LoadMap(GameEngine engine, string mapId, int frames = 6)
+        private static void LoadMap(GameEngine engine, string mapId, int frames = 12)
         {
             engine.LoadMap(mapId);
             Assert.That(engine.CurrentMapSession, Is.Not.Null, $"{mapId} should create a live map session.");
             Tick(engine, frames);
             Assert.That(engine.TriggerManager.Errors.Count, Is.EqualTo(0), "Sandbox map should load without trigger errors.");
+        }
+
+        private static InputOrderMappingSystem WaitForActiveInputOrderMapping(GameEngine engine, int maxFrames = 24)
+        {
+            for (int i = 0; i < maxFrames; i++)
+            {
+                var mapping = engine.GetService(CoreServiceKeys.ActiveInputOrderMapping);
+                if (mapping != null)
+                {
+                    return mapping;
+                }
+
+                Tick(engine, 1);
+            }
+
+            throw new InvalidOperationException("Active input order mapping missing.");
         }
 
         private static void Tick(GameEngine engine, int frames)

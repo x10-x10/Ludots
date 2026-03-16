@@ -62,35 +62,35 @@
       "Template": "champion_skill_sandbox_enemy_dummy",
       "Overrides": {
         "Name": { "Value": "Target Dummy A" },
-        "WorldPositionCm": { "Value": { "X": 2330, "Y": 680 } }
+        "WorldPositionCm": { "Value": { "X": 1960, "Y": 680 } }
       }
     },
     {
       "Template": "champion_skill_sandbox_enemy_dummy",
       "Overrides": {
         "Name": { "Value": "Target Dummy B" },
-        "WorldPositionCm": { "Value": { "X": 2420, "Y": 860 } }
+        "WorldPositionCm": { "Value": { "X": 2020, "Y": 860 } }
       }
     },
     {
       "Template": "champion_skill_sandbox_enemy_dummy",
       "Overrides": {
         "Name": { "Value": "Target Dummy C" },
-        "WorldPositionCm": { "Value": { "X": 2330, "Y": 1040 } }
+        "WorldPositionCm": { "Value": { "X": 1960, "Y": 1040 } }
       }
     },
     {
       "Template": "champion_skill_sandbox_enemy_brute",
       "Overrides": {
         "Name": { "Value": "Target Brute A" },
-        "WorldPositionCm": { "Value": { "X": 2640, "Y": 760 } }
+        "WorldPositionCm": { "Value": { "X": 2280, "Y": 760 } }
       }
     },
     {
       "Template": "champion_skill_sandbox_enemy_brute",
       "Overrides": {
         "Name": { "Value": "Target Brute B" },
-        "WorldPositionCm": { "Value": { "X": 2640, "Y": 1120 } }
+        "WorldPositionCm": { "Value": { "X": 2280, "Y": 1120 } }
       }
     }
   ]
