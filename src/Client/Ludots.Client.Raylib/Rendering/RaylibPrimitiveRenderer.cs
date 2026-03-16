@@ -22,6 +22,7 @@ namespace Ludots.Client.Raylib.Rendering
     {
         private readonly RaylibPrimitiveRenderMode _mode;
         private readonly IVirtualFileSystem? _vfs;
+        private readonly string? _diagnosticPath;
         private const int MaxPrefabDepth = 6;
 
         private bool _initialized;
@@ -37,6 +38,9 @@ namespace Ludots.Client.Raylib.Rendering
         private readonly StaticMeshAdapterSyncPlanner _persistentStaticLaneSync = new StaticMeshAdapterSyncPlanner();
 
         private readonly Dictionary<int, CachedModel> _modelCache = new Dictionary<int, CachedModel>();
+        private readonly Dictionary<int, CachedTexture> _textureCache = new Dictionary<int, CachedTexture>();
+        private readonly HashSet<int> _loggedTextureDiagnostics = new HashSet<int>();
+        private readonly HashSet<int> _loggedBillboardDrawDiagnostics = new HashSet<int>();
 
         public int LastInstancedInstances { get; private set; }
         public int LastInstancedBatches { get; private set; }
@@ -50,14 +54,15 @@ namespace Ludots.Client.Raylib.Rendering
         {
             _mode = mode;
             _vfs = vfs;
+            _diagnosticPath = Environment.GetEnvironmentVariable("LUDOTS_RAYLIB_DIAGNOSTIC_PATH");
         }
 
-        public void Draw(PrimitiveDrawBuffer draw, MeshAssetRegistry meshes, float scaleMul = 1f)
+        public void Draw(PrimitiveDrawBuffer draw, Camera3D camera, MeshAssetRegistry meshes, float scaleMul = 1f)
         {
-            Draw(draw, snapshot: null, meshes, scaleMul);
+            Draw(draw, camera, snapshot: null, meshes, scaleMul);
         }
 
-        public void Draw(PrimitiveDrawBuffer draw, PrimitiveDrawBuffer? snapshot, MeshAssetRegistry meshes, float scaleMul = 1f)
+        public void Draw(PrimitiveDrawBuffer draw, Camera3D camera, PrimitiveDrawBuffer? snapshot, MeshAssetRegistry meshes, float scaleMul = 1f)
         {
             if (draw == null) throw new ArgumentNullException(nameof(draw));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
@@ -76,21 +81,21 @@ namespace Ludots.Client.Raylib.Rendering
                 LastPersistentCreates = _persistentStaticLaneSync.LastCreateCount;
                 LastPersistentUpdates = _persistentStaticLaneSync.LastUpdateCount;
                 LastPersistentRemoves = _persistentStaticLaneSync.LastRemoveCount;
-                DrawPersistentStaticLanes(meshes, scaleMul);
-                DrawImmediateWithDescriptors(span, meshes, scaleMul, persistentStaticLanesActive: true);
+                DrawPersistentStaticLanes(camera, meshes, scaleMul);
+                DrawImmediateWithDescriptors(span, camera, meshes, scaleMul, persistentStaticLanesActive: true);
                 return;
             }
 
             if (_mode == RaylibPrimitiveRenderMode.Instanced)
             {
-                DrawHybridInstanced(span, meshes, scaleMul);
+                DrawHybridInstanced(span, camera, meshes, scaleMul);
                 return;
             }
 
-            DrawImmediateWithDescriptors(span, meshes, scaleMul, persistentStaticLanesActive: false);
+            DrawImmediateWithDescriptors(span, camera, meshes, scaleMul, persistentStaticLanesActive: false);
         }
 
-        private void DrawPersistentStaticLanes(MeshAssetRegistry meshes, float scaleMul)
+        private void DrawPersistentStaticLanes(Camera3D camera, MeshAssetRegistry meshes, float scaleMul)
         {
             foreach (var pair in _persistentStaticLaneSync.ActiveBindings)
             {
@@ -106,12 +111,13 @@ namespace Ludots.Client.Raylib.Rendering
                     item.Position,
                     item.Scale * scaleMul,
                     item.Color,
+                    camera,
                     meshes,
                     0);
             }
         }
 
-        private void DrawImmediateWithDescriptors(ReadOnlySpan<PrimitiveDrawItem> span, MeshAssetRegistry meshes, float scaleMul, bool persistentStaticLanesActive)
+        private void DrawImmediateWithDescriptors(ReadOnlySpan<PrimitiveDrawItem> span, Camera3D camera, MeshAssetRegistry meshes, float scaleMul, bool persistentStaticLanesActive)
         {
             for (int i = 0; i < span.Length; i++)
             {
@@ -126,11 +132,12 @@ namespace Ludots.Client.Raylib.Rendering
                 DrawAssetRecursive(
                     item.MeshAssetId, item.Position,
                     item.Scale * scaleMul, item.Color,
+                    camera,
                     meshes, 0);
             }
         }
 
-        private void DrawHybridInstanced(ReadOnlySpan<PrimitiveDrawItem> span, MeshAssetRegistry meshes, float scaleMul)
+        private void DrawHybridInstanced(ReadOnlySpan<PrimitiveDrawItem> span, Camera3D camera, MeshAssetRegistry meshes, float scaleMul)
         {
             EnsureInitialized();
 
@@ -142,6 +149,7 @@ namespace Ludots.Client.Raylib.Rendering
                     item.Position,
                     item.Scale * scaleMul,
                     item.Color,
+                    camera,
                     meshes,
                     depth: 0);
             }
@@ -149,7 +157,7 @@ namespace Ludots.Client.Raylib.Rendering
             FlushInstancedBatches();
         }
 
-        private void SubmitAssetRecursive(int meshAssetId, Vector3 position, Vector3 scale, Vector4 color, MeshAssetRegistry meshes, int depth)
+        private void SubmitAssetRecursive(int meshAssetId, Vector3 position, Vector3 scale, Vector4 color, Camera3D camera, MeshAssetRegistry meshes, int depth)
         {
             if (depth > MaxPrefabDepth) return;
             if (!meshes.TryGetDescriptor(meshAssetId, out var desc)) return;
@@ -162,6 +170,10 @@ namespace Ludots.Client.Raylib.Rendering
 
                 case MeshAssetType.Model:
                     DrawModel(meshAssetId, desc, position, scale, color);
+                    break;
+
+                case MeshAssetType.Billboard:
+                    DrawBillboard(meshAssetId, desc, position, scale, color, camera);
                     break;
 
                 case MeshAssetType.Prefab:
@@ -177,7 +189,7 @@ namespace Ludots.Client.Raylib.Rendering
                                 color.Y * part.ColorTint.Y,
                                 color.Z * part.ColorTint.Z,
                                 color.W * part.ColorTint.W);
-                            SubmitAssetRecursive(part.MeshAssetId, childPos, childScale, childColor, meshes, depth + 1);
+                            SubmitAssetRecursive(part.MeshAssetId, childPos, childScale, childColor, camera, meshes, depth + 1);
                         }
                     }
                     break;
@@ -204,7 +216,7 @@ namespace Ludots.Client.Raylib.Rendering
             DrawPrimitive(kind, position, scale, color);
         }
 
-        private void DrawAssetRecursive(int meshAssetId, Vector3 position, Vector3 scale, Vector4 color, MeshAssetRegistry meshes, int depth)
+        private void DrawAssetRecursive(int meshAssetId, Vector3 position, Vector3 scale, Vector4 color, Camera3D camera, MeshAssetRegistry meshes, int depth)
         {
             if (depth > MaxPrefabDepth) return;
             if (!meshes.TryGetDescriptor(meshAssetId, out var desc)) return;
@@ -217,6 +229,10 @@ namespace Ludots.Client.Raylib.Rendering
 
                 case MeshAssetType.Model:
                     DrawModel(meshAssetId, desc, position, scale, color);
+                    break;
+
+                case MeshAssetType.Billboard:
+                    DrawBillboard(meshAssetId, desc, position, scale, color, camera);
                     break;
 
                 case MeshAssetType.Prefab:
@@ -232,7 +248,7 @@ namespace Ludots.Client.Raylib.Rendering
                                 color.Y * part.ColorTint.Y,
                                 color.Z * part.ColorTint.Z,
                                 color.W * part.ColorTint.W);
-                            DrawAssetRecursive(part.MeshAssetId, childPos, childScale, childColor, meshes, depth + 1);
+                            DrawAssetRecursive(part.MeshAssetId, childPos, childScale, childColor, camera, meshes, depth + 1);
                         }
                     }
                     break;
@@ -264,6 +280,28 @@ namespace Ludots.Client.Raylib.Rendering
             var tint = ToRaylibColor(color);
             var model = cached.Model;
             Rl.DrawModelEx(model, position, Vector3.UnitY, 0f, scale, tint);
+        }
+
+        private void DrawBillboard(int meshAssetId, in MeshAssetDescriptor desc, Vector3 position, Vector3 scale, Vector4 color, Camera3D camera)
+        {
+            if (!TryGetOrLoadTexture(meshAssetId, desc, out var cached))
+            {
+                DrawMissingModelMarker(position, scale);
+                return;
+            }
+
+            float height = MathF.Max(scale.Y, 0.05f);
+            float width = height * cached.AspectRatio;
+            var billboardPosition = new Vector3(position.X, position.Y + height * 0.5f, position.Z);
+            var source = new Rectangle(0f, 0f, cached.Texture.width, cached.Texture.height);
+
+            // Billboard art ships pre-colored, so preserve only caller alpha.
+            byte alpha = Clamp01ToByte(color.W);
+            var tint = new Color(255, 255, 255, alpha);
+            LogBillboardDrawDiagnostic(
+                meshAssetId,
+                $"billboard-draw pos=({billboardPosition.X:F2},{billboardPosition.Y:F2},{billboardPosition.Z:F2}) scale=({scale.X:F2},{scale.Y:F2},{scale.Z:F2}) size=({width:F2}x{height:F2}) alpha={alpha} cameraPos=({camera.position.X:F2},{camera.position.Y:F2},{camera.position.Z:F2}) cameraTarget=({camera.target.X:F2},{camera.target.Y:F2},{camera.target.Z:F2})");
+            Rl.DrawBillboardRec(camera, cached.Texture, source, billboardPosition, new Vector2(width, height), tint);
         }
 
         private bool TryGetOrLoadModel(int meshAssetId, in MeshAssetDescriptor desc, out CachedModel cached)
@@ -300,6 +338,93 @@ namespace Ludots.Client.Raylib.Rendering
 
             _modelCache[meshAssetId] = cached;
             return false;
+        }
+
+        private bool TryGetOrLoadTexture(int meshAssetId, in MeshAssetDescriptor desc, out CachedTexture cached)
+        {
+            if (_textureCache.TryGetValue(meshAssetId, out cached))
+                return cached.Loaded;
+
+            cached = new CachedTexture { Loaded = false, AspectRatio = 1f };
+
+            if (_vfs == null || desc.SourceUris == null || desc.SourceUris.Length == 0)
+            {
+                LogTextureDiagnostic(meshAssetId, $"texture-load skipped; vfsMissing={_vfs == null}; uriCount={desc.SourceUris?.Length ?? 0}");
+                _textureCache[meshAssetId] = cached;
+                return false;
+            }
+
+            for (int u = 0; u < desc.SourceUris.Length; u++)
+            {
+                string uri = desc.SourceUris[u];
+                if (string.IsNullOrWhiteSpace(uri)) continue;
+
+                if (!_vfs.TryResolveFullPath(uri, out string fullPath))
+                {
+                    LogTextureDiagnostic(meshAssetId, $"texture-resolve failed; uri={uri}");
+                    continue;
+                }
+
+                if (!File.Exists(fullPath))
+                {
+                    LogTextureDiagnostic(meshAssetId, $"texture-file missing; uri={uri}; fullPath={fullPath}");
+                    continue;
+                }
+
+                var texture = Rl.LoadTexture(fullPath);
+                if (texture.id != 0 && texture.width > 0 && texture.height > 0)
+                {
+                    cached = new CachedTexture
+                    {
+                        Texture = texture,
+                        Loaded = true,
+                        AspectRatio = texture.height > 0 ? (float)texture.width / texture.height : 1f,
+                    };
+                    _textureCache[meshAssetId] = cached;
+                    LogTextureDiagnostic(meshAssetId, $"texture-load success; uri={uri}; fullPath={fullPath}; size={texture.width}x{texture.height}");
+                    return true;
+                }
+
+                LogTextureDiagnostic(meshAssetId, $"texture-load failed; uri={uri}; fullPath={fullPath}; textureId={texture.id}; size={texture.width}x{texture.height}");
+
+                if (texture.id != 0)
+                    Rl.UnloadTexture(texture);
+            }
+
+            _textureCache[meshAssetId] = cached;
+            return false;
+        }
+
+        private void LogTextureDiagnostic(int meshAssetId, string message)
+        {
+            if (string.IsNullOrWhiteSpace(_diagnosticPath))
+                return;
+
+            if (!_loggedTextureDiagnostics.Add(meshAssetId))
+                return;
+
+            string fullPath = Path.GetFullPath(_diagnosticPath);
+            string? directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            File.AppendAllText(fullPath, $"[{DateTime.UtcNow:O}] meshAssetId={meshAssetId} {message}{Environment.NewLine}");
+        }
+
+        private void LogBillboardDrawDiagnostic(int meshAssetId, string message)
+        {
+            if (string.IsNullOrWhiteSpace(_diagnosticPath))
+                return;
+
+            if (!_loggedBillboardDrawDiagnostics.Add(meshAssetId))
+                return;
+
+            string fullPath = Path.GetFullPath(_diagnosticPath);
+            string? directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            File.AppendAllText(fullPath, $"[{DateTime.UtcNow:O}] meshAssetId={meshAssetId} {message}{Environment.NewLine}");
         }
 
         private static void DrawMissingModelMarker(Vector3 position, Vector3 scale)
@@ -463,6 +588,13 @@ namespace Ludots.Client.Raylib.Rendering
             }
             _modelCache.Clear();
 
+            foreach (var kvp in _textureCache)
+            {
+                if (kvp.Value.Loaded)
+                    Rl.UnloadTexture(kvp.Value.Texture);
+            }
+            _textureCache.Clear();
+
             if (!_initialized) return;
 
             if (_cubeMesh.vertexCount > 0) Rl.UnloadMesh(_cubeMesh);
@@ -475,6 +607,13 @@ namespace Ludots.Client.Raylib.Rendering
         {
             public Model Model;
             public bool Loaded;
+        }
+
+        private struct CachedTexture
+        {
+            public Texture2D Texture;
+            public bool Loaded;
+            public float AspectRatio;
         }
 
         private struct Batch

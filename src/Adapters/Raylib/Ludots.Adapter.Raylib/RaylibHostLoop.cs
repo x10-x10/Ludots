@@ -1,15 +1,19 @@
 using System;
 using System.Diagnostics;
 using System.Numerics;
+using Arch.Core;
 using Ludots.Adapter.Raylib.Services;
 using Ludots.Client.Raylib.Rendering;
 using Ludots.Core.Components;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Engine;
+using Ludots.Core.Input.Runtime;
+using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Assets;
+using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Config;
 using Ludots.Core.Presentation.DebugDraw;
 using Ludots.Core.Presentation.Hud;
@@ -20,6 +24,7 @@ using Ludots.Platform.Abstractions;
 using Ludots.Presentation.Skia;
 using Ludots.UI;
 using Ludots.UI.Input;
+using Ludots.UI.Runtime;
 using Ludots.UI.Skia;
 using Raylib_cs;
 using Rl = Raylib_cs.Raylib;
@@ -143,6 +148,22 @@ namespace Ludots.Adapter.Raylib
                 int underlayLayerVersion = -1;
                 int topOverlayLayerVersion = -1;
                 var underlayPacer = new PresentationOverlayLanePacer(PresentationOverlayLayer.UnderUi);
+                string? screenshotPath = Environment.GetEnvironmentVariable("LUDOTS_TAKE_SCREENSHOT_PATH");
+                string? diagnosticPath = Environment.GetEnvironmentVariable("LUDOTS_RAYLIB_DIAGNOSTIC_PATH");
+                string? screenshotTargetPath = string.IsNullOrWhiteSpace(screenshotPath)
+                    ? null
+                    : Path.GetFullPath(screenshotPath);
+                string? screenshotFileName = string.IsNullOrWhiteSpace(screenshotTargetPath)
+                    ? null
+                    : Path.GetFileName(screenshotTargetPath);
+                string? screenshotWorkingPath = string.IsNullOrWhiteSpace(screenshotFileName)
+                    ? null
+                    : Path.Combine(Environment.CurrentDirectory, screenshotFileName);
+                bool screenshotPending = !string.IsNullOrWhiteSpace(screenshotFileName);
+                int screenshotFrame = int.TryParse(Environment.GetEnvironmentVariable("LUDOTS_TAKE_SCREENSHOT_FRAME"), out int parsedScreenshotFrame)
+                    ? Math.Max(1, parsedScreenshotFrame)
+                    : 60;
+                int frameIndex = 0;
 
                 while (!Rl.WindowShouldClose())
                 {
@@ -179,6 +200,7 @@ namespace Ludots.Adapter.Raylib
 
                         presentationTiming?.ObserveUiInput(uiInputMs);
                         engine.GlobalContext[CoreServiceKeys.UiCaptured.Name] = uiCaptured;
+
                         engine.Tick(dt);
 
                         float cameraAlpha = presentationFrameSetup?.GetInterpolationAlpha() ?? 1f;
@@ -198,13 +220,18 @@ namespace Ludots.Adapter.Raylib
                             presentationTiming?.ObserveScreenOverlayBuild(0d, 0, 0);
                         }
 
+                        string? activeMapId = engine.CurrentMapSession?.MapId.Value;
+                        bool uxPrototypeMapActive = string.Equals(activeMapId, "ux_prototype_battle", StringComparison.OrdinalIgnoreCase);
+
                         Rl.BeginDrawing();
-                        Rl.ClearBackground(new Raylib_cs.Color(0, 0, 0, 255));
+                        Rl.ClearBackground(uxPrototypeMapActive
+                            ? new Raylib_cs.Color(6, 10, 16, 255)
+                            : new Raylib_cs.Color(0, 0, 0, 255));
 
                         var activeCamera = cameraAdapter.Camera;
                         Rl.BeginMode3D(activeCamera);
 
-                        if (drawDebugDraw)
+                        if (drawDebugDraw && !uxPrototypeMapActive)
                         {
                             DrawInfiniteGrid(activeCamera.target, 300, 1.0f, 10);
 
@@ -243,7 +270,7 @@ namespace Ludots.Adapter.Raylib
                             }
                             long primitiveStart = Stopwatch.GetTimestamp();
                             PrimitiveDrawBuffer? snapshot = engine.GetService(CoreServiceKeys.PresentationVisualSnapshotBuffer);
-                            primitiveRenderer.Draw(draw, snapshot, meshes, renderDebug.AcceptanceScaleMultiplier);
+                            primitiveRenderer.Draw(draw, activeCamera, snapshot, meshes, renderDebug.AcceptanceScaleMultiplier);
                             presentationTiming?.ObservePrimitiveRender(
                                 ElapsedMs(primitiveStart),
                                 primitiveRenderer.LastInstancedInstances,
@@ -388,6 +415,34 @@ namespace Ludots.Adapter.Raylib
                             overlaySkiaRenderer.CachedTextLayoutCount);
 
                         Rl.EndDrawing();
+
+                        frameIndex++;
+                        if (screenshotPending && frameIndex >= screenshotFrame)
+                        {
+                            string fullScreenshotPath = screenshotTargetPath!;
+                            string? screenshotDirectory = Path.GetDirectoryName(fullScreenshotPath);
+                            if (!string.IsNullOrWhiteSpace(screenshotDirectory))
+                            {
+                                Directory.CreateDirectory(screenshotDirectory);
+                            }
+
+                            AppendRaylibDiagnostic(
+                                diagnosticPath,
+                                $"screenshot frame={frameIndex} cameraPos=({activeCamera.position.X:F2},{activeCamera.position.Y:F2},{activeCamera.position.Z:F2}) cameraTarget=({activeCamera.target.X:F2},{activeCamera.target.Y:F2},{activeCamera.target.Z:F2})");
+                            AppendRaylibDiagnostic(diagnosticPath, BuildInputSelectionDiagnostic(engine));
+
+                            Rl.TakeScreenshot(screenshotFileName!);
+                            if (!string.IsNullOrWhiteSpace(screenshotWorkingPath) &&
+                                !string.Equals(screenshotWorkingPath, fullScreenshotPath, StringComparison.OrdinalIgnoreCase) &&
+                                File.Exists(screenshotWorkingPath))
+                            {
+                                File.Copy(screenshotWorkingPath, fullScreenshotPath, overwrite: true);
+                                File.Delete(screenshotWorkingPath);
+                            }
+
+                            screenshotPending = false;
+                            Log.Info(in LogChannels.Engine, $"Captured runtime screenshot: {fullScreenshotPath}");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -402,6 +457,23 @@ namespace Ludots.Adapter.Raylib
                 terrainRenderer.Dispose();
                 engine.Stop();
             }
+        }
+
+        private static void AppendRaylibDiagnostic(string? diagnosticPath, string message)
+        {
+            if (string.IsNullOrWhiteSpace(diagnosticPath))
+            {
+                return;
+            }
+
+            string fullPath = Path.GetFullPath(diagnosticPath);
+            string? directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.AppendAllText(fullPath, $"[{DateTime.UtcNow:O}] {message}{Environment.NewLine}");
         }
 
         private static void ValidateRequiredContextBeforeLoop(GameEngine engine)
@@ -433,12 +505,18 @@ namespace Ludots.Adapter.Raylib
         private static bool UpdateInput(UIRoot uiRoot)
         {
             var mousePos = Rl.GetMousePosition();
+            UiNode? hitNode = uiRoot.Scene?.HitTest(mousePos.X, mousePos.Y);
+            bool hitInteractiveUi = IsInteractiveUiNode(hitNode);
 
-            uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Move, X = mousePos.X, Y = mousePos.Y });
+            if (_uiPointerCaptured || hitInteractiveUi)
+            {
+                uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Move, X = mousePos.X, Y = mousePos.Y });
+            }
 
             if (Rl.IsMouseButtonPressed(MouseButton.MOUSE_LEFT_BUTTON))
             {
-                if (uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Down, X = mousePos.X, Y = mousePos.Y }))
+                if (hitInteractiveUi &&
+                    uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Down, X = mousePos.X, Y = mousePos.Y }))
                 {
                     _uiPointerCaptured = true;
                 }
@@ -446,11 +524,182 @@ namespace Ludots.Adapter.Raylib
 
             if (Rl.IsMouseButtonReleased(MouseButton.MOUSE_LEFT_BUTTON))
             {
-                uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Up, X = mousePos.X, Y = mousePos.Y });
-                _uiPointerCaptured = false;
+                if (_uiPointerCaptured)
+                {
+                    uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Up, X = mousePos.X, Y = mousePos.Y });
+                    _uiPointerCaptured = false;
+                }
             }
 
             return _uiPointerCaptured;
+        }
+
+        private static bool IsInteractiveUiNode(UiNode? node)
+        {
+            for (UiNode? current = node; current != null; current = current.Parent)
+            {
+                if (current.ActionHandles.Count > 0)
+                {
+                    return true;
+                }
+
+                if (current.Style.Overflow == UiOverflow.Scroll)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string BuildInputSelectionDiagnostic(GameEngine engine)
+        {
+            string pointerSummary = "pointer=(n/a)";
+            string liveSelectSummary = "liveSelect=missing";
+            string liveCommandSummary = "liveCommand=missing";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.InputHandler.Name, out var inputObj) &&
+                inputObj is PlayerInputHandler input)
+            {
+                Vector2 pointer = input.ReadAction<Vector2>("PointerPos");
+                pointerSummary = $"pointer=({pointer.X:0.##},{pointer.Y:0.##})";
+                liveSelectSummary = BuildActionStateSummary(input, "Select", "liveSelect");
+                liveCommandSummary = BuildActionStateSummary(input, "Command", "liveCommand");
+            }
+
+            string authSelectSummary = "authSelect=missing";
+            string authCommandSummary = "authCommand=missing";
+            string authPointerSummary = "authPointer=(n/a)";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.AuthoritativeInput.Name, out var authoritativeInputObj) &&
+                authoritativeInputObj is IInputActionReader authoritativeInput)
+            {
+                Vector2 authoritativePointer = authoritativeInput.ReadAction<Vector2>("PointerPos");
+                authPointerSummary = $"authPointer=({authoritativePointer.X:0.##},{authoritativePointer.Y:0.##})";
+                authSelectSummary = BuildActionStateSummary(authoritativeInput, "Select", "authSelect");
+                authCommandSummary = BuildActionStateSummary(authoritativeInput, "Command", "authCommand");
+            }
+
+            string hoveredSummary = "hovered=(none)";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) &&
+                hoveredObj is Entity hovered &&
+                hovered != Entity.Null)
+            {
+                hoveredSummary = $"hovered={DescribeEntity(engine, hovered)}";
+            }
+
+            string selectedSummary = "selected=(none)";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var selectedObj) &&
+                selectedObj is Entity selected &&
+                selected != Entity.Null)
+            {
+                selectedSummary = $"selected={DescribeEntity(engine, selected)}";
+            }
+
+            bool uiCaptured = engine.GlobalContext.TryGetValue(CoreServiceKeys.UiCaptured.Name, out var uiCapturedObj) &&
+                uiCapturedObj is bool captured &&
+                captured;
+
+            string dragSummary = "drag=inactive";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localPlayerObj) &&
+                localPlayerObj is Entity localPlayer &&
+                engine.World.IsAlive(localPlayer) &&
+                engine.World.Has<SelectionDragState>(localPlayer))
+            {
+                ref SelectionDragState drag = ref engine.World.Get<SelectionDragState>(localPlayer);
+                dragSummary = drag.Active
+                    ? $"drag=active({drag.StartScreen.X:0.##},{drag.StartScreen.Y:0.##})->({drag.CurrentScreen.X:0.##},{drag.CurrentScreen.Y:0.##})"
+                    : "drag=idle";
+            }
+
+            string targetSummary = BuildSelectionTargetSummary(engine);
+            return $"windowFocused={Rl.IsWindowFocused()} {pointerSummary} {authPointerSummary} {liveSelectSummary} {authSelectSummary} {liveCommandSummary} {authCommandSummary} {hoveredSummary} {selectedSummary} uiCaptured={uiCaptured} {dragSummary} {targetSummary}";
+        }
+
+        private static string BuildActionStateSummary(IInputActionReader input, string actionId, string label)
+        {
+            return $"{label}[down={input.IsDown(actionId)},pressed={input.PressedThisFrame(actionId)},released={input.ReleasedThisFrame(actionId)}]";
+        }
+
+        private static string DescribeEntity(GameEngine engine, Entity entity)
+        {
+            if (!engine.World.IsAlive(entity))
+            {
+                return $"Entity#{entity.Id}(dead)";
+            }
+
+            if (engine.World.TryGet(entity, out Name name) && !string.IsNullOrWhiteSpace(name.Value))
+            {
+                return $"{name.Value}#{entity.Id}";
+            }
+
+            return $"Entity#{entity.Id}";
+        }
+
+        private static string BuildSelectionTargetSummary(GameEngine engine)
+        {
+            if (engine.GetService(CoreServiceKeys.ScreenProjector) is not IScreenProjector projector)
+            {
+                return "targets=(projector-missing)";
+            }
+
+            string[] names =
+            {
+                "Blue City",
+                "Blue Barracks",
+                "Blue Stable",
+                "Blue Workshop",
+                "Worker A",
+                "Soldier A",
+                "Catapult A"
+            };
+
+            var parts = new System.Collections.Generic.List<string>(names.Length);
+            int count = 0;
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (TryFindEntityByName(engine, names[i], out Entity entity))
+                {
+                    Vector2 screen;
+                    string source;
+                    if (engine.World.TryGet(entity, out VisualTransform transform))
+                    {
+                        screen = projector.WorldToScreen(transform.Position);
+                        source = "vt";
+                    }
+                    else if (engine.World.TryGet(entity, out WorldPositionCm position))
+                    {
+                        screen = projector.WorldToScreen(WorldUnits.WorldCmToVisualMeters(position.Value, yMeters: 0f));
+                        source = "world";
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    parts.Add($"{names[i]}@({screen.X:0},{screen.Y:0})[{source}]");
+                    count++;
+                }
+            }
+
+            return count == 0
+                ? "targets=(none)"
+                : $"targets={string.Join("; ", parts)}";
+        }
+
+        private static bool TryFindEntityByName(GameEngine engine, string entityName, out Entity entity)
+        {
+            Entity found = Entity.Null;
+            var query = new Arch.Core.QueryDescription().WithAll<Name>();
+            engine.World.Query(in query, (Entity candidate, ref Name name) =>
+            {
+                if (found == Entity.Null &&
+                    string.Equals(name.Value, entityName, StringComparison.OrdinalIgnoreCase))
+                {
+                    found = candidate;
+                }
+            });
+
+            entity = found;
+            return found != Entity.Null;
         }
 
         private static double ElapsedMs(long startTicks)

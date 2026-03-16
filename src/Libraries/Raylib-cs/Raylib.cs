@@ -144,6 +144,23 @@ namespace Raylib_cs
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct Rectangle
+    {
+        public float x;
+        public float y;
+        public float width;
+        public float height;
+
+        public Rectangle(float x, float y, float width, float height)
+        {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct Camera3D
     {
         public Vector3 position;
@@ -499,6 +516,12 @@ namespace Raylib_cs
         public static extern unsafe Texture2D LoadTextureFromImage(Image image);
 
         [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern Texture2D LoadTexture(string fileName);
+
+        [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void TakeScreenshot(string fileName);
+
+        [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
         public static extern unsafe void UnloadImage(Image image);
 
         [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
@@ -509,6 +532,9 @@ namespace Raylib_cs
 
         [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
         public static extern void DrawTexture(Texture2D texture, int posX, int posY, Color tint);
+
+        [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void DrawBillboardRec(Camera3D camera, Texture2D texture, Rectangle source, Vector3 position, Vector2 size, Color tint);
 
         [DllImport(NativeLib, CallingConvention = CallingConvention.Cdecl)]
         public static extern Vector2 GetWorldToScreen(Vector3 position, Camera3D camera);
