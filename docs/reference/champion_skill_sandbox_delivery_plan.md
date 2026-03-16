@@ -1,7 +1,7 @@
 # Champion Skill Sandbox Delivery Plan
 
 Date: 2026-03-16
-Status: In Progress
+Status: Delivered
 
 ## Goal
 
@@ -41,9 +41,9 @@ Concrete code entry points already confirmed:
   - `src/Core/Gameplay/GAS/BuiltinHandlers.cs`
   - `src/Core/Gameplay/GAS/Systems/ProjectileRuntimeSystem.cs`
 
-## Current Delivery State
+## Final Delivery State
 
-Already implemented in the sandbox branch:
+Implemented in the sandbox branch:
 
 - multi-instance Ezreal / Garen / Jayce sandbox mod with command panel focus sync
 - ability form slot routing for Jayce via GAS ability-form infra
@@ -59,51 +59,63 @@ Already implemented in the sandbox branch:
   - free
   - selected entity
   - weighted selected group
+- projectile skills now use real GAS projectile entities with performer bootstrap
+- sandbox cast / hit / projectile cues now go through performer definitions and `PresentationCommandBuffer`
+- command panel keeps reusing existing ability-slot routing and icon generation
 
 Recent camera-follow slice commit:
 
 - `c7cb67c feat(camera): add selected-group follow mode`
 
-## Confirmed Gaps
+Recent projectile / presentation slices:
 
-### 1. Projectile entities are logical only
+- `283c472 feat(presentation): bridge projectile entities into performers`
+- `abe91e8 feat(gas): preserve projectile target points`
 
-`LaunchProjectile` currently creates a real ECS entity through `BuiltinHandlers.HandleCreateProjectile`, but that entity does not automatically receive performer/bootstrap presentation state.
+Recent sandbox interaction / feedback slices:
+
+- `92776b3 feat(champion-sandbox): add movement and hover target marker`
+- `964c11e feat(champion-sandbox): add selection marker and cast feedback`
+- `8a444f7 feat(champion-sandbox): add camera reset and tactical confine`
+
+## Confirmed Architecture Outcome
+
+### 1. Projectile is a real ECS entity
+
+`LaunchProjectile` creates a runtime projectile entity through `BuiltinHandlers.HandleCreateProjectile`.
+That entity is moved by `ProjectileRuntimeSystem`, keeps launch-origin / target-point data, and can now receive startup performers through the shared projectile-presentation binding registry.
 
 Relevant code:
 
 - `src/Core/Gameplay/GAS/BuiltinHandlers.cs`
 - `src/Core/Gameplay/GAS/Systems/ProjectileRuntimeSystem.cs`
-- `src/Core/Presentation/Systems/PresentationStartupPerformerSystem.cs`
+- `src/Core/Presentation/Projectiles/ProjectilePresentationBindingRegistry.cs`
+- `src/Core/Presentation/Systems/ProjectilePresentationBootstrapSystem.cs`
 
-Impact:
+Result:
 
-- projectile skills can be logically correct but visually ambiguous
-- the player cannot reliably tell whether the projectile spawned, traveled, or hit
+- projectile logic and projectile visuals stay on the same entity-backed runtime path
+- sandbox projectile visuals are declared in config instead of special-case presenter code
 
-### 2. Sandbox skill FX are still mostly generic
+### 2. Skill FX are performer-driven
 
-Current sandbox feedback uses a small runtime helper and generic pulses:
+Sandbox cast / hit feedback now uses `GasPresentationEventBuffer` + `PresentationCommandBuffer` and resolves performer ids from:
+
+- ability ids for cast cues
+- effect template ids for hit cues
+- projectile impact effect ids for projectile-body startup performers
+
+Relevant code:
 
 - `mods/showcases/champion_skill_sandbox/ChampionSkillSandboxMod/Runtime/ChampionSkillSandboxVisualFeedback.cs`
+- `mods/showcases/champion_skill_sandbox/ChampionSkillSandboxMod/assets/Presentation/performers.json`
+- `mods/showcases/champion_skill_sandbox/ChampionSkillSandboxMod/assets/Presentation/projectile_cues.json`
 
-This is not yet enough to make each skill visually distinct.
+Result:
 
-### 3. Projectile skills still use instant search in config
-
-The sandbox currently author-calls several projectile-like skills as `Search` instead of real `LaunchProjectile`.
-
-Current config to convert:
-
-- `mods/showcases/champion_skill_sandbox/ChampionSkillSandboxMod/assets/GAS/effects.json`
-
-Priority projectile candidates:
-
-- Ezreal Q
-- Ezreal R
-- Jayce Cannon Q
-
-## Delivery Decisions
+- every showcased skill now has a distinct primitive-based cast and/or hit expression
+- Ezreal Q / R and Jayce Cannon Q additionally have visible traveling projectile bodies
+- damage readability remains backed by `WorldHudBatchBuffer`
 
 ### A. Keep slot/form logic in GAS, not in the sandbox
 
@@ -115,11 +127,11 @@ The sandbox will keep using:
 - `AbilityFormRoutingSystem`
 - command panel effective-slot resolution
 
-### B. Add a reusable projectile-to-performer bridge instead of fake sandbox-only missiles
+### B. Reuse the shared projectile-to-performer bridge instead of fake sandbox-only missiles
 
 Projectile remains a real ECS entity.
 
-The next reusable extension will attach performer startup state to runtime projectile entities so that projectile visuals can be authored declaratively and reused by mods.
+The reusable extension now attaches performer startup state to runtime projectile entities so that projectile visuals can be authored declaratively and reused by mods.
 
 Target outcome:
 
@@ -127,9 +139,9 @@ Target outcome:
 - projectile entity gains performer bootstrap state for visible primitive VFX
 - sandbox authors only need config bindings, not custom projectile presenter code
 
-### C. Skill cast / hit / state cues should go through performer commands
+### C. Skill cast / hit cues go through performer commands
 
-For non-projectile skill feedback, the sandbox will emit `PresentationCommand.CreatePerformer` based on `GasPresentationEvent` so cues can anchor to:
+For non-projectile skill feedback, the sandbox emits `PresentationCommand.CreatePerformer` based on `GasPresentationEvent` so cues can anchor to:
 
 - caster for cast windup / self-buff / aura cues
 - target for impact / execute / hit cues
@@ -162,7 +174,7 @@ Evidence:
 
 ### Slice 2. Reusable projectile performer bootstrap
 
-Planned Core work:
+Completed Core work:
 
 - add a generic projectile presentation binding/bootstrap path
 - ensure runtime-created projectile entities can receive startup performers and stable presentation identity
@@ -170,7 +182,7 @@ Planned Core work:
 
 ### Slice 3. Convert sandbox projectile skills to real `LaunchProjectile`
 
-Planned sandbox work:
+Completed sandbox work:
 
 - convert Ezreal Q / R and Jayce Cannon Q from `Search` to `LaunchProjectile`
 - author projectile performer bindings/config
@@ -178,7 +190,7 @@ Planned sandbox work:
 
 ### Slice 4. Replace generic sandbox feedback with per-skill performer FX
 
-Planned sandbox work:
+Completed sandbox work:
 
 - add performer definitions for cast, projectile, hit, aura, and execute cues
 - route sandbox visual feedback through `PresentationCommandBuffer`
@@ -197,7 +209,7 @@ Required evidence:
   - projectile spawn/travel/hit visibility
   - camera follow modes
 
-## Initial Acceptance Checklist
+## Acceptance Checklist
 
 - selecting different champion instances changes the command panel immediately
 - Jayce form switching changes current slots through GAS form routing
@@ -207,6 +219,11 @@ Required evidence:
 - projectile skills spawn visible performer-driven missiles
 - every skill has a distinct cast and/or impact effect cue
 - camera can reset, stay confined, and follow current selection or weighted group
+
+## Notes
+
+- Command panel icons are still produced by the existing `EntityCommandPanelMod` icon pipeline. The slot data exposes `AbilityId + ActionId`, and the UI derives icon glyph / mode badge from ability presentation plus current interaction mode.
+- This means one ability can participate in different orders or interaction modes without introducing a parallel icon system in the sandbox.
 
 ## Open Risk
 

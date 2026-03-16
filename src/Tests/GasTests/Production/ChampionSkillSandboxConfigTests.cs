@@ -17,6 +17,7 @@ using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Presentation.Performers;
+using Ludots.Core.Presentation.Projectiles;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
@@ -290,6 +291,49 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(engine.GameSession.Camera.State.FovYDeg, Is.EqualTo(42f).Within(0.01f));
         }
 
+        [Test]
+        public void ChampionSkillSandbox_ProjectileBindingsAndSkillCueConfigs_AreRegistered()
+        {
+            using var engine = CreateEngine();
+
+            var effects = engine.GetService(CoreServiceKeys.EffectTemplateRegistry)
+                ?? throw new InvalidOperationException("EffectTemplateRegistry missing.");
+            var projectileBindings = engine.GetService(CoreServiceKeys.ProjectilePresentationBindingRegistry)
+                ?? throw new InvalidOperationException("ProjectilePresentationBindingRegistry missing.");
+            var performers = engine.GetService(CoreServiceKeys.PerformerDefinitionRegistry)
+                ?? throw new InvalidOperationException("PerformerDefinitionRegistry missing.");
+
+            AssertProjectileEffect(
+                effects,
+                projectileBindings,
+                performers,
+                projectileEffectKey: "Effect.Champion.Ezreal.MysticShot",
+                resolveEffectKey: "Effect.Champion.Ezreal.MysticShotResolve",
+                projectilePerformerKey: "champion_skill_sandbox.projectile.ezreal_q");
+            AssertProjectileEffect(
+                effects,
+                projectileBindings,
+                performers,
+                projectileEffectKey: "Effect.Champion.Ezreal.TrueshotBarrage",
+                resolveEffectKey: "Effect.Champion.Ezreal.TrueshotBarrageResolve",
+                projectilePerformerKey: "champion_skill_sandbox.projectile.ezreal_r");
+            AssertProjectileEffect(
+                effects,
+                projectileBindings,
+                performers,
+                projectileEffectKey: "Effect.Champion.Jayce.Cannon.ShockBlast",
+                resolveEffectKey: "Effect.Champion.Jayce.Cannon.ShockBlastResolve",
+                projectilePerformerKey: "champion_skill_sandbox.projectile.jayce_q");
+
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.ezreal_arcane_shift"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.ezreal_essence_flux_cast"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.ezreal_essence_flux_hit"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.garen_courage"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.garen_demacian_justice_hit"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.jayce_hammer_lightning_field"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.jayce_transform_hammer"), Is.GreaterThan(0));
+        }
+
         private static GameEngine CreateEngine()
         {
             string repoRoot = FindRepoRoot();
@@ -372,6 +416,35 @@ namespace Ludots.Tests.GAS.Production
             }
 
             return count;
+        }
+
+        private static void AssertProjectileEffect(
+            EffectTemplateRegistry effects,
+            ProjectilePresentationBindingRegistry projectileBindings,
+            PerformerDefinitionRegistry performers,
+            string projectileEffectKey,
+            string resolveEffectKey,
+            string projectilePerformerKey)
+        {
+            int projectileEffectId = EffectTemplateIdRegistry.GetId(projectileEffectKey);
+            int resolveEffectId = EffectTemplateIdRegistry.GetId(resolveEffectKey);
+            int projectilePerformerId = performers.GetId(projectilePerformerKey);
+
+            Assert.That(projectileEffectId, Is.GreaterThan(0), $"{projectileEffectKey} should be registered.");
+            Assert.That(resolveEffectId, Is.GreaterThan(0), $"{resolveEffectKey} should be registered.");
+            Assert.That(projectilePerformerId, Is.GreaterThan(0), $"{projectilePerformerKey} should be registered.");
+
+            Assert.That(effects.TryGet(projectileEffectId, out var projectileEffect), Is.True);
+            Assert.That(projectileEffect.PresetType, Is.EqualTo(EffectPresetType.LaunchProjectile));
+            Assert.That(projectileEffect.Projectile.ImpactEffectTemplateId, Is.EqualTo(resolveEffectId));
+
+            Assert.That(effects.TryGet(resolveEffectId, out var resolveEffect), Is.True);
+            Assert.That(resolveEffect.PresetType, Is.EqualTo(EffectPresetType.Search));
+
+            Assert.That(projectileBindings.TryGet(resolveEffectId, out var binding), Is.True);
+            Assert.That(binding.ImpactEffectTemplateId, Is.EqualTo(resolveEffectId));
+            Assert.That(binding.StartupPerformers.Count, Is.EqualTo(1));
+            Assert.That(binding.StartupPerformers.Get(0), Is.EqualTo(projectilePerformerId));
         }
 
         private static IEntityCommandPanelSource ResolveGasPanelSource(GameEngine engine)

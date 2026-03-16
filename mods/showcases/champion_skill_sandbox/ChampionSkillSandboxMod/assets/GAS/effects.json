@@ -35,6 +35,19 @@
   {
     "id": "Effect.Champion.Ezreal.MysticShot",
     "tags": ["Effect.Champion.Damage"],
+    "presetType": "LaunchProjectile",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "projectile": {
+      "speed": 2100,
+      "range": 840,
+      "arcHeight": 0,
+      "impactEffect": "Effect.Champion.Ezreal.MysticShotResolve"
+    }
+  },
+  {
+    "id": "Effect.Champion.Ezreal.MysticShotResolve",
+    "tags": ["Effect.Champion.Damage"],
     "presetType": "Search",
     "lifetime": "Instant",
     "participatesInResponse": true,
@@ -54,6 +67,19 @@
   },
   {
     "id": "Effect.Champion.Ezreal.TrueshotBarrage",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "LaunchProjectile",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "projectile": {
+      "speed": 1800,
+      "range": 1200,
+      "arcHeight": 0,
+      "impactEffect": "Effect.Champion.Ezreal.TrueshotBarrageResolve"
+    }
+  },
+  {
+    "id": "Effect.Champion.Ezreal.TrueshotBarrageResolve",
     "tags": ["Effect.Champion.Damage"],
     "presetType": "Search",
     "lifetime": "Instant",
@@ -159,6 +185,19 @@
   },
   {
     "id": "Effect.Champion.Jayce.Cannon.ShockBlast",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "LaunchProjectile",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "projectile": {
+      "speed": 1900,
+      "range": 880,
+      "arcHeight": 0,
+      "impactEffect": "Effect.Champion.Jayce.Cannon.ShockBlastResolve"
+    }
+  },
+  {
+    "id": "Effect.Champion.Jayce.Cannon.ShockBlastResolve",
     "tags": ["Effect.Champion.Damage"],
     "presetType": "Search",
     "lifetime": "Instant",
