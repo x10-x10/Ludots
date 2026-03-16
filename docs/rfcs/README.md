@@ -16,6 +16,10 @@
     *   提议一个多实例实体指令面板宿主，支持 trigger 驱动开关、按 slot 显示、技能组切换与 SoA/零分配热路径
 *   [RFC-0055 UI surface ownership 与 showcase takeover 契约](RFC-0055-ui-surface-ownership-and-showcase-takeover.md)
     *   提议 retained UI、overlay 与 HUD 的 surface owner / lease / restore 契约，避免 mod 之间通过临时 suppression 相互踩踏
+*   [RFC-0056 面向自动化设计与自动化开发的游戏文档体系](RFC-0056-game-design-harness-document-system.md)
+    *   提议以 PREFAB 作为目录骨架、以 LTS 作为分工与投入元数据，并把 GDD / PRD / TDD / RLD / ADD / NDD 及 AI / 测试设计收敛为同一套可机读设计协议
+*   [RFC-0057 英雄技能 Sandbox、全局施法模式与技能面板呈现](RFC-0057-champion-skill-sandbox-cast-mode-and-panel-presentation.md)
+    *   提议以现有 selection / input / GAS / command panel / indicator 为基础，交付 EZ / 盖伦 / 杰斯技能 sandbox，并补齐全局施法模式与技能图标呈现基建
 
 ## 2 使用规则
 
