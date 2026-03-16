@@ -28,7 +28,7 @@ namespace ChampionSkillSandboxMod.Runtime
         }
 
         public string Title => "Cast Mode";
-        public string Subtitle => "RMB Move · Map / 3C global setting";
+        public string Subtitle => "F1/F2/F3 Cast | F4 Reset | RMB Move";
 
         public void Bind(GameEngine engine)
         {
@@ -37,7 +37,7 @@ namespace ChampionSkillSandboxMod.Runtime
 
         public int CopyButtons(Span<EntityCommandPanelToolbarButtonView> destination)
         {
-            if (!IsVisible || destination.Length < 3)
+            if (!IsVisible || destination.Length < 4)
             {
                 return 0;
             }
@@ -58,13 +58,28 @@ namespace ChampionSkillSandboxMod.Runtime
                 "RTS",
                 string.Equals(activeModeId, ChampionSkillSandboxIds.PressReleaseModeId, StringComparison.OrdinalIgnoreCase),
                 "#93E07A");
-            return 3;
+            destination[3] = new EntityCommandPanelToolbarButtonView(
+                ChampionSkillSandboxIds.ResetCameraToolbarButtonId,
+                "Reset",
+                false,
+                "#D7D2C4");
+            return 4;
         }
 
         public void Activate(string buttonId)
         {
             if (string.IsNullOrWhiteSpace(buttonId))
             {
+                return;
+            }
+
+            if (string.Equals(buttonId, ChampionSkillSandboxIds.ResetCameraToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_engine != null)
+                {
+                    _engine.GlobalContext[ChampionSkillSandboxIds.ResetCameraRequestKey] = true;
+                }
+
                 return;
             }
 

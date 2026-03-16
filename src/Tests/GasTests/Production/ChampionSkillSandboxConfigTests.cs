@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using Arch.Core;
 using Ludots.Core.Components;
 using Ludots.Core.Config;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
@@ -29,6 +31,8 @@ namespace Ludots.Tests.GAS.Production
     public sealed class ChampionSkillSandboxConfigTests
     {
         private const float DeltaTime = 1f / 60f;
+        private const string SandboxTacticalCameraId = "ChampionSkillSandbox.Camera.Tactical";
+        private const string ResetCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Reset";
         private static readonly string[] SandboxMods =
         {
             "LudotsCoreMod",
@@ -122,6 +126,19 @@ namespace Ludots.Tests.GAS.Production
                 performerRegistry.GetId("champion_skill_sandbox.hover_indicator"),
                 Is.GreaterThan(0),
                 "Sandbox performer config should register a dedicated hover indicator.");
+            var cameraRegistry = engine.GetService(CoreServiceKeys.VirtualCameraRegistry)
+                ?? throw new InvalidOperationException("VirtualCameraRegistry missing.");
+            Assert.That(
+                cameraRegistry.TryGet(SandboxTacticalCameraId, out var sandboxCamera),
+                Is.True,
+                "Sandbox config should register a dedicated tactical camera profile.");
+            Assert.That(sandboxCamera, Is.Not.Null);
+            Assert.That(sandboxCamera!.ConfineTargetToWorldBounds, Is.True, "Sandbox tactical camera should clamp target to map bounds.");
+            Assert.That(sandboxCamera.EdgePanRequiresPointerInsideViewport, Is.True, "Sandbox tactical camera should ignore edge pan when cursor is outside the viewport.");
+            Assert.That(
+                engine.CurrentMapSession?.MapConfig?.DefaultCamera?.VirtualCameraId,
+                Is.EqualTo(SandboxTacticalCameraId),
+                "Sandbox map should use its dedicated tactical camera profile.");
             var overlays = engine.GetService(CoreServiceKeys.GroundOverlayBuffer)
                 ?? throw new InvalidOperationException("GroundOverlayBuffer missing.");
             Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Initial sandbox selection should render a visible ring.");
@@ -164,12 +181,13 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(toolbar.IsVisible, Is.True);
             Assert.That(mapping.InteractionMode, Is.EqualTo(InteractionModeType.SmartCast));
 
-            var buttons = new EntityCommandPanelToolbarButtonView[4];
+            var buttons = new EntityCommandPanelToolbarButtonView[5];
             int buttonCount = toolbar.CopyButtons(buttons);
-            Assert.That(buttonCount, Is.EqualTo(3));
+            Assert.That(buttonCount, Is.EqualTo(4));
             Assert.That(buttons[0].ButtonId, Is.EqualTo("ChampionSkillSandbox.Mode.SmartCast"));
             Assert.That(buttons[0].Active, Is.True);
-            Assert.That(toolbar.Subtitle, Does.Contain("RMB Move"));
+            Assert.That(buttons[3].ButtonId, Is.EqualTo(ResetCameraToolbarButtonId));
+            Assert.That(toolbar.Subtitle, Does.Contain("F4 Reset"));
 
             var source = ResolveGasPanelSource(engine);
             Entity ezreal = FindEntityByName(engine.World, "Ezreal Alpha");
@@ -200,6 +218,26 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(command, Is.Not.Null);
             Assert.That(command!.OrderTypeKey, Is.EqualTo("moveTo"));
             Assert.That(command.SelectionType, Is.EqualTo(OrderSelectionType.Position));
+
+            engine.GameSession.Camera.ApplyPose(new CameraPoseRequest
+            {
+                VirtualCameraId = SandboxTacticalCameraId,
+                TargetCm = new Vector2(2600f, 1480f),
+                DistanceCm = 6100f,
+                Pitch = 62f,
+                FovYDeg = 50f,
+            });
+            Tick(engine, 1);
+
+            toolbar.Activate(ResetCameraToolbarButtonId);
+            Tick(engine, 2);
+
+            Assert.That(engine.GameSession.Camera.VirtualCameraBrain?.ActiveCameraId, Is.EqualTo(SandboxTacticalCameraId));
+            Assert.That(engine.GameSession.Camera.State.TargetCm.X, Is.EqualTo(1850f).Within(0.01f));
+            Assert.That(engine.GameSession.Camera.State.TargetCm.Y, Is.EqualTo(980f).Within(0.01f));
+            Assert.That(engine.GameSession.Camera.State.DistanceCm, Is.EqualTo(3900f).Within(0.01f));
+            Assert.That(engine.GameSession.Camera.State.Pitch, Is.EqualTo(54f).Within(0.01f));
+            Assert.That(engine.GameSession.Camera.State.FovYDeg, Is.EqualTo(42f).Within(0.01f));
         }
 
         private static GameEngine CreateEngine()

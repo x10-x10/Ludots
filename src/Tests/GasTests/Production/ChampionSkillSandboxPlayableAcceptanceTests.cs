@@ -10,6 +10,7 @@ using Arch.Core;
 using CoreInputMod.ViewMode;
 using Ludots.Core.Components;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Orders;
@@ -44,6 +45,7 @@ namespace Ludots.Tests.GAS.Production
         private const string SmartCastModeId = "ChampionSkillSandbox.Mode.SmartCast";
         private const string IndicatorModeId = "ChampionSkillSandbox.Mode.Indicator";
         private const string PressReleaseModeId = "ChampionSkillSandbox.Mode.PressReleaseAim";
+        private const string SandboxTacticalCameraId = "ChampionSkillSandbox.Camera.Tactical";
         private const string TestInputBackendKey = "Tests.ChampionSkillSandbox.InputBackend";
         private const string HeadlessCameraKey = "Tests.ChampionSkillSandbox.HeadlessCamera";
 
@@ -144,6 +146,25 @@ namespace Ludots.Tests.GAS.Production
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "move_reposition");
             timeline.Add($"[T+005] Ezreal Alpha.Move(RMB) -> X {ezrealStart.X:0} to {ezrealAfterMove.X:0} to create spacing");
 
+            engine.GameSession.Camera.ApplyPose(new CameraPoseRequest
+            {
+                VirtualCameraId = SandboxTacticalCameraId,
+                TargetCm = new Vector2(2860f, 1620f),
+                DistanceCm = 6200f,
+                Pitch = 62f,
+                FovYDeg = 50f,
+            });
+            Tick(engine, 1, frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/f4", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => IsCameraNear(engine.GameSession.Camera.State, new Vector2(1850f, 980f), 3900f, 54f, 42f),
+                maxFrames: 6);
+            Tick(engine, 2, frameTimesMs);
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "camera_reset");
+            timeline.Add("[T+006] Camera.Reset(F4) -> tactical view restored to sandbox default pose");
+
             float ezrealDistanceToDummy = ReadDistance(engine.World, "Ezreal Alpha", "Target Dummy A");
             Assert.That(ezrealDistanceToDummy, Is.LessThanOrEqualTo(840f), "Sandbox layout should keep Target Dummy A inside Ezreal Q range for the opening smart-cast proof.");
             float dummyHealthBeforeQ = ReadHealth(engine.World, "Target Dummy A");
@@ -158,7 +179,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Smart cast hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Smart cast hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "smartcast_hit");
-            timeline.Add($"[T+005] Ezreal Alpha.Cast(Mystic Shot) -> Target Dummy A | Hit | HP {dummyHealthBeforeQ:0} -> {dummyHealthAfterQ:0}");
+            timeline.Add($"[T+007] Ezreal Alpha.Cast(Mystic Shot) -> Target Dummy A | Hit | HP {dummyHealthBeforeQ:0} -> {dummyHealthAfterQ:0}");
 
             toolbar.Activate(IndicatorModeId);
             Tick(engine, 1, frameTimesMs);
@@ -183,7 +204,7 @@ namespace Ludots.Tests.GAS.Production
                 Is.GreaterThan(baselineIndicatorRings),
                 "Indicator hover should add a dedicated marker on the hovered target.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_hover_target");
-            timeline.Add("[T+007] Indicator hover over Target Dummy A shows an extra target marker before release");
+            timeline.Add("[T+008] Indicator hover over Target Dummy A shows an extra target marker before release");
             float dummyHealthBeforeR = ReadHealth(engine.World, "Target Dummy A");
             ReleaseButton(engine, backend, "<Keyboard>/r", frameTimesMs);
             Tick(engine, 4, frameTimesMs);
@@ -195,7 +216,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Indicator release hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Indicator release hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_release_hit");
-            timeline.Add($"[T+008] Indicator mode hold-release previews Trueshot Barrage, then fires on release | HP {dummyHealthBeforeR:0} -> {dummyHealthAfterR:0}");
+            timeline.Add($"[T+009] Indicator mode hold-release previews Trueshot Barrage, then fires on release | HP {dummyHealthBeforeR:0} -> {dummyHealthAfterR:0}");
 
             SelectNamedEntity(engine, backend, "Jayce Cannon", frameTimesMs);
             toolbar.Activate(PressReleaseModeId);
@@ -238,7 +259,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Press-release confirm hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Press-release confirm hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "press_release_confirm_hit");
-            timeline.Add($"[T+009] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
+            timeline.Add($"[T+010] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
 
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildTraceJsonl(snapshots));
             File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildBattleReport(timeline, snapshots, frameTimesMs));
@@ -474,6 +495,12 @@ namespace Ludots.Tests.GAS.Production
                 Step: step,
                 ActiveModeId: GetActiveModeId(engine),
                 SelectedEntity: selectedName,
+                Camera: new CameraSnapshot(
+                    engine.GameSession.Camera.State.TargetCm.X,
+                    engine.GameSession.Camera.State.TargetCm.Y,
+                    engine.GameSession.Camera.State.DistanceCm,
+                    engine.GameSession.Camera.State.Pitch,
+                    engine.GameSession.Camera.State.FovYDeg),
                 PanelSlots: CopySelectedSlots(engine),
                 OverlayCounts: new Dictionary<string, int>(StringComparer.Ordinal)
                 {
@@ -499,6 +526,14 @@ namespace Ludots.Tests.GAS.Production
                     step = snapshot.Step,
                     active_mode_id = snapshot.ActiveModeId,
                     selected_entity = snapshot.SelectedEntity,
+                    camera = new
+                    {
+                        target_x_cm = snapshot.Camera.TargetXCm,
+                        target_y_cm = snapshot.Camera.TargetYCm,
+                        distance_cm = snapshot.Camera.DistanceCm,
+                        pitch = snapshot.Camera.Pitch,
+                        fov_y_deg = snapshot.Camera.FovYDeg
+                    },
                     panel_slots = snapshot.PanelSlots.Select(slot => new
                     {
                         slot_index = slot.SlotIndex,
@@ -548,14 +583,17 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine("- failure_branch: press-release aim cancel preserved target HP before confirm");
             sb.AppendLine($"- final_selected: {finalSnapshot.SelectedEntity}");
             sb.AppendLine($"- final_mode: {finalSnapshot.ActiveModeId}");
+            sb.AppendLine($"- final_camera_target_cm: ({finalSnapshot.Camera.TargetXCm:0.##}, {finalSnapshot.Camera.TargetYCm:0.##})");
+            sb.AppendLine($"- final_camera_distance_cm: {finalSnapshot.Camera.DistanceCm:0.##}");
             sb.AppendLine($"- final_selection_ring_count: {finalSnapshot.OverlayCounts["ring"]}");
             sb.AppendLine($"- final_feedback_primitives: {finalSnapshot.PrimitiveCount}");
             sb.AppendLine($"- final_feedback_world_text: {finalSnapshot.WorldTextCount}");
             sb.AppendLine();
             sb.AppendLine("## Summary Stats");
-            sb.AppendLine("- total_actions: 9");
+            sb.AppendLine("- total_actions: 10");
             sb.AppendLine("- selection_switches: 4");
             sb.AppendLine("- move_commands: 1");
+            sb.AppendLine("- camera_resets: 1");
             sb.AppendLine("- successful_hits: 3");
             sb.AppendLine("- cancelled_casts: 1");
             sb.AppendLine($"- median_tick_ms: {medianTickMs:0.###}");
@@ -572,13 +610,23 @@ namespace Ludots.Tests.GAS.Production
                 "    B --> C[\"Selection: Garen Courage -> W active\"]",
                 "    C --> D[\"Selection: Jayce Hammer -> hammer form routed\"]",
                 "    D --> E[\"Move: RMB command repositions Ezreal Alpha\"]",
-                "    E --> F[\"SmartCast: Ezreal Q -> Target Dummy A hit\"]",
-                "    F --> G[\"Indicator: hold R on dummy -> hover marker appears\"]",
-                "    G --> H[\"Indicator: release -> Trueshot Barrage hit\"]",
-                "    H --> I[\"PressReleaseAim: toolbar switch -> Jayce Cannon Q preview\"]",
-                "    I --> J[\"RightClick confirm branch: cancel -> HP unchanged\"]",
-                "    I --> K[\"LeftClick confirm branch: hit -> HP reduced\"]"
+                "    E --> F[\"Camera: F4 reset restores sandbox tactical pose\"]",
+                "    F --> G[\"SmartCast: Ezreal Q -> Target Dummy A hit\"]",
+                "    G --> H[\"Indicator: hold R on dummy -> hover marker appears\"]",
+                "    H --> I[\"Indicator: release -> Trueshot Barrage hit\"]",
+                "    I --> J[\"PressReleaseAim: toolbar switch -> Jayce Cannon Q preview\"]",
+                "    J --> K[\"RightClick confirm branch: cancel -> HP unchanged\"]",
+                "    J --> L[\"LeftClick confirm branch: hit -> HP reduced\"]"
             });
+        }
+
+        private static bool IsCameraNear(CameraState state, Vector2 targetCm, float distanceCm, float pitch, float fovYDeg)
+        {
+            return MathF.Abs(state.TargetCm.X - targetCm.X) <= 0.01f &&
+                   MathF.Abs(state.TargetCm.Y - targetCm.Y) <= 0.01f &&
+                   MathF.Abs(state.DistanceCm - distanceCm) <= 0.01f &&
+                   MathF.Abs(state.Pitch - pitch) <= 0.01f &&
+                   MathF.Abs(state.FovYDeg - fovYDeg) <= 0.01f;
         }
 
         private static double Median(IReadOnlyList<double> values)
@@ -918,11 +966,19 @@ namespace Ludots.Tests.GAS.Production
             string Step,
             string ActiveModeId,
             string SelectedEntity,
+            CameraSnapshot Camera,
             IReadOnlyList<PanelSlotSnapshot> PanelSlots,
             IReadOnlyDictionary<string, int> OverlayCounts,
             int PrimitiveCount,
             int WorldTextCount,
             IReadOnlyList<EntityState> Entities);
+
+        private sealed record CameraSnapshot(
+            float TargetXCm,
+            float TargetYCm,
+            float DistanceCm,
+            float Pitch,
+            float FovYDeg);
 
         private sealed record PanelSlotSnapshot(
             int SlotIndex,

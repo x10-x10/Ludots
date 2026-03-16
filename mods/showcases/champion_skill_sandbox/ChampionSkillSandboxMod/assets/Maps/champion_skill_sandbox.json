@@ -2,7 +2,7 @@
   "Id": "champion_skill_sandbox",
   "Tags": ["champion.skill.sandbox", "showcase.3c"],
   "DefaultCamera": {
-    "VirtualCameraId": "Camera.Profile.Tactical",
+    "VirtualCameraId": "ChampionSkillSandbox.Camera.Tactical",
     "TargetXCm": 1850,
     "TargetYCm": 980,
     "DistanceCm": 3900,

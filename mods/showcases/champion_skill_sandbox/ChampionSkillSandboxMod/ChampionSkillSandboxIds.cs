@@ -10,10 +10,14 @@ namespace ChampionSkillSandboxMod
         public const string SmartCastModeId = "ChampionSkillSandbox.Mode.SmartCast";
         public const string IndicatorModeId = "ChampionSkillSandbox.Mode.Indicator";
         public const string PressReleaseModeId = "ChampionSkillSandbox.Mode.PressReleaseAim";
+        public const string TacticalCameraId = "ChampionSkillSandbox.Camera.Tactical";
 
         public const string SmartCastActionId = "CastModeSmart";
         public const string IndicatorActionId = "CastModeIndicator";
         public const string PressReleaseActionId = "CastModePressRelease";
+        public const string ResetCameraActionId = "ResetCamera";
+        public const string ResetCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Reset";
+        public const string ResetCameraRequestKey = "ChampionSkillSandbox.Camera.ResetRequested";
         public const string SelectionIndicatorPerformerKey = "champion_skill_sandbox.selection_indicator";
         public const string HoverIndicatorPerformerKey = "champion_skill_sandbox.hover_indicator";
         public const int SelectionIndicatorScopeId = 4101;

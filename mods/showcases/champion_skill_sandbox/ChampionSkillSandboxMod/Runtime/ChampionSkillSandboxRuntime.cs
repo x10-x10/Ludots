@@ -1,17 +1,20 @@
 using System;
+using System.Numerics;
 using System.Threading.Tasks;
 using Arch.Core;
 using Ludots.Core.Components;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
+using Ludots.Core.Input.Orders;
+using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Presentation.Commands;
 using Ludots.Core.Presentation.Performers;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
-using Ludots.Core.Input.Orders;
 
 namespace ChampionSkillSandboxMod.Runtime
 {
@@ -69,6 +72,7 @@ namespace ChampionSkillSandboxMod.Runtime
 
             EnsureMode(engine);
             EnsureScenarioState(engine);
+            ConsumeResetCameraRequest(engine);
             SyncFocusPanel(engine);
             SyncHoverIndicator(engine);
         }
@@ -180,6 +184,74 @@ namespace ChampionSkillSandboxMod.Runtime
             {
                 viewModeManager.SwitchTo(ChampionSkillSandboxIds.SmartCastModeId);
             }
+        }
+
+        private static void ConsumeResetCameraRequest(GameEngine engine)
+        {
+            bool requested = false;
+            if (engine.GetService(CoreServiceKeys.AuthoritativeInput) is IInputActionReader input &&
+                input.PressedThisFrame(ChampionSkillSandboxIds.ResetCameraActionId))
+            {
+                requested = true;
+            }
+
+            if (engine.GlobalContext.TryGetValue(ChampionSkillSandboxIds.ResetCameraRequestKey, out var resetObj) &&
+                resetObj is bool resetRequested &&
+                resetRequested)
+            {
+                requested = true;
+            }
+
+            engine.GlobalContext.Remove(ChampionSkillSandboxIds.ResetCameraRequestKey);
+
+            if (requested)
+            {
+                ResetCamera(engine);
+            }
+        }
+
+        private static void ResetCamera(GameEngine engine)
+        {
+            var session = engine.CurrentMapSession;
+            var cameraConfig = session?.MapConfig?.DefaultCamera;
+            var registry = engine.GetService(CoreServiceKeys.VirtualCameraRegistry);
+            if (session == null || registry == null)
+            {
+                return;
+            }
+
+            string virtualCameraId = string.IsNullOrWhiteSpace(cameraConfig?.VirtualCameraId)
+                ? ChampionSkillSandboxIds.TacticalCameraId
+                : cameraConfig.VirtualCameraId;
+
+            if (!registry.TryGet(virtualCameraId, out var definition) || definition == null)
+            {
+                return;
+            }
+
+            engine.GameSession.Camera.ActivateVirtualCamera(
+                virtualCameraId,
+                blendDurationSeconds: 0f,
+                followTarget: CameraFollowTargetFactory.Build(engine.World, engine.GlobalContext, definition.FollowTargetKind),
+                snapToFollowTargetWhenAvailable: definition.SnapToFollowTargetWhenAvailable,
+                resetRuntimeState: true);
+
+            if (cameraConfig == null)
+            {
+                return;
+            }
+
+            engine.GameSession.Camera.ApplyPose(new CameraPoseRequest
+            {
+                VirtualCameraId = virtualCameraId,
+                TargetCm = (cameraConfig.TargetXCm.HasValue || cameraConfig.TargetYCm.HasValue)
+                    ? new Vector2(cameraConfig.TargetXCm ?? 0f, cameraConfig.TargetYCm ?? 0f)
+                    : null,
+                Yaw = cameraConfig.Yaw,
+                Pitch = cameraConfig.Pitch,
+                DistanceCm = cameraConfig.DistanceCm,
+                FovYDeg = cameraConfig.FovYDeg,
+            });
         }
 
         private void SyncFocusPanel(GameEngine engine)
@@ -305,6 +377,7 @@ namespace ChampionSkillSandboxMod.Runtime
             _scenarioTagsApplied = false;
             _initialSelectionApplied = false;
             _lastMapId = string.Empty;
+            engine.GlobalContext.Remove(ChampionSkillSandboxIds.ResetCameraRequestKey);
         }
 
         private void SyncSelectionIndicator(GameEngine engine, Entity target)
