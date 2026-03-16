@@ -17,7 +17,8 @@ namespace ChampionSkillSandboxMod.Runtime
         private EntityCommandPanelHandle _focusPanelHandle = EntityCommandPanelHandle.Invalid;
         private Entity _lastPanelTarget = Entity.Null;
         private string _lastMapId = string.Empty;
-        private bool _statesApplied;
+        private bool _scenarioTagsApplied;
+        private bool _initialSelectionApplied;
 
         public Task HandleMapFocusedAsync(ScriptContext context)
         {
@@ -72,47 +73,71 @@ namespace ChampionSkillSandboxMod.Runtime
             if (!string.Equals(_lastMapId, mapId, StringComparison.OrdinalIgnoreCase))
             {
                 _lastMapId = mapId;
-                _statesApplied = false;
+                _scenarioTagsApplied = false;
+                _initialSelectionApplied = false;
             }
 
-            if (_statesApplied)
+            if (!_scenarioTagsApplied)
             {
-                return;
+                ApplyInitialTag(engine, ChampionSkillSandboxIds.EzrealCooldownName, ChampionSkillSandboxIds.EzrealBlockedTag);
+                ApplyInitialTag(engine, ChampionSkillSandboxIds.GarenCourageName, ChampionSkillSandboxIds.GarenCourageTag);
+                ApplyInitialTag(engine, ChampionSkillSandboxIds.JayceHammerName, ChampionSkillSandboxIds.JayceHammerTag);
+                _scenarioTagsApplied = true;
             }
 
-            ApplyInitialTag(engine, ChampionSkillSandboxIds.EzrealCooldownName, ChampionSkillSandboxIds.EzrealBlockedTag);
-            ApplyInitialTag(engine, ChampionSkillSandboxIds.GarenCourageName, ChampionSkillSandboxIds.GarenCourageTag);
-            ApplyInitialTag(engine, ChampionSkillSandboxIds.JayceHammerName, ChampionSkillSandboxIds.JayceHammerTag);
-            SeedInitialSelection(engine);
-            _statesApplied = true;
+            if (!_initialSelectionApplied)
+            {
+                _initialSelectionApplied = SeedInitialSelection(engine);
+            }
         }
 
-        private static void SeedInitialSelection(GameEngine engine)
+        private static bool SeedInitialSelection(GameEngine engine)
         {
-            Entity selected = engine.GetService(CoreServiceKeys.SelectedEntity);
-            if (engine.World.IsAlive(selected))
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var selectedObj) &&
+                selectedObj is Entity selected &&
+                engine.World.IsAlive(selected))
             {
-                return;
+                return true;
             }
 
             Entity fallback = ResolveChampionEntity(engine, ChampionSkillSandboxIds.EzrealAlphaName);
             if (fallback == Entity.Null)
             {
-                return;
+                return false;
             }
 
             engine.GlobalContext[CoreServiceKeys.SelectedEntity.Name] = fallback;
 
             SelectionRuntime? selection = engine.GetService(CoreServiceKeys.SelectionRuntime);
-            Entity owner = engine.GetService(CoreServiceKeys.LocalPlayerEntity);
+            Entity owner = ResolveOrAssignLocalPlayer(engine, fallback);
             if (selection == null || owner == Entity.Null || !engine.World.IsAlive(owner))
             {
-                return;
+                return false;
             }
 
             Span<Entity> selectionBuffer = stackalloc Entity[1];
             selectionBuffer[0] = fallback;
             selection.ReplaceSelection(owner, SelectionSetKeys.Ambient, selectionBuffer);
+            return true;
+        }
+
+        private static Entity ResolveOrAssignLocalPlayer(GameEngine engine, Entity fallback)
+        {
+            Entity local = engine.GetService(CoreServiceKeys.LocalPlayerEntity);
+            if (engine.World.IsAlive(local))
+            {
+                return local;
+            }
+
+            Entity resolved = IsControllableChampion(engine, fallback)
+                ? fallback
+                : ResolveFirstControllableChampion(engine);
+            if (resolved != Entity.Null)
+            {
+                engine.GlobalContext[CoreServiceKeys.LocalPlayerEntity.Name] = resolved;
+            }
+
+            return resolved;
         }
 
         private static void ApplyInitialTag(GameEngine engine, string entityName, string tagName)
@@ -232,6 +257,22 @@ namespace ChampionSkillSandboxMod.Runtime
             return result;
         }
 
+        private static Entity ResolveFirstControllableChampion(GameEngine engine)
+        {
+            Entity result = Entity.Null;
+            var query = new QueryDescription().WithAll<AbilityStateBuffer, PlayerOwner>();
+            engine.World.Query(in query, (Entity entity, ref AbilityStateBuffer _, ref PlayerOwner owner) =>
+            {
+                if (result != Entity.Null || owner.PlayerId != 1)
+                {
+                    return;
+                }
+
+                result = entity;
+            });
+            return result;
+        }
+
         private void Disable(GameEngine engine)
         {
             if (_focusPanelHandle.IsValid &&
@@ -249,7 +290,8 @@ namespace ChampionSkillSandboxMod.Runtime
 
             _focusPanelHandle = EntityCommandPanelHandle.Invalid;
             _lastPanelTarget = Entity.Null;
-            _statesApplied = false;
+            _scenarioTagsApplied = false;
+            _initialSelectionApplied = false;
             _lastMapId = string.Empty;
         }
     }
