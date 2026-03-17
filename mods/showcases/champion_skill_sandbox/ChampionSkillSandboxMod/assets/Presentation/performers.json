@@ -233,6 +233,86 @@
     ]
   },
   {
+    "id": "champion_skill_sandbox.cue.geomancer_runic_beacon",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.54, 0.9, 0.68, 0.88],
+    "defaultScale": 0.34,
+    "defaultLifetime": 0.22,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.72, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.geomancer_rune_field_cast",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Circle",
+    "defaultColor": [0.84, 0.94, 0.46, 0.18],
+    "defaultScale": 2.2,
+    "defaultLifetime": 0.42,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 8, "source": "constant", "constantValue": 0.9 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.97 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.52 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.04 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.geomancer_rune_field_hit",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.84, 0.94, 0.46, 0.12],
+    "defaultScale": 1.18,
+    "defaultLifetime": 0.24,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.72 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.9 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.97 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.52 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.04 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.geomancer_stone_pillar",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.95, 0.72, 0.42, 0.16],
+    "defaultScale": 1.34,
+    "defaultLifetime": 0.34,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.82 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.76 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.44 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.045 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.geomancer_prismatic_beam_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.5, 0.9, 1.0, 0.88],
+    "defaultScale": 0.38,
+    "defaultLifetime": 0.2,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.76, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.geomancer_prismatic_beam_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.62, 0.94, 1.0, 0.92],
+    "defaultScale": 0.3,
+    "defaultLifetime": 0.2,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.82, 0]
+  },
+  {
     "id": "champion_skill_sandbox.cue.jayce_acceleration_gate",
     "visualKind": "GroundOverlay",
     "meshOrShapeId": "Ring",

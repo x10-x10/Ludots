@@ -176,6 +176,12 @@ namespace Ludots.Core.Gameplay.GAS
         {
             if (!world.IsAlive(context.Source)) return;
 
+            var runtime = BuiltinHandlerRuntimeScope.Current;
+            if (runtime?.SpawnRequests == null)
+            {
+                throw new InvalidOperationException("CreateProjectile requires RuntimeEntitySpawnQueue in BuiltinHandlerExecutionContext.");
+            }
+
             ref readonly var proj = ref templateData.Projectile;
             if (proj.Speed <= 0) return;
 
@@ -185,8 +191,12 @@ namespace Ludots.Core.Gameplay.GAS
                 : Fix64Vec2.Zero;
             bool hasTargetPoint = TryResolveProjectileTargetPoint(world, in context, in mergedParams, out var targetPointCm);
 
-            Entity projectile = EntityCreationHelper.CreateProjectile(world,
-                new ProjectileState
+            var request = new RuntimeEntitySpawnRequest
+            {
+                Kind = RuntimeEntitySpawnKind.Assembly,
+                Source = context.Source,
+                TargetContext = context.TargetContext,
+                Projectile = new ProjectileState
                 {
                     Speed = Fix64.FromInt(proj.Speed),
                     Range = proj.Range,
@@ -198,11 +208,19 @@ namespace Ludots.Core.Gameplay.GAS
                     HasLaunchOrigin = (byte)(hasLaunchOrigin ? 1 : 0),
                     TargetPointCm = targetPointCm,
                     HasTargetPoint = (byte)(hasTargetPoint ? 1 : 0),
-                });
+                },
+                HasProjectileState = 1,
+            };
+
             if (hasLaunchOrigin)
             {
-                world.Add(projectile, new WorldPositionCm { Value = launchOrigin });
-                world.Add(projectile, new PreviousWorldPositionCm { Value = launchOrigin });
+                request.WorldPositionCm = launchOrigin;
+                request.HasWorldPosition = 1;
+            }
+
+            if (!runtime.SpawnRequests.TryEnqueue(request))
+            {
+                throw new InvalidOperationException("RuntimeEntitySpawnQueue capacity exceeded while handling CreateProjectile.");
             }
         }
 
@@ -230,13 +248,17 @@ namespace Ludots.Core.Gameplay.GAS
             {
                 var request = new RuntimeEntitySpawnRequest
                 {
-                    Kind = RuntimeEntitySpawnKind.UnitType,
+                    Kind = unit.UseTemplateSpawn ? RuntimeEntitySpawnKind.Template : RuntimeEntitySpawnKind.UnitType,
                     Source = context.Source,
                     TargetContext = context.TargetContext,
                     WorldPositionCm = origin + ComputeScatterOffsetCm(context.Source, unit.UnitTypeId, i, unit.OffsetRadius),
+                    HasWorldPosition = 1,
                     UnitTypeId = unit.UnitTypeId,
+                    TemplateId = unit.TemplateId,
                     OnSpawnEffectTemplateId = unit.OnSpawnEffectTemplateId,
                     CopySourceTeam = 1,
+                    CopySourcePlayerOwner = (byte)(unit.CopySourcePlayerOwner ? 1 : 0),
+                    LinkSourceAsParent = (byte)(unit.LinkSourceAsParent ? 1 : 0),
                 };
 
                 if (!runtime.SpawnRequests.TryEnqueue(request))
@@ -396,28 +418,8 @@ namespace Ludots.Core.Gameplay.GAS
         }
     }
 
-    public struct ProjectileState
-    {
-        public Fix64 Speed;
-        public int Range;
-        public int ArcHeight;
-        public int ImpactEffectTemplateId;
-        public Entity Source;
-        public Entity Target;
-        public Fix64Vec2 LaunchOriginCm;
-        public byte HasLaunchOrigin;
-        public Fix64Vec2 TargetPointCm;
-        public byte HasTargetPoint;
-        public Fix64 TraveledCm;
-    }
-
     public static class EntityCreationHelper
     {
-        public static Entity CreateProjectile(World world, in ProjectileState state)
-        {
-            return world.Create(state);
-        }
-
         public static Entity CreateDisplacement(World world, in DisplacementState state)
         {
             return world.Create(state);

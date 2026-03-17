@@ -162,6 +162,100 @@
     ]
   },
   {
+    "id": "Effect.Champion.Geomancer.RunicBeacon",
+    "tags": ["Effect.Champion.Manifestation", "Effect.Champion.Summon"],
+    "presetType": "CreateUnit",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "unitCreation": {
+      "templateId": "champion_skill_sandbox_runic_beacon",
+      "count": 1,
+      "copySourcePlayerOwner": true,
+      "linkSourceAsParent": true
+    }
+  },
+  {
+    "id": "Effect.Champion.Geomancer.RuneField",
+    "tags": ["Effect.Champion.Manifestation", "Effect.Champion.Zone"],
+    "presetType": "CreateUnit",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "unitCreation": {
+      "templateId": "champion_skill_sandbox_rune_field",
+      "count": 1,
+      "onSpawnEffect": "Effect.Champion.Geomancer.RuneFieldPersistent",
+      "copySourcePlayerOwner": true,
+      "linkSourceAsParent": true
+    }
+  },
+  {
+    "id": "Effect.Champion.Geomancer.RuneFieldPersistent",
+    "tags": ["Effect.Champion.Zone"],
+    "presetType": "PeriodicSearch",
+    "lifetime": "After",
+    "participatesInResponse": false,
+    "duration": {
+      "durationTicks": 120,
+      "periodTicks": 15
+    },
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Circle",
+      "radius": 220
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 12
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Champion.Geomancer.RuneFieldHit"
+    }
+  },
+  {
+    "id": "Effect.Champion.Geomancer.RuneFieldHit",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -6.0 }
+    ]
+  },
+  {
+    "id": "Effect.Champion.Geomancer.StonePillar",
+    "tags": ["Effect.Champion.Manifestation", "Effect.Champion.Blocker"],
+    "presetType": "CreateUnit",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "unitCreation": {
+      "templateId": "champion_skill_sandbox_stone_pillar",
+      "count": 1,
+      "copySourcePlayerOwner": true,
+      "linkSourceAsParent": true
+    }
+  },
+  {
+    "id": "Effect.Champion.Geomancer.PrismaticBeam",
+    "tags": ["Effect.Champion.Damage", "Effect.Champion.Beam"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": { "kind": "BuiltinSpatial", "shape": "Line", "length": 920, "halfWidth": 80 },
+    "targetFilter": { "relationFilter": "Hostile", "excludeSource": true, "maxTargets": 16 },
+    "targetDispatch": { "payloadEffect": "Effect.Champion.Geomancer.PrismaticBeamHit" }
+  },
+  {
+    "id": "Effect.Champion.Geomancer.PrismaticBeamHit",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -20.0 }
+    ]
+  },
+  {
     "id": "Effect.Champion.Jayce.Cannon.AccelerationGate",
     "tags": ["Effect.Champion.Buff"],
     "presetType": "Buff",

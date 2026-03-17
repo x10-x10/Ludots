@@ -15,17 +15,20 @@ using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Registry;
+using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
+using Ludots.Core.Navigation2D.Components;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Utils;
+using Ludots.Core.Physics2D.Components;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
 using Ludots.Core.UI.EntityCommandPanels;
@@ -261,6 +264,112 @@ namespace Ludots.Tests.GAS.Production
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "press_release_confirm_hit");
             timeline.Add($"[T+010] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
 
+            SelectNamedEntity(engine, backend, "Geomancer Alpha", frameTimesMs);
+            toolbar.Activate(SmartCastModeId);
+            Tick(engine, 1, frameTimesMs);
+            var geomancerSlots = CopySelectedSlots(engine);
+            Assert.That(geomancerSlots[0].Label, Is.EqualTo("Runic Beacon"));
+            Assert.That(geomancerSlots[1].Label, Is.EqualTo("Rune Field"));
+            Assert.That(geomancerSlots[2].Label, Is.EqualTo("Stone Pillar"));
+            Assert.That(geomancerSlots[3].Label, Is.EqualTo("Prismatic Beam"));
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "select_geomancer");
+            timeline.Add("[T+011] Select(Geomancer Alpha) -> panel exposes summon / zone / blocker / beam loadout");
+
+            float dummyHealthBeforeBeam = ReadHealth(engine.World, "Target Dummy C");
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy C"), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/r", frameTimesMs);
+            Tick(engine, 4, frameTimesMs);
+            float dummyHealthAfterBeam = ReadHealth(engine.World, "Target Dummy C");
+            Assert.That(
+                dummyHealthAfterBeam,
+                Is.LessThan(dummyHealthBeforeBeam),
+                $"{BuildInputActionDiagnostics(engine, "SkillR")} || {BuildAbilityDiagnostics(engine, "Geomancer Alpha")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)} || {BuildFeedbackDiagnostics(primitives, worldHud)}");
+            Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Beam hit should emit visible pulse markers.");
+            Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Beam hit should emit visible world text feedback.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "prismatic_beam_hit");
+            timeline.Add($"[T+012] Geomancer Alpha.Cast(Prismatic Beam) -> Target Dummy C | Hit | HP {dummyHealthBeforeBeam:0} -> {dummyHealthAfterBeam:0}");
+
+            Vector2 beaconSpawnWorld = new Vector2(1720f, 1640f);
+            SetMouseWorld(engine, backend, GetGroundScreenFromWorld(engine, beaconSpawnWorld), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/q", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => EntityExists(engine.World, "Runic Beacon"),
+                maxFrames: 12);
+            AssertManifestationOwnership(engine.World, "Runic Beacon", "Geomancer Alpha");
+            Vector2 beaconHoverPoint = FindHoverScreenPoint(engine, backend, "Runic Beacon", GetEntityScreen(engine, "Runic Beacon"), frameTimesMs);
+            Assert.That(ReadHoveredEntityName(engine), Is.EqualTo("Runic Beacon"));
+            LeftClickWorld(engine, backend, beaconHoverPoint, frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => string.Equals(GetSelectedEntityName(engine), "Runic Beacon", StringComparison.Ordinal),
+                maxFrames: 12);
+            Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Spawned summon should be formally selectable.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "summon_beacon_selected");
+            timeline.Add("[T+013] Geomancer Alpha.Cast(Runic Beacon) -> summon spawned | hover-selectable | owner-parent link copied");
+
+            SelectNamedEntity(engine, backend, "Geomancer Alpha", frameTimesMs);
+            float dummyHealthBeforeRuneField = ReadHealth(engine.World, "Target Dummy C");
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy C"), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/w", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => EntityExists(engine.World, "Rune Field"),
+                maxFrames: 12);
+            AssertManifestationOwnership(engine.World, "Rune Field", "Geomancer Alpha");
+            Vector2 runeFieldScreen = GetEntityScreen(engine, "Rune Field");
+            Assert.That(float.IsNaN(runeFieldScreen.X) || float.IsInfinity(runeFieldScreen.X), Is.False, "Rune Field should project into the headless camera.");
+            Assert.That(float.IsNaN(runeFieldScreen.Y) || float.IsInfinity(runeFieldScreen.Y), Is.False, "Rune Field should project into the headless camera.");
+            bool runeFieldHitConfirmed = false;
+            for (int i = 0; i < 96; i++)
+            {
+                if (ReadHealth(engine.World, "Target Dummy C") < dummyHealthBeforeRuneField)
+                {
+                    runeFieldHitConfirmed = true;
+                    break;
+                }
+
+                Tick(engine, 1, frameTimesMs);
+            }
+
+            float dummyHealthAfterRuneField = ReadHealth(engine.World, "Target Dummy C");
+            Assert.That(
+                runeFieldHitConfirmed,
+                Is.True,
+                $"{BuildRuneFieldPeriodicDiagnostics(engine.World)} || {BuildAbilityDiagnostics(engine, "Geomancer Alpha")} || {BuildSelectionStateDiagnostics(engine)}");
+            Assert.That(
+                dummyHealthAfterRuneField,
+                Is.LessThan(dummyHealthBeforeRuneField),
+                "Rune Field should keep resolving periodic hits around the spawned manifestation.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "rune_field_tick");
+            timeline.Add($"[T+014] Geomancer Alpha.Cast(Rune Field) -> zone manifestation spawned under Target Dummy C | periodic hit confirmed | HP {dummyHealthBeforeRuneField:0} -> {dummyHealthAfterRuneField:0}");
+
+            SelectNamedEntity(engine, backend, "Geomancer Alpha", frameTimesMs);
+            Vector2 pillarWorld = new Vector2(1710f, 1400f);
+            SetMouseWorld(engine, backend, GetGroundScreenFromWorld(engine, pillarWorld), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/e", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => EntityExists(engine.World, "Stone Pillar"),
+                maxFrames: 12);
+            AssertManifestationOwnership(engine.World, "Stone Pillar", "Geomancer Alpha");
+            AssertBlockerManifestationBridge(engine.World, "Stone Pillar");
+            Vector2 pillarHoverPoint = FindHoverScreenPoint(engine, backend, "Stone Pillar", GetEntityScreen(engine, "Stone Pillar"), frameTimesMs);
+            Assert.That(ReadHoveredEntityName(engine), Is.EqualTo("Stone Pillar"));
+            LeftClickWorld(engine, backend, pillarHoverPoint, frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => string.Equals(GetSelectedEntityName(engine), "Stone Pillar", StringComparison.Ordinal),
+                maxFrames: 12);
+            Assert.That(CountOverlays(overlays, GroundOverlayShape.Ring), Is.GreaterThan(0), "Blocker manifestation should also be formally selectable.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "stone_pillar_selected");
+            timeline.Add("[T+015] Geomancer Alpha.Cast(Stone Pillar) -> blocker manifestation spawned | selectable | bridged to nav/physics obstacle");
+
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildTraceJsonl(snapshots));
             File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildBattleReport(timeline, snapshots, frameTimesMs));
             File.WriteAllText(Path.Combine(artifactDir, "path.mmd"), BuildPathMermaid());
@@ -482,14 +591,20 @@ namespace Ludots.Tests.GAS.Production
                 "Ezreal Cooldown",
                 "Garen Courage",
                 "Jayce Hammer",
-                "Target Dummy A"
+                "Geomancer Alpha",
+                "Target Dummy A",
+                "Target Dummy C"
             };
 
-            var states = new List<EntityState>(trackedEntities.Length);
+            var states = new List<EntityState>(trackedEntities.Length + 3);
             foreach (string name in trackedEntities)
             {
                 states.Add(new EntityState(name, ReadHealth(engine.World, name)));
             }
+
+            AddEntityStateIfPresent(engine.World, states, "Runic Beacon");
+            AddEntityStateIfPresent(engine.World, states, "Rune Field");
+            AddEntityStateIfPresent(engine.World, states, "Stone Pillar");
 
             snapshots.Add(new AcceptanceSnapshot(
                 Step: step,
@@ -590,12 +705,14 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine($"- final_feedback_world_text: {finalSnapshot.WorldTextCount}");
             sb.AppendLine();
             sb.AppendLine("## Summary Stats");
-            sb.AppendLine("- total_actions: 10");
-            sb.AppendLine("- selection_switches: 4");
+            sb.AppendLine("- total_actions: 15");
+            sb.AppendLine("- selection_switches: 9");
             sb.AppendLine("- move_commands: 1");
             sb.AppendLine("- camera_resets: 1");
-            sb.AppendLine("- successful_hits: 3");
+            sb.AppendLine("- successful_hits: 5");
             sb.AppendLine("- cancelled_casts: 1");
+            sb.AppendLine("- manifestation_spawns: 3");
+            sb.AppendLine("- manifestation_selections: 2");
             sb.AppendLine($"- median_tick_ms: {medianTickMs:0.###}");
             sb.AppendLine($"- max_tick_ms: {maxTickMs:0.###}");
             return sb.ToString();
@@ -616,7 +733,12 @@ namespace Ludots.Tests.GAS.Production
                 "    H --> I[\"Indicator: release -> Trueshot Barrage hit\"]",
                 "    I --> J[\"PressReleaseAim: toolbar switch -> Jayce Cannon Q preview\"]",
                 "    J --> K[\"RightClick confirm branch: cancel -> HP unchanged\"]",
-                "    J --> L[\"LeftClick confirm branch: hit -> HP reduced\"]"
+                "    J --> L[\"LeftClick confirm branch: hit -> HP reduced\"]",
+                "    L --> M[\"Selection: Geomancer Alpha -> manifestation loadout visible\"]",
+                "    M --> N[\"Beam: Prismatic Beam -> Target Dummy C hit\"]",
+                "    N --> O[\"Summon: Runic Beacon spawned -> selectable summon\"]",
+                "    O --> P[\"Zone: Rune Field spawned under Target Dummy C -> periodic hit confirmed\"]",
+                "    P --> Q[\"Blocker: Stone Pillar spawned -> nav/physics obstacle bridge active\"]"
             });
         }
 
@@ -771,23 +893,34 @@ namespace Ludots.Tests.GAS.Production
 
         private static Entity FindEntityByName(World world, string entityName)
         {
-            Entity found = Entity.Null;
+            if (TryFindEntityByName(world, entityName, out Entity found))
+            {
+                return found;
+            }
+
+            Assert.That(found, Is.Not.EqualTo(Entity.Null), $"Entity '{entityName}' should exist on champion_skill_sandbox.");
+            return found;
+        }
+
+        private static bool TryFindEntityByName(World world, string entityName, out Entity found)
+        {
+            Entity candidate = Entity.Null;
             var query = new QueryDescription().WithAll<Name>();
             world.Query(in query, (Entity entity, ref Name name) =>
             {
-                if (found != Entity.Null)
+                if (candidate != Entity.Null)
                 {
                     return;
                 }
 
                 if (string.Equals(name.Value, entityName, StringComparison.Ordinal))
                 {
-                    found = entity;
+                    candidate = entity;
                 }
             });
 
-            Assert.That(found, Is.Not.EqualTo(Entity.Null), $"Entity '{entityName}' should exist on champion_skill_sandbox.");
-            return found;
+            found = candidate;
+            return found != Entity.Null;
         }
 
         private static Vector2 ReadPosition(World world, string name)
@@ -813,6 +946,98 @@ namespace Ludots.Tests.GAS.Production
             }
 
             return attributes.GetCurrent(healthId);
+        }
+
+        private static bool EntityExists(World world, string entityName)
+        {
+            return TryFindEntityByName(world, entityName, out _);
+        }
+
+        private static void AddEntityStateIfPresent(World world, ICollection<EntityState> states, string entityName)
+        {
+            if (!TryFindEntityByName(world, entityName, out _))
+            {
+                return;
+            }
+
+            states.Add(new EntityState(entityName, ReadHealth(world, entityName)));
+        }
+
+        private static void AssertManifestationOwnership(World world, string entityName, string parentName)
+        {
+            Entity entity = FindEntityByName(world, entityName);
+            Entity parent = FindEntityByName(world, parentName);
+
+            Assert.That(world.TryGet(entity, out PlayerOwner owner), Is.True, $"{entityName} should inherit PlayerOwner.");
+            Assert.That(owner.PlayerId, Is.EqualTo(1), $"{entityName} should inherit local player ownership.");
+            Assert.That(world.TryGet(entity, out Team team), Is.True, $"{entityName} should inherit Team.");
+            Assert.That(team.Id, Is.EqualTo(1), $"{entityName} should inherit the caster team.");
+            Assert.That(world.TryGet(entity, out ChildOf child), Is.True, $"{entityName} should link back to the caster.");
+            Assert.That(child.Parent, Is.EqualTo(parent));
+            Assert.That(world.TryGet(entity, out MapEntity map), Is.True, $"{entityName} should stay scoped to the sandbox map.");
+            Assert.That(map.MapId.Value, Is.EqualTo(MapId));
+            Assert.That(world.Has<SelectionSelectableTag>(entity), Is.True, $"{entityName} should stay formally selectable.");
+        }
+
+        private static void AssertBlockerManifestationBridge(World world, string entityName)
+        {
+            Entity entity = FindEntityByName(world, entityName);
+
+            Assert.That(world.TryGet(entity, out ManifestationObstacleIntent2D intent), Is.True, $"{entityName} should author blocker intent.");
+            Assert.That(intent.SinkPhysicsCollider, Is.EqualTo(1));
+            Assert.That(intent.SinkNavigationObstacle, Is.EqualTo(1));
+            Assert.That(world.TryGet(entity, out Collider2D collider), Is.True, $"{entityName} should bridge into physics collider.");
+            Assert.That(collider.Type, Is.EqualTo(ColliderType2D.Circle));
+            Assert.That(world.TryGet(entity, out NavObstacle2D obstacle), Is.True, $"{entityName} should bridge into navigation obstacle.");
+            Assert.That(obstacle.Shape, Is.EqualTo(NavObstacleShape2D.Circle));
+            Assert.That(world.Has<ManifestationObstacleBridge2DState>(entity), Is.True, $"{entityName} should retain manifestation bridge state.");
+            Assert.That(world.Has<NavKinematics2D>(entity), Is.True, $"{entityName} should provide navigation obstacle kinematics.");
+            Assert.That(world.Has<Mass2D>(entity), Is.True, $"{entityName} should become a static physics body.");
+            Assert.That(world.Has<Position2D>(entity), Is.True, $"{entityName} should project into physics position space.");
+        }
+
+        private static string BuildRuneFieldPeriodicDiagnostics(World world)
+        {
+            int templateId = EffectTemplateIdRegistry.GetId("Effect.Champion.Geomancer.RuneFieldPersistent");
+            if (templateId <= 0)
+            {
+                return "runeFieldPersistentTemplate=missing";
+            }
+
+            Entity runeField = FindEntityByName(world, "Rune Field");
+            Entity matchingEffect = Entity.Null;
+            GameplayEffect effectState = default;
+            EffectContext effectContext = default;
+
+            var query = new QueryDescription().WithAll<GameplayEffect, EffectContext, EffectTemplateRef>();
+            world.Query(in query, (Entity entity, ref GameplayEffect effect, ref EffectContext context, ref EffectTemplateRef templateRef) =>
+            {
+                if (matchingEffect != Entity.Null)
+                {
+                    return;
+                }
+
+                if (templateRef.TemplateId != templateId)
+                {
+                    return;
+                }
+
+                if (!context.Target.Equals(runeField))
+                {
+                    return;
+                }
+
+                matchingEffect = entity;
+                effectState = effect;
+                effectContext = context;
+            });
+
+            if (matchingEffect == Entity.Null)
+            {
+                return "runeFieldPersistentEffect=missing";
+            }
+
+            return $"runeFieldPersistentEffect=id:{matchingEffect.Id},state:{effectState.State},period:{effectState.PeriodTicks},nextTick:{effectState.NextTickAtTick},targetAlive:{world.IsAlive(effectContext.Target)}";
         }
 
         private static string BuildAbilityDiagnostics(GameEngine engine, string actorName)

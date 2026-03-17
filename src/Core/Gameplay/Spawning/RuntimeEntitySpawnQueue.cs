@@ -1,4 +1,5 @@
 using Arch.Core;
+using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Map;
 using Ludots.Core.Mathematics.FixedPoint;
 
@@ -9,6 +10,7 @@ namespace Ludots.Core.Gameplay.Spawning
         None = 0,
         UnitType = 1,
         Template = 2,
+        Assembly = 3,
     }
 
     public struct RuntimeEntitySpawnRequest
@@ -17,11 +19,17 @@ namespace Ludots.Core.Gameplay.Spawning
         public Entity Source;
         public Entity TargetContext;
         public Fix64Vec2 WorldPositionCm;
+        public byte HasWorldPosition;
         public int UnitTypeId;
         public string TemplateId;
         public int OnSpawnEffectTemplateId;
         public MapId MapId;
         public byte CopySourceTeam;
+        public byte CopySourcePlayerOwner;
+        public Entity Parent;
+        public byte LinkSourceAsParent;
+        public ProjectileState Projectile;
+        public byte HasProjectileState;
     }
 
     public sealed class RuntimeEntitySpawnQueue

@@ -193,6 +193,98 @@
     }
   },
   {
+    "id": "Ability.Champion.Geomancer.RunicBeacon",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 42, "tag": "Cooldown.Champion.Geomancer.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.RunicBeacon" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 720, "radius": 110, "showRangeCircle": true, "validColor": "#86E2A977", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.Q"] },
+    "presentation": {
+      "displayName": "Runic Beacon",
+      "iconGlyph": "Q",
+      "accentColor": "#86E2A9",
+      "hintText": "Summon a tethered beacon",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview beacon landing",
+        "PressReleaseAimCast": "Release key, then confirm beacon"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Geomancer.RuneField",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 54, "tag": "Cooldown.Champion.Geomancer.W" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.RuneField" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 720, "radius": 220, "showRangeCircle": true, "validColor": "#D7F08B77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.W"] },
+    "presentation": {
+      "displayName": "Rune Field",
+      "iconGlyph": "W",
+      "accentColor": "#D7F08B",
+      "hintText": "Place a persistent damaging circle",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview rune field",
+        "PressReleaseAimCast": "Release key, then confirm rune field"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Geomancer.StonePillar",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 66, "tag": "Cooldown.Champion.Geomancer.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.StonePillar" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 720, "radius": 140, "showRangeCircle": true, "validColor": "#F0B36C77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.E"] },
+    "presentation": {
+      "displayName": "Stone Pillar",
+      "iconGlyph": "E",
+      "accentColor": "#F0B36C",
+      "hintText": "Raise a blocker manifestation",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview pillar placement",
+        "PressReleaseAimCast": "Release key, then confirm pillar"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Geomancer.PrismaticBeam",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 96, "tag": "Cooldown.Champion.Geomancer.R" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.PrismaticBeam" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 920, "radius": 80, "showRangeCircle": true, "validColor": "#78E2FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.R"] },
+    "presentation": {
+      "displayName": "Prismatic Beam",
+      "iconGlyph": "R",
+      "accentColor": "#78E2FF",
+      "hintText": "Fire a direct beam to cursor",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview beam",
+        "PressReleaseAimCast": "Release key, then confirm beam"
+      }
+    }
+  },
+  {
     "id": "Ability.Champion.Jayce.Cannon.AccelerationGate",
     "exec": {
       "clockId": "FixedFrame",

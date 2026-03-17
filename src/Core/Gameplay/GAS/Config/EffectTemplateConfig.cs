@@ -178,9 +178,12 @@ namespace Ludots.Core.Gameplay.GAS.Config
     public sealed class UnitCreationConfig
     {
         public string UnitType { get; set; }
+        public string TemplateId { get; set; }
         public int Count { get; set; } = 1;
         public int OffsetRadius { get; set; }
         public string OnSpawnEffect { get; set; }
+        public bool CopySourcePlayerOwner { get; set; }
+        public bool LinkSourceAsParent { get; set; }
     }
 
     /// <summary>Displacement component configuration.</summary>

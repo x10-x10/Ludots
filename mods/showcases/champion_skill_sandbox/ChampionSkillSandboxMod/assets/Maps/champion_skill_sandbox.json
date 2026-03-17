@@ -59,6 +59,14 @@
       }
     },
     {
+      "Template": "champion_skill_sandbox_geomancer",
+      "Overrides": {
+        "Name": { "Value": "Geomancer Alpha" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 1500, "Y": 1600 } }
+      }
+    },
+    {
       "Template": "champion_skill_sandbox_enemy_dummy",
       "Overrides": {
         "Name": { "Value": "Target Dummy A" },

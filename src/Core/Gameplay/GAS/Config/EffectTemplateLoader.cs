@@ -342,10 +342,23 @@ namespace Ludots.Core.Gameplay.GAS.Config
         {
             if (cfg == null) return default;
 
-            int unitTypeId = UnitTypeRegistry.Register(cfg.UnitType);
-            if (unitTypeId <= 0)
+            bool hasUnitType = !string.IsNullOrWhiteSpace(cfg.UnitType);
+            bool hasTemplateId = !string.IsNullOrWhiteSpace(cfg.TemplateId);
+            if (hasUnitType == hasTemplateId)
             {
-                throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: unitCreation.unitType is required.");
+                throw new InvalidOperationException(
+                    $"Effect template '{ownerId}' in {relativePath}: unitCreation must declare exactly one of unitType or templateId.");
+            }
+
+            int unitTypeId = 0;
+            if (hasUnitType)
+            {
+                unitTypeId = UnitTypeRegistry.Register(cfg.UnitType);
+                if (unitTypeId <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Effect template '{ownerId}' in {relativePath}: unitCreation.unitType is required.");
+                }
             }
 
             int onSpawnId = 0;
@@ -361,9 +374,13 @@ namespace Ludots.Core.Gameplay.GAS.Config
             return new UnitCreationDescriptor
             {
                 UnitTypeId = unitTypeId,
+                TemplateId = hasTemplateId ? cfg.TemplateId : string.Empty,
+                UseTemplateSpawn = hasTemplateId,
                 Count = cfg.Count,
                 OffsetRadius = cfg.OffsetRadius,
-                OnSpawnEffectTemplateId = onSpawnId
+                OnSpawnEffectTemplateId = onSpawnId,
+                CopySourcePlayerOwner = cfg.CopySourcePlayerOwner,
+                LinkSourceAsParent = cfg.LinkSourceAsParent,
             };
         }
 

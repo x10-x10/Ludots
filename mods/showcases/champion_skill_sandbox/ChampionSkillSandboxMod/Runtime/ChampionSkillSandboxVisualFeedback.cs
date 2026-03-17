@@ -218,6 +218,11 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterAbilityCue(performers, "Ability.Champion.Garen.Judgment", "champion_skill_sandbox.cue.garen_judgment");
             RegisterAbilityCue(performers, "Ability.Champion.Garen.DemacianJustice", "champion_skill_sandbox.cue.garen_demacian_justice_cast");
 
+            RegisterAbilityCue(performers, "Ability.Champion.Geomancer.RunicBeacon", "champion_skill_sandbox.cue.geomancer_runic_beacon");
+            RegisterAbilityCue(performers, "Ability.Champion.Geomancer.RuneField", "champion_skill_sandbox.cue.geomancer_rune_field_cast");
+            RegisterAbilityCue(performers, "Ability.Champion.Geomancer.StonePillar", "champion_skill_sandbox.cue.geomancer_stone_pillar");
+            RegisterAbilityCue(performers, "Ability.Champion.Geomancer.PrismaticBeam", "champion_skill_sandbox.cue.geomancer_prismatic_beam_cast");
+
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Cannon.AccelerationGate", "champion_skill_sandbox.cue.jayce_acceleration_gate");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Cannon.HyperCharge", "champion_skill_sandbox.cue.jayce_hyper_charge");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Cannon.ShockBlast", "champion_skill_sandbox.cue.jayce_shock_blast_cast");
@@ -232,6 +237,8 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterEffectCue(performers, "Effect.Champion.Ezreal.TrueshotBarrageHit", "champion_skill_sandbox.cue.ezreal_trueshot_barrage_hit");
             RegisterEffectCue(performers, "Effect.Champion.Garen.JudgmentHit", "champion_skill_sandbox.cue.garen_judgment_hit");
             RegisterEffectCue(performers, "Effect.Champion.Garen.DemacianJusticeHit", "champion_skill_sandbox.cue.garen_demacian_justice_hit");
+            RegisterEffectCue(performers, "Effect.Champion.Geomancer.RuneFieldHit", "champion_skill_sandbox.cue.geomancer_rune_field_hit");
+            RegisterEffectCue(performers, "Effect.Champion.Geomancer.PrismaticBeamHit", "champion_skill_sandbox.cue.geomancer_prismatic_beam_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Cannon.ShockBlastHit", "champion_skill_sandbox.cue.jayce_shock_blast_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.LightningFieldHit", "champion_skill_sandbox.cue.jayce_hammer_lightning_field_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.ThunderingBlowHit", "champion_skill_sandbox.cue.jayce_hammer_thundering_blow_hit");

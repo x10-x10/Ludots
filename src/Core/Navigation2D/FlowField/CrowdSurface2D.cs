@@ -183,6 +183,79 @@ namespace Ludots.Core.Navigation2D.FlowField
             }
         }
 
+        public void SplatObstacleOrientedBox(
+            in Vector2 centerCm,
+            float halfWidthCm,
+            float halfHeightCm,
+            float rotationRad,
+            bool createTilesIfMissing = true)
+        {
+            if (!(halfWidthCm > 0f) || !(halfHeightCm > 0f))
+            {
+                return;
+            }
+
+            Span<Vector2> vertices = stackalloc Vector2[4];
+            float sin = MathF.Sin(rotationRad);
+            float cos = MathF.Cos(rotationRad);
+
+            vertices[0] = centerCm + Rotate(new Vector2(-halfWidthCm, -halfHeightCm), sin, cos);
+            vertices[1] = centerCm + Rotate(new Vector2(halfWidthCm, -halfHeightCm), sin, cos);
+            vertices[2] = centerCm + Rotate(new Vector2(halfWidthCm, halfHeightCm), sin, cos);
+            vertices[3] = centerCm + Rotate(new Vector2(-halfWidthCm, halfHeightCm), sin, cos);
+
+            SplatObstaclePolygon(vertices, createTilesIfMissing);
+        }
+
+        public void SplatObstaclePolygon(ReadOnlySpan<Vector2> verticesCm, bool createTilesIfMissing = true)
+        {
+            if (verticesCm.Length < 3)
+            {
+                return;
+            }
+
+            float cellSize = CellSizeCm.ToFloat();
+            if (!(cellSize > 1e-6f))
+            {
+                return;
+            }
+
+            float padding = cellSize * 0.70710677f;
+            float paddingSq = padding * padding;
+
+            float minX = verticesCm[0].X;
+            float maxX = verticesCm[0].X;
+            float minY = verticesCm[0].Y;
+            float maxY = verticesCm[0].Y;
+            for (int i = 1; i < verticesCm.Length; i++)
+            {
+                var vertex = verticesCm[i];
+                minX = MathF.Min(minX, vertex.X);
+                maxX = MathF.Max(maxX, vertex.X);
+                minY = MathF.Min(minY, vertex.Y);
+                maxY = MathF.Max(maxY, vertex.Y);
+            }
+
+            int minCellX = FloorToCell(minX - padding);
+            int maxCellX = FloorToCell(maxX + padding);
+            int minCellY = FloorToCell(minY - padding);
+            int maxCellY = FloorToCell(maxY + padding);
+
+            for (int cellY = minCellY; cellY <= maxCellY; cellY++)
+            {
+                for (int cellX = minCellX; cellX <= maxCellX; cellX++)
+                {
+                    Vector2 center = CellCenterToWorldCm(cellX, cellY).ToVector2();
+                    if (!IsPointInsideOrNearPolygon(center, verticesCm, paddingSq))
+                    {
+                        continue;
+                    }
+
+                    SetObstacleCell(cellX, cellY, blocked: true, createTilesIfMissing);
+                }
+            }
+        }
+
         public void SplatDiscomfortCircle(
             in Vector2 positionCm,
             float radiusCm,
@@ -334,6 +407,73 @@ namespace Ludots.Core.Navigation2D.FlowField
             int ly = cellY & _tileMask;
             index = ly * TileSizeCells + lx;
             return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector2 Rotate(in Vector2 value, float sin, float cos)
+        {
+            return new Vector2(
+                (cos * value.X) - (sin * value.Y),
+                (sin * value.X) + (cos * value.Y));
+        }
+
+        private static bool IsPointInsideOrNearPolygon(in Vector2 point, ReadOnlySpan<Vector2> polygon, float maxEdgeDistanceSq)
+        {
+            if (IsPointInsidePolygon(point, polygon))
+            {
+                return true;
+            }
+
+            for (int i = 0; i < polygon.Length; i++)
+            {
+                Vector2 a = polygon[i];
+                Vector2 b = polygon[(i + 1) % polygon.Length];
+                if (DistanceSquaredPointToSegment(point, a, b) <= maxEdgeDistanceSq)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsPointInsidePolygon(in Vector2 point, ReadOnlySpan<Vector2> polygon)
+        {
+            bool inside = false;
+            int j = polygon.Length - 1;
+            for (int i = 0; i < polygon.Length; j = i++)
+            {
+                Vector2 a = polygon[i];
+                Vector2 b = polygon[j];
+                float denominator = b.Y - a.Y;
+                if (MathF.Abs(denominator) < 1e-6f)
+                {
+                    denominator = denominator >= 0f ? 1e-6f : -1e-6f;
+                }
+
+                bool intersects = ((a.Y > point.Y) != (b.Y > point.Y)) &&
+                    (point.X < ((b.X - a.X) * (point.Y - a.Y) / denominator) + a.X);
+                if (intersects)
+                {
+                    inside = !inside;
+                }
+            }
+
+            return inside;
+        }
+
+        private static float DistanceSquaredPointToSegment(in Vector2 point, in Vector2 a, in Vector2 b)
+        {
+            Vector2 ab = b - a;
+            float lengthSq = ab.LengthSquared();
+            if (lengthSq <= 1e-6f)
+            {
+                return Vector2.DistanceSquared(point, a);
+            }
+
+            float t = Math.Clamp(Vector2.Dot(point - a, ab) / lengthSq, 0f, 1f);
+            Vector2 projection = a + (ab * t);
+            return Vector2.DistanceSquared(point, projection);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

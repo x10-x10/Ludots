@@ -165,12 +165,20 @@ namespace Ludots.Core.Gameplay.GAS
     {
         /// <summary>Unit type identifier (resolved from string at load time).</summary>
         public int UnitTypeId;
+        /// <summary>Template identifier for template-backed runtime manifestation spawns.</summary>
+        public string TemplateId;
+        /// <summary>True when CreateUnit should materialize a template instead of a bare UnitType.</summary>
+        public bool UseTemplateSpawn;
         /// <summary>Number of units to create.</summary>
         public int Count;
         /// <summary>Spawn offset radius from target position (cm).</summary>
         public int OffsetRadius;
         /// <summary>Effect template ID to apply to each spawned unit.</summary>
         public int OnSpawnEffectTemplateId;
+        /// <summary>Whether the spawned unit should inherit PlayerOwner from the source entity.</summary>
+        public bool CopySourcePlayerOwner;
+        /// <summary>Whether the source entity should become the parent relation of the spawned unit.</summary>
+        public bool LinkSourceAsParent;
     }
 
     /// <summary>

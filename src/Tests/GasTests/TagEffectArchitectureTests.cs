@@ -347,38 +347,49 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
-        public void BuiltinHandlers_CreateProjectile_CreatesEntity()
+        public void BuiltinHandlers_CreateProjectile_EnqueuesAssemblySpawnRequest()
         {
             using var world = World.Create();
             var caster = world.Create(WorldPositionCm.FromCm(1200, 800));
             var target = world.Create();
             var effect = world.Create();
+            var queue = new RuntimeEntitySpawnQueue(capacity: 4);
+            var runtime = new BuiltinHandlerExecutionContext
+            {
+                SpawnRequests = queue,
+            };
+            var registry = new BuiltinHandlerRegistry();
+            BuiltinHandlers.RegisterAll(registry);
 
             var ctx = new EffectContext { Source = caster, Target = target };
             var tpl = new EffectTemplateData();
             tpl.Projectile = new ProjectileDescriptor { Speed = 500, Range = 1000, ArcHeight = 0, ImpactEffectTemplateId = 42 };
 
             var mergedParams = new EffectConfigParams();
-            BuiltinHandlers.HandleCreateProjectile(world, effect, ref ctx, in mergedParams, in tpl);
+            registry.Invoke(BuiltinHandlerId.CreateProjectile, world, effect, ref ctx, in mergedParams, in tpl, runtime);
 
-            // Verify a ProjectileState entity was created
-            var query = new QueryDescription().WithAll<ProjectileState>();
-            int count = 0;
-            world.Query(in query, (ref ProjectileState ps) =>
-            {
-                count++;
-                That(ps.Speed, Is.EqualTo(Fix64.FromInt(500)));
-                That(ps.ImpactEffectTemplateId, Is.EqualTo(42));
-            });
-            That(count, Is.EqualTo(1));
+            That(queue.TryDequeue(out var request), Is.True);
+            That(request.Kind, Is.EqualTo(RuntimeEntitySpawnKind.Assembly));
+            That(request.HasProjectileState, Is.EqualTo(1));
+            That(request.HasWorldPosition, Is.EqualTo(1));
+            That(request.Projectile.Speed, Is.EqualTo(Fix64.FromInt(500)));
+            That(request.Projectile.ImpactEffectTemplateId, Is.EqualTo(42));
+            That(request.WorldPositionCm, Is.EqualTo(Fix64Vec2.FromInt(1200, 800)));
         }
 
         [Test]
-        public void BuiltinHandlers_CreateProjectile_PreservesTargetPointAndLaunchOrigin()
+        public void BuiltinHandlers_CreateProjectile_PreservesTargetPointAndLaunchOriginInQueuedRequest()
         {
             using var world = World.Create();
             var caster = world.Create(WorldPositionCm.FromCm(300, 500));
             var effect = world.Create();
+            var queue = new RuntimeEntitySpawnQueue(capacity: 4);
+            var runtime = new BuiltinHandlerExecutionContext
+            {
+                SpawnRequests = queue,
+            };
+            var registry = new BuiltinHandlerRegistry();
+            BuiltinHandlers.RegisterAll(registry);
 
             var ctx = new EffectContext { Source = caster, Target = Entity.Null };
             var tpl = new EffectTemplateData();
@@ -388,22 +399,15 @@ namespace Ludots.Tests.GAS
             mergedParams.TryAddFloat(EffectParamKeys.TargetPosX, 950f);
             mergedParams.TryAddFloat(EffectParamKeys.TargetPosY, 640f);
 
-            BuiltinHandlers.HandleCreateProjectile(world, effect, ref ctx, in mergedParams, in tpl);
+            registry.Invoke(BuiltinHandlerId.CreateProjectile, world, effect, ref ctx, in mergedParams, in tpl, runtime);
 
-            var query = new QueryDescription().WithAll<ProjectileState>();
-            int count = 0;
-            world.Query(in query, (ref ProjectileState ps) =>
-            {
-                count++;
-                That(ps.HasLaunchOrigin, Is.EqualTo(1));
-                That(ps.LaunchOriginCm.X.ToFloat(), Is.EqualTo(300f).Within(0.01f));
-                That(ps.LaunchOriginCm.Y.ToFloat(), Is.EqualTo(500f).Within(0.01f));
-                That(ps.HasTargetPoint, Is.EqualTo(1));
-                That(ps.TargetPointCm.X.ToFloat(), Is.EqualTo(950f).Within(0.01f));
-                That(ps.TargetPointCm.Y.ToFloat(), Is.EqualTo(640f).Within(0.01f));
-            });
-
-            That(count, Is.EqualTo(1));
+            That(queue.TryDequeue(out var request), Is.True);
+            That(request.Projectile.HasLaunchOrigin, Is.EqualTo(1));
+            That(request.Projectile.LaunchOriginCm.X.ToFloat(), Is.EqualTo(300f).Within(0.01f));
+            That(request.Projectile.LaunchOriginCm.Y.ToFloat(), Is.EqualTo(500f).Within(0.01f));
+            That(request.Projectile.HasTargetPoint, Is.EqualTo(1));
+            That(request.Projectile.TargetPointCm.X.ToFloat(), Is.EqualTo(950f).Within(0.01f));
+            That(request.Projectile.TargetPointCm.Y.ToFloat(), Is.EqualTo(640f).Within(0.01f));
         }
 
         [Test]
@@ -483,6 +487,52 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
+        public void BuiltinHandlers_CreateUnit_WithTemplate_EnqueuesTemplateSpawnRequests()
+        {
+            using var world = World.Create();
+            var caster = world.Create(WorldPositionCm.FromCm(900, 1500));
+            var effect = world.Create();
+            var queue = new RuntimeEntitySpawnQueue(capacity: 8);
+            var runtime = new BuiltinHandlerExecutionContext
+            {
+                SpawnRequests = queue,
+            };
+            var registry = new BuiltinHandlerRegistry();
+            BuiltinHandlers.RegisterAll(registry);
+
+            var ctx = new EffectContext { Source = caster, Target = caster };
+            var tpl = new EffectTemplateData();
+            tpl.UnitCreation = new UnitCreationDescriptor
+            {
+                TemplateId = "test_manifest_wall",
+                UseTemplateSpawn = true,
+                Count = 2,
+                OffsetRadius = 60,
+                OnSpawnEffectTemplateId = 91,
+                CopySourcePlayerOwner = true,
+                LinkSourceAsParent = true,
+            };
+
+            var mergedParams = new EffectConfigParams();
+            registry.Invoke(BuiltinHandlerId.CreateUnit, world, effect, ref ctx, in mergedParams, in tpl, runtime);
+
+            int count = 0;
+            while (queue.TryDequeue(out var request))
+            {
+                count++;
+                That(request.Kind, Is.EqualTo(RuntimeEntitySpawnKind.Template));
+                That(request.TemplateId, Is.EqualTo("test_manifest_wall"));
+                That(request.OnSpawnEffectTemplateId, Is.EqualTo(91));
+                That(request.CopySourceTeam, Is.EqualTo(1));
+                That(request.CopySourcePlayerOwner, Is.EqualTo(1));
+                That(request.LinkSourceAsParent, Is.EqualTo(1));
+                That(request.WorldPositionCm, Is.Not.EqualTo(Fix64Vec2.Zero));
+            }
+
+            That(count, Is.EqualTo(2));
+        }
+
+        [Test]
         public void RuntimeEntitySpawnSystem_SpawnUnitType_CreatesEntityAndPublishesOnSpawnEffect()
         {
             UnitTypeRegistry.Clear();
@@ -548,6 +598,186 @@ namespace Ludots.Tests.GAS
             That(effects[0].Source, Is.EqualTo(source));
             That(effects[0].Target, Is.EqualTo(spawned));
             That(effects[0].TemplateId, Is.EqualTo(123));
+
+            UnitTypeRegistry.Clear();
+        }
+
+        [Test]
+        public void RuntimeEntitySpawnSystem_SpawnAssembly_CreatesProjectileEntity()
+        {
+            using var world = World.Create();
+            var source = world.Create(new MapEntity { MapId = new Ludots.Core.Map.MapId("assembly_spawn_test") });
+            var requests = new RuntimeEntitySpawnQueue(capacity: 4);
+            var effects = new EffectRequestQueue();
+            var templates = new DataRegistry<EntityTemplate>(CreateMinimalPipeline(@"{ ""id"": ""noop"", ""presetType"": ""None"" }"));
+            var system = new RuntimeEntitySpawnSystem(
+                world,
+                requests,
+                templates,
+                new Ludots.Core.Presentation.Config.PresentationAuthoringContext(
+                    new Ludots.Core.Presentation.Assets.VisualTemplateRegistry(),
+                    new Ludots.Core.Presentation.Performers.PerformerDefinitionRegistry(),
+                    new Ludots.Core.Presentation.Assets.AnimatorControllerRegistry(),
+                    new Ludots.Core.Presentation.PresentationStableIdAllocator()),
+                effects);
+
+            That(requests.TryEnqueue(new RuntimeEntitySpawnRequest
+            {
+                Kind = RuntimeEntitySpawnKind.Assembly,
+                Source = source,
+                WorldPositionCm = Fix64Vec2.FromInt(150, 275),
+                HasWorldPosition = 1,
+                Projectile = new ProjectileState
+                {
+                    Speed = Fix64.FromInt(333),
+                    Range = 900,
+                    ImpactEffectTemplateId = 12,
+                    Source = source,
+                },
+                HasProjectileState = 1,
+            }), Is.True);
+
+            system.Update(0f);
+
+            int count = 0;
+            var query = new QueryDescription().WithAll<ProjectileState, WorldPositionCm, PreviousWorldPositionCm, MapEntity>();
+            world.Query(in query, (ref ProjectileState projectile, ref WorldPositionCm position, ref PreviousWorldPositionCm previous, ref MapEntity map) =>
+            {
+                count++;
+                That(projectile.Speed, Is.EqualTo(Fix64.FromInt(333)));
+                That(position.Value, Is.EqualTo(Fix64Vec2.FromInt(150, 275)));
+                That(previous.Value, Is.EqualTo(Fix64Vec2.FromInt(150, 275)));
+                That(map.MapId.Value, Is.EqualTo("assembly_spawn_test"));
+            });
+
+            That(count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RuntimeEntitySpawnSystem_SpawnTemplate_CopiesOwnerAndParentWhenRequested()
+        {
+            string templateJson = @"[
+              {
+                ""id"": ""test_manifest_wall"",
+                ""components"": {
+                  ""Name"": { ""Value"": ""Template:Wall"" },
+                  ""GameplayTagContainer"": {}
+                }
+              }
+            ]";
+
+            var pipeline = CreateMinimalPipeline(@"{ ""id"": ""noop"", ""presetType"": ""None"" }", templateJson);
+            var templates = new DataRegistry<EntityTemplate>(pipeline);
+            templates.Load("Entities/templates.json");
+
+            using var world = World.Create();
+            var source = world.Create(
+                new Team { Id = 5 },
+                new PlayerOwner { PlayerId = 12 },
+                new MapEntity { MapId = new Ludots.Core.Map.MapId("template_spawn_test") });
+            var requests = new RuntimeEntitySpawnQueue(capacity: 4);
+            var system = new RuntimeEntitySpawnSystem(
+                world,
+                requests,
+                templates,
+                new Ludots.Core.Presentation.Config.PresentationAuthoringContext(
+                    new Ludots.Core.Presentation.Assets.VisualTemplateRegistry(),
+                    new Ludots.Core.Presentation.Performers.PerformerDefinitionRegistry(),
+                    new Ludots.Core.Presentation.Assets.AnimatorControllerRegistry(),
+                    new Ludots.Core.Presentation.PresentationStableIdAllocator()));
+
+            That(requests.TryEnqueue(new RuntimeEntitySpawnRequest
+            {
+                Kind = RuntimeEntitySpawnKind.Template,
+                Source = source,
+                TemplateId = "test_manifest_wall",
+                WorldPositionCm = Fix64Vec2.FromInt(1110, 2220),
+                HasWorldPosition = 1,
+                CopySourceTeam = 1,
+                CopySourcePlayerOwner = 1,
+                LinkSourceAsParent = 1,
+            }), Is.True);
+
+            system.Update(0f);
+
+            int count = 0;
+            var query = new QueryDescription().WithAll<Name, WorldPositionCm, PlayerOwner, ChildOf, Team, MapEntity>();
+            world.Query(in query, (Entity entity, ref Name name, ref WorldPositionCm position, ref PlayerOwner owner, ref ChildOf parent, ref Team team, ref MapEntity map) =>
+            {
+                if (!string.Equals(name.Value, "Template:Wall", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                count++;
+                That(position.Value, Is.EqualTo(Fix64Vec2.FromInt(1110, 2220)));
+                That(owner.PlayerId, Is.EqualTo(12));
+                That(parent.Parent, Is.EqualTo(source));
+                That(team.Id, Is.EqualTo(5));
+                That(map.MapId.Value, Is.EqualTo("template_spawn_test"));
+                That(world.Has<GameplayTagContainer>(entity), Is.True);
+            });
+
+            That(count, Is.EqualTo(1));
+            That(world.Has<ChildrenBuffer>(source), Is.True);
+            That(world.Get<ChildrenBuffer>(source).Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RuntimeEntitySpawnSystem_SpawnUnitType_CopiesPlayerOwnerAndLinksParentWhenRequested()
+        {
+            UnitTypeRegistry.Clear();
+            int unitTypeId = UnitTypeRegistry.Register("TestSummon");
+
+            using var world = World.Create();
+            var source = world.Create(
+                new Team { Id = 3 },
+                new PlayerOwner { PlayerId = 9 },
+                new MapEntity { MapId = new Ludots.Core.Map.MapId("summon_spawn_test") });
+            var requests = new RuntimeEntitySpawnQueue(capacity: 4);
+            var templates = new DataRegistry<EntityTemplate>(CreateMinimalPipeline(@"{ ""id"": ""noop"", ""presetType"": ""None"" }"));
+            var system = new RuntimeEntitySpawnSystem(
+                world,
+                requests,
+                templates,
+                new Ludots.Core.Presentation.Config.PresentationAuthoringContext(
+                    new Ludots.Core.Presentation.Assets.VisualTemplateRegistry(),
+                    new Ludots.Core.Presentation.Performers.PerformerDefinitionRegistry(),
+                    new Ludots.Core.Presentation.Assets.AnimatorControllerRegistry(),
+                    new Ludots.Core.Presentation.PresentationStableIdAllocator()));
+
+            That(requests.TryEnqueue(new RuntimeEntitySpawnRequest
+            {
+                Kind = RuntimeEntitySpawnKind.UnitType,
+                Source = source,
+                WorldPositionCm = Fix64Vec2.FromInt(800, 900),
+                UnitTypeId = unitTypeId,
+                CopySourceTeam = 1,
+                CopySourcePlayerOwner = 1,
+                LinkSourceAsParent = 1,
+            }), Is.True);
+
+            system.Update(0f);
+
+            int count = 0;
+            var query = new QueryDescription().WithAll<Name, PlayerOwner, ChildOf>();
+            world.Query(in query, (Entity entity, ref Name name, ref PlayerOwner owner, ref ChildOf parent) =>
+            {
+                if (!string.Equals(name.Value, "Unit:TestSummon", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                count++;
+                That(owner.PlayerId, Is.EqualTo(9));
+                That(parent.Parent, Is.EqualTo(source));
+                That(world.Has<Team>(entity), Is.True);
+                That(world.Get<Team>(entity).Id, Is.EqualTo(3));
+            });
+
+            That(count, Is.EqualTo(1));
+            That(world.Has<ChildrenBuffer>(source), Is.True);
+            That(world.Get<ChildrenBuffer>(source).Count, Is.EqualTo(1));
 
             UnitTypeRegistry.Clear();
         }
@@ -803,13 +1033,20 @@ namespace Ludots.Tests.GAS
         //  Helper: create a minimal ConfigPipeline from a JSON effect string
         // ════════════════════════════════════════════════════════════════════
 
-        private static ConfigPipeline CreateMinimalPipeline(string effectJson)
+        private static ConfigPipeline CreateMinimalPipeline(string effectJson, string templatesJson = null)
         {
             var json = "[" + effectJson + "]";
             var root = Path.Combine(Path.GetTempPath(), $"TagEffectTest_{Guid.NewGuid():N}");
             var gasDir = Path.Combine(root, "Configs", "GAS");
             Directory.CreateDirectory(gasDir);
             File.WriteAllText(Path.Combine(gasDir, "effects.json"), json);
+
+            if (!string.IsNullOrWhiteSpace(templatesJson))
+            {
+                string entityDir = Path.Combine(root, "Entities");
+                Directory.CreateDirectory(entityDir);
+                File.WriteAllText(Path.Combine(entityDir, "templates.json"), templatesJson);
+            }
 
             var vfs = new VirtualFileSystem();
             vfs.Mount("Core", root);

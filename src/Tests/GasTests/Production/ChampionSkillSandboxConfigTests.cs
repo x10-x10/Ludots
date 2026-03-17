@@ -11,6 +11,7 @@ using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
+using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Gameplay.GAS.Systems;
 using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
@@ -111,6 +112,7 @@ namespace Ludots.Tests.GAS.Production
             AssertNamedEntityOwner(engine.World, "Garen Courage", expectedPlayerId: 1);
             AssertNamedEntityOwner(engine.World, "Jayce Cannon", expectedPlayerId: 1);
             AssertNamedEntityOwner(engine.World, "Jayce Hammer", expectedPlayerId: 1);
+            AssertNamedEntityOwner(engine.World, "Geomancer Alpha", expectedPlayerId: 1);
 
             AssertEntityHasTag(engine.World, "Ezreal Cooldown", "Cooldown.Champion.Ezreal.R");
             AssertEntityHasTag(engine.World, "Garen Courage", "State.Champion.Garen.Courage");
@@ -173,6 +175,14 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(jayceSlots[0].ActionId, Is.EqualTo("SkillQ"));
             Assert.That(jayceSlots[0].StateFlags.HasFlag(EntityCommandSlotStateFlags.FormOverride), Is.True);
             Assert.That(jayceSlots[3].DisplayLabel, Is.EqualTo("Mercury Cannon"));
+
+            var geomancerSlots = new EntityCommandPanelSlotView[8];
+            int geomancerCount = source.CopySlots(FindEntityByName(engine.World, "Geomancer Alpha"), 0, geomancerSlots);
+            Assert.That(geomancerCount, Is.EqualTo(4));
+            Assert.That(geomancerSlots[0].DisplayLabel, Is.EqualTo("Runic Beacon"));
+            Assert.That(geomancerSlots[1].DisplayLabel, Is.EqualTo("Rune Field"));
+            Assert.That(geomancerSlots[2].DisplayLabel, Is.EqualTo("Stone Pillar"));
+            Assert.That(geomancerSlots[3].DisplayLabel, Is.EqualTo("Prismatic Beam"));
         }
 
         [Test]
@@ -330,8 +340,52 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(performers.GetId("champion_skill_sandbox.cue.ezreal_essence_flux_hit"), Is.GreaterThan(0));
             Assert.That(performers.GetId("champion_skill_sandbox.cue.garen_courage"), Is.GreaterThan(0));
             Assert.That(performers.GetId("champion_skill_sandbox.cue.garen_demacian_justice_hit"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.geomancer_runic_beacon"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.geomancer_rune_field_cast"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.geomancer_rune_field_hit"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.geomancer_stone_pillar"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.geomancer_prismatic_beam_cast"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.geomancer_prismatic_beam_hit"), Is.GreaterThan(0));
             Assert.That(performers.GetId("champion_skill_sandbox.cue.jayce_hammer_lightning_field"), Is.GreaterThan(0));
             Assert.That(performers.GetId("champion_skill_sandbox.cue.jayce_transform_hammer"), Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_ManifestationEffects_CompileAsTemplateBackedRuntimeSpawns()
+        {
+            using var engine = CreateEngine();
+
+            var effects = engine.GetService(CoreServiceKeys.EffectTemplateRegistry)
+                ?? throw new InvalidOperationException("EffectTemplateRegistry missing.");
+
+            AssertTemplateBackedCreateUnit(
+                effects,
+                "Effect.Champion.Geomancer.RunicBeacon",
+                "champion_skill_sandbox_runic_beacon",
+                onSpawnEffectKey: null);
+            AssertTemplateBackedCreateUnit(
+                effects,
+                "Effect.Champion.Geomancer.RuneField",
+                "champion_skill_sandbox_rune_field",
+                onSpawnEffectKey: "Effect.Champion.Geomancer.RuneFieldPersistent");
+            AssertTemplateBackedCreateUnit(
+                effects,
+                "Effect.Champion.Geomancer.StonePillar",
+                "champion_skill_sandbox_stone_pillar",
+                onSpawnEffectKey: null);
+
+            int persistentId = EffectTemplateIdRegistry.GetId("Effect.Champion.Geomancer.RuneFieldPersistent");
+            int hitId = EffectTemplateIdRegistry.GetId("Effect.Champion.Geomancer.RuneFieldHit");
+            int beamId = EffectTemplateIdRegistry.GetId("Effect.Champion.Geomancer.PrismaticBeam");
+            int beamHitId = EffectTemplateIdRegistry.GetId("Effect.Champion.Geomancer.PrismaticBeamHit");
+
+            Assert.That(effects.TryGet(persistentId, out var persistent), Is.True);
+            Assert.That(persistent.PresetType, Is.EqualTo(EffectPresetType.PeriodicSearch));
+            Assert.That(persistent.TargetDispatch.PayloadEffectTemplateId, Is.EqualTo(hitId));
+
+            Assert.That(effects.TryGet(beamId, out var beam), Is.True);
+            Assert.That(beam.PresetType, Is.EqualTo(EffectPresetType.Search));
+            Assert.That(beam.TargetDispatch.PayloadEffectTemplateId, Is.EqualTo(beamHitId));
         }
 
         private static GameEngine CreateEngine()
@@ -445,6 +499,33 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(binding.ImpactEffectTemplateId, Is.EqualTo(resolveEffectId));
             Assert.That(binding.StartupPerformers.Count, Is.EqualTo(1));
             Assert.That(binding.StartupPerformers.Get(0), Is.EqualTo(projectilePerformerId));
+        }
+
+        private static void AssertTemplateBackedCreateUnit(
+            EffectTemplateRegistry effects,
+            string effectKey,
+            string expectedTemplateId,
+            string? onSpawnEffectKey)
+        {
+            int effectId = EffectTemplateIdRegistry.GetId(effectKey);
+            Assert.That(effectId, Is.GreaterThan(0), $"{effectKey} should be registered.");
+
+            Assert.That(effects.TryGet(effectId, out var effect), Is.True);
+            Assert.That(effect.PresetType, Is.EqualTo(EffectPresetType.CreateUnit));
+            Assert.That(effect.UnitCreation.UseTemplateSpawn, Is.True);
+            Assert.That(effect.UnitCreation.TemplateId, Is.EqualTo(expectedTemplateId));
+            Assert.That(effect.UnitCreation.CopySourcePlayerOwner, Is.True);
+            Assert.That(effect.UnitCreation.LinkSourceAsParent, Is.True);
+
+            if (onSpawnEffectKey == null)
+            {
+                Assert.That(effect.UnitCreation.OnSpawnEffectTemplateId, Is.EqualTo(0));
+                return;
+            }
+
+            Assert.That(
+                effect.UnitCreation.OnSpawnEffectTemplateId,
+                Is.EqualTo(EffectTemplateIdRegistry.GetId(onSpawnEffectKey)));
         }
 
         private static IEntityCommandPanelSource ResolveGasPanelSource(GameEngine engine)
