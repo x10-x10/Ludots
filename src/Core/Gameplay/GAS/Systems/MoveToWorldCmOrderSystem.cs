@@ -167,33 +167,13 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private static bool TryResolveTarget(in Order order, out Fix64Vec2 target)
         {
             target = default;
-            ref readonly var spatial = ref order.Args.Spatial;
-            if (spatial.Kind != OrderSpatialKind.WorldCm)
+            if (!OrderWorldSpatialResolver.TryResolveMoveDestination(in order, out var worldCm))
             {
                 return false;
             }
 
-            if (spatial.Mode == OrderCollectionMode.List && spatial.PointCount > 0)
-            {
-                unsafe
-                {
-                    fixed (int* px = spatial.PointX)
-                    fixed (int* pz = spatial.PointZ)
-                    {
-                        int last = spatial.PointCount - 1;
-                        target = Fix64Vec2.FromInt(px[last], pz[last]);
-                        return true;
-                    }
-                }
-            }
-
-            if (spatial.Mode == OrderCollectionMode.Single)
-            {
-                target = Fix64Vec2.FromFloat(spatial.WorldCm.X, spatial.WorldCm.Z);
-                return true;
-            }
-
-            return false;
+            target = Fix64Vec2.FromFloat(worldCm.X, worldCm.Z);
+            return true;
         }
     }
 }

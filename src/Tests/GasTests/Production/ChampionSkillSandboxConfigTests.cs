@@ -256,6 +256,7 @@ namespace Ludots.Tests.GAS.Production
             Tick(engine, 2);
             toolbar.CopyButtons(buttons);
             Assert.That(buttons[5].Active, Is.True);
+            engine.GameSession.Camera.Update(DeltaTime);
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm.HasValue, Is.True);
 
             Vector2 ezrealPos = engine.World.Get<WorldPositionCm>(ezreal).Value.ToVector2();

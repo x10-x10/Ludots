@@ -483,12 +483,16 @@ namespace ChampionSkillSandboxMod.Runtime
 
         private static Entity ResolveHoverIndicatorTarget(GameEngine engine)
         {
-            if (engine.GetService(CoreServiceKeys.ActiveInputOrderMapping) is not InputOrderMappingSystem mapping ||
-                !mapping.IsAiming ||
-                !engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) ||
+            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) ||
                 hoveredObj is not Entity hovered ||
                 hovered == Entity.Null ||
                 !engine.World.IsAlive(hovered))
+            {
+                return Entity.Null;
+            }
+
+            Entity selected = engine.GetService(CoreServiceKeys.SelectedEntity);
+            if (selected == hovered)
             {
                 return Entity.Null;
             }

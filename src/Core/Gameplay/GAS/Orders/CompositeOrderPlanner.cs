@@ -173,44 +173,17 @@ namespace Ludots.Core.Gameplay.GAS.Orders
 
         private bool TryResolveProjectedQueuedOrigin(Entity actor, out Vector3 projectedWorldCm)
         {
-            projectedWorldCm = default;
-            if (!TryGetEntityWorldCm(actor, out projectedWorldCm) ||
-                !_world.Has<OrderBuffer>(actor))
-            {
-                return false;
-            }
-
-            ref var buffer = ref _world.Get<OrderBuffer>(actor);
-            if (buffer.HasActive &&
-                buffer.ActiveOrder.Order.OrderTypeId == _moveToOrderTypeId &&
-                TryResolveMoveDestination(in buffer.ActiveOrder.Order, out var activeMoveWorldCm))
-            {
-                projectedWorldCm = activeMoveWorldCm;
-            }
-
-            for (int i = 0; i < buffer.QueuedCount; i++)
-            {
-                var queued = buffer.GetQueued(i).Order;
-                if (queued.OrderTypeId != _moveToOrderTypeId ||
-                    !TryResolveMoveDestination(in queued, out var queuedMoveWorldCm))
-                {
-                    continue;
-                }
-
-                projectedWorldCm = queuedMoveWorldCm;
-            }
-
-            return true;
+            return OrderWorldSpatialResolver.TryResolveProjectedQueuedOrigin(_world, actor, _moveToOrderTypeId, out projectedWorldCm);
         }
 
         private bool TryResolveCastTargetWorldCm(in Order order, out Vector3 targetWorldCm)
         {
-            if (_world.IsAlive(order.Target) && TryGetEntityWorldCm(order.Target, out targetWorldCm))
+            if (_world.IsAlive(order.Target) && OrderWorldSpatialResolver.TryGetEntityWorldCm(_world, order.Target, out targetWorldCm))
             {
                 return true;
             }
 
-            return TryResolveSpatialTarget(in order.Args.Spatial, out targetWorldCm);
+            return OrderWorldSpatialResolver.TryResolveSpatialTarget(in order.Args.Spatial, out targetWorldCm);
         }
 
         private static bool TryResolveMoveAnchor(Vector3 actorWorldCm, Vector3 targetWorldCm, float castRangeCm, out Vector3 moveAnchorWorldCm)
@@ -232,66 +205,14 @@ namespace Ludots.Core.Gameplay.GAS.Orders
             return true;
         }
 
-        private static bool TryResolveSpatialTarget(in OrderSpatial spatial, out Vector3 targetWorldCm)
-        {
-            targetWorldCm = default;
-            if (spatial.Kind != OrderSpatialKind.WorldCm)
-            {
-                return false;
-            }
-
-            if (spatial.Mode == OrderCollectionMode.List && spatial.PointCount > 0)
-            {
-                unsafe
-                {
-                    fixed (int* px = spatial.PointX)
-                    fixed (int* py = spatial.PointY)
-                    fixed (int* pz = spatial.PointZ)
-                    {
-                        int last = spatial.PointCount - 1;
-                        targetWorldCm = new Vector3(px[last], py[last], pz[last]);
-                        return true;
-                    }
-                }
-            }
-
-            if (spatial.Mode == OrderCollectionMode.Single)
-            {
-                targetWorldCm = spatial.WorldCm;
-                return true;
-            }
-
-            return false;
-        }
-
         private static bool TryResolveMoveDestination(in Order order, out Vector3 targetWorldCm)
         {
-            return TryResolveSpatialTarget(in order.Args.Spatial, out targetWorldCm);
+            return OrderWorldSpatialResolver.TryResolveMoveDestination(in order, out targetWorldCm);
         }
 
         private bool TryGetEntityWorldCm(Entity entity, out Vector3 worldCm)
         {
-            worldCm = default;
-            if (!_world.IsAlive(entity))
-            {
-                return false;
-            }
-
-            if (_world.Has<WorldPositionCm>(entity))
-            {
-                WorldCmInt2 cm = _world.Get<WorldPositionCm>(entity).ToWorldCmInt2();
-                worldCm = new Vector3(cm.X, 0f, cm.Y);
-                return true;
-            }
-
-            if (_world.Has<VisualTransform>(entity))
-            {
-                Vector3 visual = _world.Get<VisualTransform>(entity).Position;
-                worldCm = new Vector3(visual.X * 100f, 0f, visual.Z * 100f);
-                return true;
-            }
-
-            return false;
+            return OrderWorldSpatialResolver.TryGetEntityWorldCm(_world, entity, out worldCm);
         }
     }
 }
