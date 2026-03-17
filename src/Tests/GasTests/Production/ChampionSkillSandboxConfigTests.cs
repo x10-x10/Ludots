@@ -127,6 +127,7 @@ namespace Ludots.Tests.GAS.Production
                 .Build();
 
             Assert.That(engine.World.Has<Collider2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<PhysicsMaterial2D>(warrior), Is.True);
             Assert.That(engine.World.Has<NavKinematics2D>(warrior), Is.True);
 
             var collider = engine.World.Get<Collider2D>(warrior);
@@ -134,9 +135,17 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(ShapeDataStorage2D.TryGetCircle(collider.ShapeDataIndex, out var circle), Is.True);
             Assert.That(circle.Radius.ToFloat(), Is.EqualTo(46f).Within(0.01f));
 
+            var physicsMaterial = engine.World.Get<PhysicsMaterial2D>(warrior);
+            Assert.That(physicsMaterial.Friction.ToFloat(), Is.EqualTo(0.92f).Within(0.001f));
+            Assert.That(physicsMaterial.Restitution.ToFloat(), Is.EqualTo(0f).Within(0.001f));
+            Assert.That(physicsMaterial.BaseDamping.ToFloat(), Is.EqualTo(0.94f).Within(0.001f));
+
             var navKinematics = engine.World.Get<NavKinematics2D>(warrior);
+            Assert.That(navKinematics.MaxAccelCmPerSec2.ToFloat(), Is.EqualTo(1800f).Within(0.01f));
             Assert.That(navKinematics.RadiusCm.ToFloat(), Is.EqualTo(46f).Within(0.01f));
-            Assert.That(navKinematics.NeighborDistCm.ToFloat(), Is.EqualTo(220f).Within(0.01f));
+            Assert.That(navKinematics.NeighborDistCm.ToFloat(), Is.EqualTo(320f).Within(0.01f));
+            Assert.That(navKinematics.TimeHorizonSec.ToFloat(), Is.EqualTo(2.4f).Within(0.01f));
+            Assert.That(navKinematics.MaxNeighbors, Is.EqualTo(20));
 
             var bootstrap = new NavOrderAgentBootstrapSystem(engine.World);
             bootstrap.Update(0f);
@@ -166,6 +175,34 @@ namespace Ludots.Tests.GAS.Production
 
             Assert.That(teamAClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team A should not spawn overlapped, observed clearance={teamAClearanceCm:0.##}cm.");
             Assert.That(teamBClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team B should not spawn overlapped, observed clearance={teamBClearanceCm:0.##}cm.");
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_StressMap_SustainsPhysicsCollisionClearanceDuringCombat()
+        {
+            using var engine = CreateEngine();
+            LoadMap(engine, StressMapId, frames: 8);
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 48 && counts.TeamB >= 48;
+            }, maxFrames: 240);
+
+            StressPhysicsTelemetry telemetry = SampleStressPhysicsTelemetry(engine, frames: 240);
+
+            Assert.That(telemetry.PeakPhysicsStepsLastFixedTick, Is.GreaterThan(0), "Stress map should advance the Physics2D fixed-step runtime.");
+            Assert.That(telemetry.PeakContactPairs, Is.GreaterThan(0), "Stress map should produce active contact pairs once both combat teams engage.");
+            Assert.That(telemetry.PeakActiveCollisionPairs, Is.GreaterThan(0), "Stress map should keep collision-pair entities alive while formations clash.");
+            Assert.That(telemetry.PeakProjectiles, Is.GreaterThan(0), "Stress map should remain in live combat while collision sampling runs.");
+            Assert.That(
+                telemetry.WorstTeamAClearanceCm,
+                Is.GreaterThanOrEqualTo(-6f),
+                $"Team A should keep effective body separation during combat. Observed telemetry: {telemetry}");
+            Assert.That(
+                telemetry.WorstTeamBClearanceCm,
+                Is.GreaterThanOrEqualTo(-6f),
+                $"Team B should keep effective body separation during combat. Observed telemetry: {telemetry}");
         }
 
         [Test]
@@ -647,6 +684,65 @@ namespace Ludots.Tests.GAS.Production
             return count;
         }
 
+        private static StressPhysicsTelemetry SampleStressPhysicsTelemetry(GameEngine engine, int frames)
+        {
+            float worstTeamAClearanceCm = float.PositiveInfinity;
+            float worstTeamBClearanceCm = float.PositiveInfinity;
+            int peakProjectiles = 0;
+            int peakContactPairs = 0;
+            int peakActiveCollisionPairs = 0;
+            int peakPhysicsStepsLastFixedTick = 0;
+
+            for (int i = 0; i < frames; i++)
+            {
+                Tick(engine, 1);
+
+                Physics2DPerfStats stats = ReadPhysicsPerfStats(engine.World);
+                peakPhysicsStepsLastFixedTick = Math.Max(peakPhysicsStepsLastFixedTick, stats.PhysicsStepsLastFixedTick);
+                peakContactPairs = Math.Max(peakContactPairs, stats.ContactPairs);
+                peakActiveCollisionPairs = Math.Max(peakActiveCollisionPairs, CountActiveCollisionPairs(engine.World));
+                peakProjectiles = Math.Max(peakProjectiles, CountProjectiles(engine.World));
+                worstTeamAClearanceCm = Math.Min(worstTeamAClearanceCm, ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 1));
+                worstTeamBClearanceCm = Math.Min(worstTeamBClearanceCm, ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 2));
+            }
+
+            return new StressPhysicsTelemetry(
+                worstTeamAClearanceCm,
+                worstTeamBClearanceCm,
+                peakProjectiles,
+                peakContactPairs,
+                peakActiveCollisionPairs,
+                peakPhysicsStepsLastFixedTick);
+        }
+
+        private static Physics2DPerfStats ReadPhysicsPerfStats(World world)
+        {
+            var query = new QueryDescription().WithAll<Physics2DPerfStats>();
+            Physics2DPerfStats stats = default;
+            bool found = false;
+            world.Query(in query, (Entity _, ref Physics2DPerfStats value) =>
+            {
+                if (found)
+                {
+                    return;
+                }
+
+                stats = value;
+                found = true;
+            });
+
+            Assert.That(found, Is.True, "Physics2DPerfStats should be published while the stress map is running.");
+            return stats;
+        }
+
+        private static int CountActiveCollisionPairs(World world)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<CollisionPair, ActiveCollisionPairTag>();
+            world.Query(in query, (Entity _, ref CollisionPair __, ref ActiveCollisionPairTag ___) => count++);
+            return count;
+        }
+
         private static StressCounts ReadStressCounts(World world)
         {
             int teamA = 0;
@@ -869,6 +965,14 @@ namespace Ludots.Tests.GAS.Production
             int TeamBFireMages,
             int TeamBLaserMages,
             int TeamBPriests);
+
+        private readonly record struct StressPhysicsTelemetry(
+            float WorstTeamAClearanceCm,
+            float WorstTeamBClearanceCm,
+            int PeakProjectiles,
+            int PeakContactPairs,
+            int PeakActiveCollisionPairs,
+            int PeakPhysicsStepsLastFixedTick);
 
         private readonly record struct StressBodySample(Vector2 PositionCm, float RadiusCm);
 

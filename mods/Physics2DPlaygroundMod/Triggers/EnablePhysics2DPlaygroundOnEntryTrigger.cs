@@ -6,13 +6,11 @@ using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Map;
 using Ludots.Core.Modding;
-using Ludots.Core.Presentation.Assets;
-using Ludots.Core.Presentation.DebugDraw;
-using Ludots.Core.Presentation.Systems;
-using Ludots.Core.Scripting;
-using Ludots.Core.Systems;
 using Ludots.Core.Physics2D.Systems;
 using Ludots.Core.Physics2D.Ticking;
+using Ludots.Core.Presentation.DebugDraw;
+using Ludots.Core.Scripting;
+using Ludots.Core.Systems;
 using Physics2DPlaygroundMod.Input;
 using Physics2DPlaygroundMod.Systems;
 
@@ -35,7 +33,10 @@ namespace Physics2DPlaygroundMod.Triggers
         public override Task ExecuteAsync(ScriptContext context)
         {
             var engine = context.GetEngine();
-            if (engine == null) return Task.CompletedTask;
+            if (engine == null)
+            {
+                return Task.CompletedTask;
+            }
 
             var mapId = context.Get(CoreServiceKeys.MapId);
             bool isEntry = mapId.Value == engine.MergedConfig.StartupMapId;
@@ -49,30 +50,25 @@ namespace Physics2DPlaygroundMod.Triggers
 
                     var clock = context.Get(CoreServiceKeys.Clock);
                     var tickPolicy = context.Get(CoreServiceKeys.Physics2DTickPolicy);
+
                     _sim = new Physics2DSimulationSystem(engine.World, clock, tickPolicy);
-                    engine.RegisterSystem(_sim, Ludots.Core.Engine.SystemGroup.InputCollection);
-                    
-                    // 统一架构：
-                    // SavePreviousWorldPositionSystem 已在 GameEngine.InitializeCoreSystems 中注册到 SchemaUpdate 阶段。
-                    // 不要在此重复注册到 InputCollection，否则会在 Physics2D 更新后覆盖 Previous 值，破坏插值。
-                    // Physics2DToWorldPositionSyncSystem: 物理结果同步到逻辑层 SSOT
-                    // WorldToVisualSyncSystem: 统一的渲染帧插值
-                    engine.RegisterSystem(new Physics2DToWorldPositionSyncSystem(engine.World), Ludots.Core.Engine.SystemGroup.PostMovement);
-                    
-                    engine.RegisterPresentationSystem(new WorldToVisualSyncSystem(engine.World));
-                    var meshRegistry = context.Get(CoreServiceKeys.PresentationMeshAssetRegistry) as MeshAssetRegistry;
-                    engine.RegisterPresentationSystem(new Physics2DPlaygroundPresentationSystem(engine, _sim, debugDrawBuffer, meshRegistry));
+                    engine.RegisterSystem(_sim, SystemGroup.InputCollection);
+                    engine.RegisterSystem(new Physics2DToWorldPositionSyncSystem(engine.World), SystemGroup.PostMovement);
+                    engine.RegisterSystem(new Physics2DPlaygroundInteractionSystem(engine, _sim), SystemGroup.InputCollection);
+                    engine.RegisterPresentationSystem(new Physics2DDebugDrawSystem(engine.World, debugDrawBuffer));
 
                     _installed = true;
-                    _ctx.Log("[Physics2DPlaygroundMod] Installed simulation + presentation systems.");
+                    _ctx.Log("[Physics2DPlaygroundMod] Installed simulation, interaction, and debug presentation systems.");
                 }
 
                 Physics2DPlaygroundState.Enabled = true;
-                if (_sim != null) _sim.Enabled = true;
+                if (_sim != null)
+                {
+                    _sim.Enabled = true;
+                }
 
-                var session = context.Get(CoreServiceKeys.GameSession);
                 var input = context.Get(CoreServiceKeys.InputHandler);
-                if (session != null && input != null)
+                if (input != null)
                 {
                     if (!_inputContextActive)
                     {
@@ -90,19 +86,25 @@ namespace Physics2DPlaygroundMod.Triggers
                         VirtualCameraId = "Default",
                         TargetCm = System.Numerics.Vector2.Zero,
                         Pitch = 60f,
-                        DistanceCm = 12000f
+                        DistanceCm = 12000f,
+                        FovYDeg = 60f
                     });
                 }
             }
             else
             {
                 Physics2DPlaygroundState.Enabled = false;
-                if (_sim != null) _sim.Enabled = false;
-                if (engine.GlobalContext.TryGetValue(CoreServiceKeys.Physics2DController.Name, out var physicsCtlObj) && physicsCtlObj is Ludots.Core.Engine.Physics2D.Physics2DController physicsCtl)
+                if (_sim != null)
+                {
+                    _sim.Enabled = false;
+                }
+
+                if (engine.GlobalContext.TryGetValue(CoreServiceKeys.Physics2DController.Name, out var physicsCtlObj) &&
+                    physicsCtlObj is Physics2DController physicsCtl)
                 {
                     physicsCtl.Disable();
                 }
-                var session = context.Get(CoreServiceKeys.GameSession);
+
                 var input = context.Get(CoreServiceKeys.InputHandler);
                 if (input != null && _inputContextActive)
                 {

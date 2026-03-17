@@ -120,11 +120,17 @@
           "radiusCm": 46
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1800,
         "radiusCm": 46,
-        "neighborDistCm": 220,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 320,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [
@@ -155,11 +161,17 @@
           "radiusCm": 38
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
         "radiusCm": 38,
-        "neighborDistCm": 200,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 280,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [
@@ -190,11 +202,17 @@
           "radiusCm": 36
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
         "radiusCm": 36,
-        "neighborDistCm": 196,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 268,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [
@@ -225,11 +243,17 @@
           "radiusCm": 34
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1600,
         "radiusCm": 34,
-        "neighborDistCm": 188,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 256,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [
@@ -260,11 +284,17 @@
           "radiusCm": 46
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1800,
         "radiusCm": 46,
-        "neighborDistCm": 220,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 320,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [
@@ -295,11 +325,17 @@
           "radiusCm": 38
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
         "radiusCm": 38,
-        "neighborDistCm": 200,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 280,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [
@@ -330,11 +366,17 @@
           "radiusCm": 36
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
         "radiusCm": 36,
-        "neighborDistCm": 196,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 268,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [
@@ -365,11 +407,17 @@
           "radiusCm": 34
         }
       },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
       "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1600,
         "radiusCm": 34,
-        "neighborDistCm": 188,
-        "timeHorizonSec": 2.0,
-        "maxNeighbors": 16
+        "neighborDistCm": 256,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
       },
       "AbilityStateBuffer": {
         "abilityIds": [

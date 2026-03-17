@@ -17,6 +17,7 @@ namespace ChampionSkillSandboxMod.Runtime
         public static void Register(string modId)
         {
             Ludots.Core.Config.ComponentRegistry.Register("Collider2D", SetCollider2D, modId);
+            Ludots.Core.Config.ComponentRegistry.Register("PhysicsMaterial2D", SetPhysicsMaterial2D, modId);
             Ludots.Core.Config.ComponentRegistry.Register("NavKinematics2D", SetNavKinematics2D, modId);
         }
 
@@ -67,6 +68,17 @@ namespace ChampionSkillSandboxMod.Runtime
                 NeighborDistCm = Fix64.FromFloat(ReadOptionalFloat(obj, "neighborDistCm", "NeighborDistCm", 0f)),
                 TimeHorizonSec = Fix64.FromFloat(ReadOptionalFloat(obj, "timeHorizonSec", "TimeHorizonSec", 0f)),
                 MaxNeighbors = ReadOptionalInt(obj, "maxNeighbors", "MaxNeighbors", 0)
+            });
+        }
+
+        private static void SetPhysicsMaterial2D(Entity entity, JsonNode data)
+        {
+            JsonObject obj = RequireObject(data, "PhysicsMaterial2D");
+            entity.Add(new PhysicsMaterial2D
+            {
+                Friction = Fix64.FromFloat(ReadOptionalFloat(obj, "friction", "Friction", PhysicsMaterial2D.Default.Friction.ToFloat())),
+                Restitution = Fix64.FromFloat(ReadOptionalFloat(obj, "restitution", "Restitution", PhysicsMaterial2D.Default.Restitution.ToFloat())),
+                BaseDamping = Fix64.FromFloat(ReadOptionalFloat(obj, "baseDamping", "BaseDamping", PhysicsMaterial2D.Default.BaseDamping.ToFloat()))
             });
         }
 

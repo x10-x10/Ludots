@@ -54,7 +54,7 @@ namespace Ludots.Tests.GAS.Production
 
             yield return new TestCaseData(new ModCase(
                     "Physics2DPlaygroundMod",
-                    new[] { "LudotsCoreMod", "Physics2DPlaygroundMod" },
+                    new[] { "LudotsCoreMod", "CoreInputMod", "Physics2DPlaygroundMod" },
                     true))
                 .SetName("ProdModSmoke_Physics2DPlaygroundMod");
 
