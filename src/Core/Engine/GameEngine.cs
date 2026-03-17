@@ -701,7 +701,7 @@ namespace Ludots.Core.Engine
                 SetService(CoreServiceKeys.Navigation2DRuntime, navigation2dRuntime);
 
                 const string nav2dSystemTypeName = "Ludots.Core.Physics2D.Systems.Navigation2DSimulationSystem2D";
-                const string integrationSystemTypeName = "Ludots.Core.Physics2D.Systems.IntegrationSystem2D";
+                const string physics2dSystemTypeName = "Ludots.Core.Physics2D.Ticking.Physics2DSimulationSystem";
                 const string worldSyncSystemTypeName = "Ludots.Core.Physics2D.Systems.Physics2DToWorldPositionSyncSystem";
                 const string physics2dAssemblyName = "Ludots.Physics2D";
                 var nav2dSystemType = Type.GetType($"{nav2dSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
@@ -717,11 +717,11 @@ namespace Ludots.Core.Engine
                 }
                 else
                 {
-                    var integrationSystemType = Type.GetType($"{integrationSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
+                    var physics2dSystemType = Type.GetType($"{physics2dSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
                     var worldSyncSystemType = Type.GetType($"{worldSyncSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
-                    if (integrationSystemType == null || worldSyncSystemType == null)
+                    if (physics2dSystemType == null || worldSyncSystemType == null)
                     {
-                        throw new InvalidOperationException("Navigation2D.Enabled=true requires IntegrationSystem2D and Physics2DToWorldPositionSyncSystem to be loadable.");
+                        throw new InvalidOperationException("Navigation2D.Enabled=true requires Physics2DSimulationSystem and Physics2DToWorldPositionSyncSystem to be loadable.");
                     }
 
                     RegisterSystem(new Ludots.Core.Navigation2D.Systems.NavOrderAgentBootstrapSystem(World), SystemGroup.InputCollection);
@@ -732,10 +732,10 @@ namespace Ludots.Core.Engine
                         RegisterSystem(nav2dSystem, SystemGroup.InputCollection);
                     }
 
-                    var integrationSystemObj = Activator.CreateInstance(integrationSystemType, World);
-                    if (integrationSystemObj is ISystem<float> integrationSystem)
+                    var physics2dSystemObj = Activator.CreateInstance(physics2dSystemType, World, clock, physics2dTickPolicy);
+                    if (physics2dSystemObj is ISystem<float> physics2dSystem)
                     {
-                        RegisterSystem(integrationSystem, SystemGroup.InputCollection);
+                        RegisterSystem(physics2dSystem, SystemGroup.InputCollection);
                     }
 
                     var worldSyncSystemObj = Activator.CreateInstance(worldSyncSystemType, World);

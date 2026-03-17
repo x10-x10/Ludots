@@ -114,6 +114,18 @@
       "FacingDirection": { "AngleRad": 0.0 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 260, "Shield": 0, "MoveSpeed": 330, "Armor": 16 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 46
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 46,
+        "neighborDistCm": 220,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.Warrior.Cleave"
@@ -137,6 +149,18 @@
       "FacingDirection": { "AngleRad": 0.0 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 170, "Shield": 0, "MoveSpeed": 320, "Armor": 4 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 38
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 38,
+        "neighborDistCm": 200,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.FireMage.Fireball"
@@ -160,6 +184,18 @@
       "FacingDirection": { "AngleRad": 0.0 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 150, "Shield": 0, "MoveSpeed": 325, "Armor": 3 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 36
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 36,
+        "neighborDistCm": 196,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.LaserMage.Laser"
@@ -183,6 +219,18 @@
       "FacingDirection": { "AngleRad": 0.0 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 180, "Shield": 0, "MoveSpeed": 315, "Armor": 5 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 34
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 34,
+        "neighborDistCm": 188,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.Priest.Heal"
@@ -206,6 +254,18 @@
       "FacingDirection": { "AngleRad": 3.14159 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 260, "Shield": 0, "MoveSpeed": 330, "Armor": 16 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 46
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 46,
+        "neighborDistCm": 220,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.Warrior.Cleave"
@@ -229,6 +289,18 @@
       "FacingDirection": { "AngleRad": 3.14159 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 170, "Shield": 0, "MoveSpeed": 320, "Armor": 4 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 38
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 38,
+        "neighborDistCm": 200,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.FireMage.Fireball"
@@ -252,6 +324,18 @@
       "FacingDirection": { "AngleRad": 3.14159 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 150, "Shield": 0, "MoveSpeed": 325, "Armor": 3 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 36
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 36,
+        "neighborDistCm": 196,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.LaserMage.Laser"
@@ -275,6 +359,18 @@
       "FacingDirection": { "AngleRad": 3.14159 },
       "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
       "AttributeBuffer": { "base": { "Health": 180, "Shield": 0, "MoveSpeed": 315, "Armor": 5 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 34
+        }
+      },
+      "NavKinematics2D": {
+        "radiusCm": 34,
+        "neighborDistCm": 188,
+        "timeHorizonSec": 2.0,
+        "maxNeighbors": 16
+      },
       "AbilityStateBuffer": {
         "abilityIds": [
           "Ability.ChampionStress.Priest.Heal"

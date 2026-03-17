@@ -16,10 +16,14 @@ using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
+using Ludots.Core.Navigation2D.Components;
+using Ludots.Core.Navigation2D.Systems;
 using Ludots.Core.Presentation.Performers;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Projectiles;
 using Ludots.Core.Presentation.Rendering;
+using Ludots.Core.Physics2D;
+using Ludots.Core.Physics2D.Components;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
 using Ludots.Platform.Abstractions;
@@ -102,6 +106,42 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(
                 AbilitySlotResolver.Resolve(in abilities, in formSlots, hasForm: true, in grantedSlots, hasGranted: false, slotIndex: 3).AbilityId,
                 Is.EqualTo(cannonR));
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_StressTemplates_AuthorCollisionAndNavRuntimeComponents()
+        {
+            using var engine = CreateEngine();
+
+            var templates = new Dictionary<string, EntityTemplate>(StringComparer.OrdinalIgnoreCase);
+            foreach (var template in engine.MapLoader.TemplateRegistry.GetAll())
+            {
+                templates[template.Id] = template;
+            }
+
+            var warrior = new EntityBuilder(engine.World, templates, engine.MapLoader.PresentationAuthoringContext)
+                .UseTemplate("champion_skill_stress_team_a_warrior")
+                .Build();
+
+            Assert.That(engine.World.Has<Collider2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<NavKinematics2D>(warrior), Is.True);
+
+            var collider = engine.World.Get<Collider2D>(warrior);
+            Assert.That(collider.Type, Is.EqualTo(ColliderType2D.Circle));
+            Assert.That(ShapeDataStorage2D.TryGetCircle(collider.ShapeDataIndex, out var circle), Is.True);
+            Assert.That(circle.Radius.ToFloat(), Is.EqualTo(46f).Within(0.01f));
+
+            var navKinematics = engine.World.Get<NavKinematics2D>(warrior);
+            Assert.That(navKinematics.RadiusCm.ToFloat(), Is.EqualTo(46f).Within(0.01f));
+            Assert.That(navKinematics.NeighborDistCm.ToFloat(), Is.EqualTo(220f).Within(0.01f));
+
+            var bootstrap = new NavOrderAgentBootstrapSystem(engine.World);
+            bootstrap.Update(0f);
+
+            Assert.That(engine.World.Has<NavAgent2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<Position2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<Velocity2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<Mass2D>(warrior), Is.True);
         }
 
         [Test]
