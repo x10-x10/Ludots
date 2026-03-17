@@ -58,6 +58,7 @@ namespace Ludots.Tests.GAS.Production
             "LudotsCoreMod",
             "CoreInputMod",
             "CameraProfilesMod",
+            "DiagnosticsOverlayMod",
             "EntityCommandPanelMod",
             "ChampionSkillSandboxMod"
         };

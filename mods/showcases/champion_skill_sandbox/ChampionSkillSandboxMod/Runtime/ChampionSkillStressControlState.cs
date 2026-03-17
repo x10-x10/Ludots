@@ -5,7 +5,6 @@ namespace ChampionSkillSandboxMod.Runtime
         public const string GlobalKey = "ChampionSkillSandbox.StressControl";
         public const int DefaultTeamCount = 48;
         public const int MinTeamCount = 8;
-        public const int MaxTeamCount = 256;
         public const int Step = 8;
 
         public int DesiredTeamA { get; private set; } = DefaultTeamCount;
@@ -26,11 +25,6 @@ namespace ChampionSkillSandboxMod.Runtime
             if (value < MinTeamCount)
             {
                 return MinTeamCount;
-            }
-
-            if (value > MaxTeamCount)
-            {
-                return MaxTeamCount;
             }
 
             return value;

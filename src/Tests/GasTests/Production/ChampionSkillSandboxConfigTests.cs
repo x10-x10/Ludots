@@ -17,6 +17,7 @@ using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Presentation.Performers;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Projectiles;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
@@ -46,6 +47,7 @@ namespace Ludots.Tests.GAS.Production
             "LudotsCoreMod",
             "CoreInputMod",
             "CameraProfilesMod",
+            "DiagnosticsOverlayMod",
             "EntityCommandPanelMod",
             "ChampionSkillSandboxMod"
         };
@@ -303,9 +305,15 @@ namespace Ludots.Tests.GAS.Production
 
             var toolbar = engine.GetService(CoreServiceKeys.EntityCommandPanelToolbarProvider)
                 ?? throw new InvalidOperationException("Toolbar provider missing.");
+            var overlays = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer)
+                ?? throw new InvalidOperationException("ScreenOverlayBuffer missing.");
 
             Assert.That(toolbar.IsVisible, Is.True);
             Assert.That(toolbar.Title, Is.EqualTo("Stress Harness"));
+            Assert.That(
+                OverlayContainsText(overlays, "Runtime HUD | FPS="),
+                Is.True,
+                "Stress showcase should reuse DiagnosticsOverlayMod runtime HUD for FPS/performance readout.");
 
             var buttons = new EntityCommandPanelToolbarButtonView[16];
             int buttonCount = toolbar.CopyButtons(buttons);
@@ -351,6 +359,22 @@ namespace Ludots.Tests.GAS.Production
             StressCounts scaled = ReadStressCounts(engine.World);
             Assert.That(scaled.TeamA, Is.GreaterThanOrEqualTo(56));
             Assert.That(scaled.TeamB, Is.GreaterThanOrEqualTo(56));
+
+            for (int i = 0; i < 27; i++)
+            {
+                toolbar.Activate(StressTeamAIncreaseToolbarButtonId);
+                toolbar.Activate(StressTeamBIncreaseToolbarButtonId);
+            }
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 272 && counts.TeamB >= 272;
+            }, maxFrames: 600);
+
+            StressCounts uncapped = ReadStressCounts(engine.World);
+            Assert.That(uncapped.TeamA, Is.GreaterThanOrEqualTo(272), "Stress controls should scale beyond the old 256-unit cap.");
+            Assert.That(uncapped.TeamB, Is.GreaterThanOrEqualTo(272), "Stress controls should scale beyond the old 256-unit cap.");
         }
 
         [Test]
@@ -514,6 +538,26 @@ namespace Ludots.Tests.GAS.Production
             }
 
             return count;
+        }
+
+        private static bool OverlayContainsText(ScreenOverlayBuffer overlay, string expected)
+        {
+            foreach (ref readonly var item in overlay.GetSpan())
+            {
+                if (item.Kind != ScreenOverlayItemKind.Text)
+                {
+                    continue;
+                }
+
+                string? text = overlay.GetString(item.StringId);
+                if (!string.IsNullOrEmpty(text) &&
+                    text.Contains(expected, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static int SamplePeakProjectiles(GameEngine engine, int frames)
