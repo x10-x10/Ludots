@@ -1,0 +1,297 @@
+using System;
+using System.Numerics;
+using Arch.Core;
+using Ludots.Core.Components;
+using Ludots.Core.Gameplay.GAS.Components;
+using Ludots.Core.Mathematics;
+using Ludots.Core.Presentation.Components;
+
+namespace Ludots.Core.Gameplay.GAS.Orders
+{
+    /// <summary>
+    /// Plans composite command intents before they enter the authoritative order queue.
+    /// Keeps input mapping focused on raw semantic orders while reusable planning
+    /// decides whether a cast must become move-then-cast.
+    /// </summary>
+    public sealed class CompositeOrderPlanner
+    {
+        private readonly World _world;
+        private readonly OrderQueue _incomingOrders;
+        private readonly AbilityDefinitionRegistry? _abilities;
+        private readonly int _castAbilityOrderTypeId;
+        private readonly int _moveToOrderTypeId;
+
+        public CompositeOrderPlanner(
+            World world,
+            OrderQueue incomingOrders,
+            AbilityDefinitionRegistry? abilities,
+            int castAbilityOrderTypeId,
+            int moveToOrderTypeId)
+        {
+            _world = world ?? throw new ArgumentNullException(nameof(world));
+            _incomingOrders = incomingOrders ?? throw new ArgumentNullException(nameof(incomingOrders));
+            _abilities = abilities;
+            _castAbilityOrderTypeId = castAbilityOrderTypeId;
+            _moveToOrderTypeId = moveToOrderTypeId;
+        }
+
+        public bool TrySubmit(in Order order)
+        {
+            if (!TryBuildMoveThenCastPlan(in order, out var primaryMove, out var followUpCast))
+            {
+                var passthrough = order;
+                return _incomingOrders.TryEnqueueAssigned(ref passthrough);
+            }
+
+            if (!_world.IsAlive(order.Actor))
+            {
+                return false;
+            }
+
+            if (!_world.Has<OrderContinuationBuffer>(order.Actor))
+            {
+                _world.Add(order.Actor, new OrderContinuationBuffer());
+            }
+
+            _incomingOrders.EnsureOrderId(ref primaryMove);
+
+            ref var continuations = ref _world.Get<OrderContinuationBuffer>(order.Actor);
+            if (!continuations.TryAdd(primaryMove.OrderId, in followUpCast))
+            {
+                return false;
+            }
+
+            if (_incomingOrders.TryEnqueueAssigned(ref primaryMove))
+            {
+                return true;
+            }
+
+            continuations.RemoveByTrigger(primaryMove.OrderId);
+            return false;
+        }
+
+        private bool TryBuildMoveThenCastPlan(in Order order, out Order moveOrder, out Order followUpCast)
+        {
+            moveOrder = default;
+            followUpCast = default;
+
+            if (_abilities == null ||
+                _castAbilityOrderTypeId <= 0 ||
+                _moveToOrderTypeId <= 0 ||
+                order.OrderTypeId != _castAbilityOrderTypeId ||
+                !_world.IsAlive(order.Actor))
+            {
+                return false;
+            }
+
+            if (!TryResolveCastRangeCm(in order, out float castRangeCm) ||
+                castRangeCm <= 0f ||
+                !TryResolvePlanningOrigin(in order, out var actorWorldCm) ||
+                !TryResolveCastTargetWorldCm(in order, out var targetWorldCm) ||
+                !TryResolveMoveAnchor(actorWorldCm, targetWorldCm, castRangeCm, out var moveAnchorWorldCm))
+            {
+                return false;
+            }
+
+            moveOrder = CreateMoveOrder(in order, moveAnchorWorldCm);
+            followUpCast = order;
+            followUpCast.SubmitMode = OrderSubmitMode.Queued;
+            return true;
+        }
+
+        private Order CreateMoveOrder(in Order castOrder, Vector3 moveAnchorWorldCm)
+        {
+            var moveArgs = new OrderArgs();
+            moveArgs.Spatial.Kind = OrderSpatialKind.WorldCm;
+            moveArgs.Spatial.Mode = OrderCollectionMode.Single;
+            moveArgs.Spatial.WorldCm = moveAnchorWorldCm;
+
+            return new Order
+            {
+                OrderTypeId = _moveToOrderTypeId,
+                PlayerId = castOrder.PlayerId,
+                Actor = castOrder.Actor,
+                Target = default,
+                TargetContext = castOrder.TargetContext,
+                Args = moveArgs,
+                SubmitMode = castOrder.SubmitMode
+            };
+        }
+
+        private bool TryResolveCastRangeCm(in Order order, out float rangeCm)
+        {
+            rangeCm = 0f;
+            if (order.Args.I0 < 0 ||
+                !_world.Has<AbilityStateBuffer>(order.Actor))
+            {
+                return false;
+            }
+
+            ref var abilities = ref _world.Get<AbilityStateBuffer>(order.Actor);
+            if ((uint)order.Args.I0 >= (uint)abilities.Count)
+            {
+                return false;
+            }
+
+            bool hasForm = _world.Has<AbilityFormSlotBuffer>(order.Actor);
+            AbilityFormSlotBuffer formSlots = hasForm ? _world.Get<AbilityFormSlotBuffer>(order.Actor) : default;
+            bool hasGranted = _world.Has<GrantedSlotBuffer>(order.Actor);
+            GrantedSlotBuffer grantedSlots = hasGranted ? _world.Get<GrantedSlotBuffer>(order.Actor) : default;
+            AbilitySlotState slot = AbilitySlotResolver.Resolve(in abilities, in formSlots, hasForm, in grantedSlots, hasGranted, order.Args.I0);
+
+            if (slot.AbilityId <= 0 ||
+                !_abilities!.TryGet(slot.AbilityId, out var definition) ||
+                !definition.HasIndicator)
+            {
+                return false;
+            }
+
+            rangeCm = definition.Indicator.Range;
+            return rangeCm > 0f;
+        }
+
+        private bool TryResolvePlanningOrigin(in Order order, out Vector3 originWorldCm)
+        {
+            originWorldCm = default;
+            if (!TryGetEntityWorldCm(order.Actor, out originWorldCm))
+            {
+                return false;
+            }
+
+            if (order.SubmitMode != OrderSubmitMode.Queued)
+            {
+                return true;
+            }
+
+            if (TryResolveProjectedQueuedOrigin(order.Actor, out var projectedWorldCm))
+            {
+                originWorldCm = projectedWorldCm;
+            }
+
+            return true;
+        }
+
+        private bool TryResolveProjectedQueuedOrigin(Entity actor, out Vector3 projectedWorldCm)
+        {
+            projectedWorldCm = default;
+            if (!TryGetEntityWorldCm(actor, out projectedWorldCm) ||
+                !_world.Has<OrderBuffer>(actor))
+            {
+                return false;
+            }
+
+            ref var buffer = ref _world.Get<OrderBuffer>(actor);
+            if (buffer.HasActive &&
+                buffer.ActiveOrder.Order.OrderTypeId == _moveToOrderTypeId &&
+                TryResolveMoveDestination(in buffer.ActiveOrder.Order, out var activeMoveWorldCm))
+            {
+                projectedWorldCm = activeMoveWorldCm;
+            }
+
+            for (int i = 0; i < buffer.QueuedCount; i++)
+            {
+                var queued = buffer.GetQueued(i).Order;
+                if (queued.OrderTypeId != _moveToOrderTypeId ||
+                    !TryResolveMoveDestination(in queued, out var queuedMoveWorldCm))
+                {
+                    continue;
+                }
+
+                projectedWorldCm = queuedMoveWorldCm;
+            }
+
+            return true;
+        }
+
+        private bool TryResolveCastTargetWorldCm(in Order order, out Vector3 targetWorldCm)
+        {
+            if (_world.IsAlive(order.Target) && TryGetEntityWorldCm(order.Target, out targetWorldCm))
+            {
+                return true;
+            }
+
+            return TryResolveSpatialTarget(in order.Args.Spatial, out targetWorldCm);
+        }
+
+        private static bool TryResolveMoveAnchor(Vector3 actorWorldCm, Vector3 targetWorldCm, float castRangeCm, out Vector3 moveAnchorWorldCm)
+        {
+            moveAnchorWorldCm = default;
+            Vector2 actor = new(actorWorldCm.X, actorWorldCm.Z);
+            Vector2 target = new(targetWorldCm.X, targetWorldCm.Z);
+            Vector2 delta = target - actor;
+            float distanceCm = delta.Length();
+            if (distanceCm <= castRangeCm + 0.01f || distanceCm <= 0.01f)
+            {
+                return false;
+            }
+
+            float travelCm = distanceCm - castRangeCm;
+            Vector2 direction = delta / distanceCm;
+            Vector2 movePoint = actor + (direction * travelCm);
+            moveAnchorWorldCm = new Vector3(movePoint.X, actorWorldCm.Y, movePoint.Y);
+            return true;
+        }
+
+        private static bool TryResolveSpatialTarget(in OrderSpatial spatial, out Vector3 targetWorldCm)
+        {
+            targetWorldCm = default;
+            if (spatial.Kind != OrderSpatialKind.WorldCm)
+            {
+                return false;
+            }
+
+            if (spatial.Mode == OrderCollectionMode.List && spatial.PointCount > 0)
+            {
+                unsafe
+                {
+                    fixed (int* px = spatial.PointX)
+                    fixed (int* py = spatial.PointY)
+                    fixed (int* pz = spatial.PointZ)
+                    {
+                        int last = spatial.PointCount - 1;
+                        targetWorldCm = new Vector3(px[last], py[last], pz[last]);
+                        return true;
+                    }
+                }
+            }
+
+            if (spatial.Mode == OrderCollectionMode.Single)
+            {
+                targetWorldCm = spatial.WorldCm;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveMoveDestination(in Order order, out Vector3 targetWorldCm)
+        {
+            return TryResolveSpatialTarget(in order.Args.Spatial, out targetWorldCm);
+        }
+
+        private bool TryGetEntityWorldCm(Entity entity, out Vector3 worldCm)
+        {
+            worldCm = default;
+            if (!_world.IsAlive(entity))
+            {
+                return false;
+            }
+
+            if (_world.Has<WorldPositionCm>(entity))
+            {
+                WorldCmInt2 cm = _world.Get<WorldPositionCm>(entity).ToWorldCmInt2();
+                worldCm = new Vector3(cm.X, 0f, cm.Y);
+                return true;
+            }
+
+            if (_world.Has<VisualTransform>(entity))
+            {
+                Vector3 visual = _world.Get<VisualTransform>(entity).Position;
+                worldCm = new Vector3(visual.X * 100f, 0f, visual.Z * 100f);
+                return true;
+            }
+
+            return false;
+        }
+    }
+}
