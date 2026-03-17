@@ -5,6 +5,7 @@ namespace ChampionSkillSandboxMod
     internal static class ChampionSkillSandboxIds
     {
         public const string MapId = "champion_skill_sandbox";
+        public const string StressMapId = "champion_skill_stress";
         public const string InputContextId = "ChampionSkillSandbox.Controls";
 
         public const string SmartCastModeId = "ChampionSkillSandbox.Mode.SmartCast";
@@ -20,6 +21,10 @@ namespace ChampionSkillSandboxMod
         public const string FollowSelectionToolbarButtonId = "ChampionSkillSandbox.Camera.Selection";
         public const string FollowSelectionGroupToolbarButtonId = "ChampionSkillSandbox.Camera.SelectionGroup";
         public const string ResetCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Reset";
+        public const string StressTeamADecreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamA.Decrease";
+        public const string StressTeamAIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamA.Increase";
+        public const string StressTeamBDecreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamB.Decrease";
+        public const string StressTeamBIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamB.Increase";
         public const string ResetCameraRequestKey = "ChampionSkillSandbox.Camera.ResetRequested";
         public const string CameraFollowModeKey = "ChampionSkillSandbox.Camera.FollowMode";
         public const string SelectionIndicatorPerformerKey = "champion_skill_sandbox.selection_indicator";
@@ -40,7 +45,13 @@ namespace ChampionSkillSandboxMod
 
         public static bool IsSandboxMap(string? mapId)
         {
-            return string.Equals(mapId, MapId, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(mapId, MapId, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(mapId, StressMapId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool IsStressMap(string? mapId)
+        {
+            return string.Equals(mapId, StressMapId, StringComparison.OrdinalIgnoreCase);
         }
 
         public static bool IsSandboxMode(string? modeId)

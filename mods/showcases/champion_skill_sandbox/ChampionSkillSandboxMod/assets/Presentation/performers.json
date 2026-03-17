@@ -371,5 +371,121 @@
     "defaultLifetime": 0.22,
     "alphaFadeOverLifetime": true,
     "positionOffset": [0, 0.72, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.projectile.stress_fireball",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.55, 0.32, 0.92],
+    "defaultScale": 0.28,
+    "defaultLifetime": -1
+  },
+  {
+    "id": "champion_skill_sandbox.projectile.stress_laser",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.44, 0.88, 1.0, 0.94],
+    "defaultScale": 0.16,
+    "defaultLifetime": -1
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_warrior_cleave",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.96, 0.66, 0.34, 0.14],
+    "defaultScale": 1.54,
+    "defaultLifetime": 0.28,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.88 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.68 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.36 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.045 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_warrior_cleave_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.72, 0.48, 0.88],
+    "defaultScale": 0.24,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.8, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_fireball_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.56, 0.34, 0.86],
+    "defaultScale": 0.34,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.72, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_fireball_hit",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Circle",
+    "defaultColor": [1.0, 0.44, 0.28, 0.18],
+    "defaultScale": 1.65,
+    "defaultLifetime": 0.24,
+    "positionOffset": [0, 0.06, 0],
+    "bindings": [
+      { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.48 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.28 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.05 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_laser_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.44, 0.88, 1.0, 0.88],
+    "defaultScale": 0.26,
+    "defaultLifetime": 0.16,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.7, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_laser_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.62, 0.94, 1.0, 0.92],
+    "defaultScale": 0.22,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.82, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_priest_heal_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.56, 0.94, 0.62, 0.86],
+    "defaultScale": 0.28,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.7, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.stress_priest_heal_hit",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.56, 0.94, 0.62, 0.14],
+    "defaultScale": 1.28,
+    "defaultLifetime": 0.22,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.76 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.58 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.96 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.66 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.04 }
+    ]
   }
 ]

@@ -119,6 +119,10 @@ namespace ChampionSkillSandboxMod.Runtime
             Entity fallback = ResolveChampionEntity(engine, ChampionSkillSandboxIds.EzrealAlphaName);
             if (fallback == Entity.Null)
             {
+                fallback = ResolveFirstControllableChampion(engine);
+            }
+            if (fallback == Entity.Null)
+            {
                 return false;
             }
 
@@ -306,7 +310,7 @@ namespace ChampionSkillSandboxMod.Runtime
 
             if (!_focusPanelHandle.IsValid)
             {
-                Entity initialTarget = visible ? target : ResolveChampionEntity(engine, ChampionSkillSandboxIds.EzrealAlphaName);
+                Entity initialTarget = visible ? target : ResolveFirstControllableChampion(engine);
                 _focusPanelHandle = service.Open(new EntityCommandPanelOpenRequest
                 {
                     TargetEntity = initialTarget,

@@ -106,6 +106,7 @@ namespace Ludots.Core.Engine
     {
         private const int PrimitiveDrawBufferCapacity = 8192;
         private const int VisualSnapshotBufferCapacity = 131072;
+        private const int PerformerInstanceBufferCapacity = 4096;
         private const int PathStoreMaxPaths = 512;
         private const int PathStoreMaxPointsPerPath = 256;
 
@@ -492,7 +493,7 @@ namespace Ludots.Core.Engine
             var groundOverlayBuffer = new GroundOverlayBuffer();
             var worldHudBuffer = new WorldHudBatchBuffer();
             var performerDefinitions = new PerformerDefinitionRegistry();
-            var performerInstances = new PerformerInstanceBuffer();
+            var performerInstances = new PerformerInstanceBuffer(PerformerInstanceBufferCapacity);
             var projectilePresentationBindings = new ProjectilePresentationBindingRegistry();
             var performerGraphApi = new GasGraphRuntimeApi(World, spatialQueries: null, coords: null, eventBus: null);
             new MeshAssetConfigLoader(ConfigPipeline, meshAssets, presentationPrefabs).Load();

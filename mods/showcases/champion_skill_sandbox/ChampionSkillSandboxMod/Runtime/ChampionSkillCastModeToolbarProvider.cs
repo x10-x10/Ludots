@@ -23,17 +23,45 @@ namespace ChampionSkillSandboxMod.Runtime
                 {
                     revision ^= (uint)activeModeId.GetHashCode(StringComparison.Ordinal);
                 }
+
                 if (!string.IsNullOrWhiteSpace(activeFollowModeId))
                 {
                     revision ^= (uint)activeFollowModeId.GetHashCode(StringComparison.Ordinal);
+                }
+
+                if (ChampionSkillSandboxIds.IsStressMap(_engine?.CurrentMapSession?.MapId.Value))
+                {
+                    ChampionSkillStressControlState? control = ResolveStressControl();
+                    ChampionSkillStressTelemetry? telemetry = ResolveStressTelemetry();
+                    revision ^= (uint)(control?.DesiredTeamA ?? 0);
+                    revision ^= (uint)((control?.DesiredTeamB ?? 0) << 5);
+                    revision ^= (uint)((telemetry?.LiveTeamA ?? 0) << 10);
+                    revision ^= (uint)((telemetry?.LiveTeamB ?? 0) << 15);
+                    revision ^= (uint)((telemetry?.ProjectileCount ?? 0) << 20);
                 }
 
                 return revision;
             }
         }
 
-        public string Title => "Cast Mode";
-        public string Subtitle => "Cast + Camera | F1/F2/F3 Cast | RMB Move";
+        public string Title => ChampionSkillSandboxIds.IsStressMap(_engine?.CurrentMapSession?.MapId.Value)
+            ? "Stress Harness"
+            : "Cast Mode";
+
+        public string Subtitle
+        {
+            get
+            {
+                if (!ChampionSkillSandboxIds.IsStressMap(_engine?.CurrentMapSession?.MapId.Value))
+                {
+                    return "Cast + Camera | F1/F2/F3 Cast | RMB Move";
+                }
+
+                ChampionSkillStressControlState? control = ResolveStressControl();
+                ChampionSkillStressTelemetry? telemetry = ResolveStressTelemetry();
+                return $"A {telemetry?.LiveTeamA ?? 0}/{control?.DesiredTeamA ?? 0} | B {telemetry?.LiveTeamB ?? 0}/{control?.DesiredTeamB ?? 0} | Proj {telemetry?.ProjectileCount ?? 0} peak {telemetry?.PeakProjectileCount ?? 0}";
+            }
+        }
 
         public void Bind(GameEngine engine)
         {
@@ -47,9 +75,10 @@ namespace ChampionSkillSandboxMod.Runtime
                 return 0;
             }
 
+            bool isStressMap = ChampionSkillSandboxIds.IsStressMap(_engine?.CurrentMapSession?.MapId.Value);
             string? activeModeId = ResolveViewModeManager()?.ActiveMode?.Id;
             string activeFollowModeId = ResolveActiveCameraFollowMode();
-            var buttons = new EntityCommandPanelToolbarButtonView[7];
+            var buttons = new EntityCommandPanelToolbarButtonView[isStressMap ? 11 : 7];
             buttons[0] = new EntityCommandPanelToolbarButtonView(
                 ChampionSkillSandboxIds.SmartCastModeId,
                 "Quick",
@@ -85,6 +114,30 @@ namespace ChampionSkillSandboxMod.Runtime
                 "Reset",
                 false,
                 "#D7D2C4");
+            if (isStressMap)
+            {
+                buttons[7] = new EntityCommandPanelToolbarButtonView(
+                    ChampionSkillSandboxIds.StressTeamADecreaseToolbarButtonId,
+                    "A-",
+                    false,
+                    "#FF9B7A");
+                buttons[8] = new EntityCommandPanelToolbarButtonView(
+                    ChampionSkillSandboxIds.StressTeamAIncreaseToolbarButtonId,
+                    "A+",
+                    false,
+                    "#FF9B7A");
+                buttons[9] = new EntityCommandPanelToolbarButtonView(
+                    ChampionSkillSandboxIds.StressTeamBDecreaseToolbarButtonId,
+                    "B-",
+                    false,
+                    "#67D4FF");
+                buttons[10] = new EntityCommandPanelToolbarButtonView(
+                    ChampionSkillSandboxIds.StressTeamBIncreaseToolbarButtonId,
+                    "B+",
+                    false,
+                    "#67D4FF");
+            }
+
             int count = Math.Min(destination.Length, buttons.Length);
             buttons[..count].CopyTo(destination);
             return count;
@@ -117,6 +170,34 @@ namespace ChampionSkillSandboxMod.Runtime
                 return;
             }
 
+            ChampionSkillStressControlState? control = ResolveStressControl();
+            if (control != null)
+            {
+                if (string.Equals(buttonId, ChampionSkillSandboxIds.StressTeamADecreaseToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+                {
+                    control.AdjustTeamA(-ChampionSkillStressControlState.Step);
+                    return;
+                }
+
+                if (string.Equals(buttonId, ChampionSkillSandboxIds.StressTeamAIncreaseToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+                {
+                    control.AdjustTeamA(ChampionSkillStressControlState.Step);
+                    return;
+                }
+
+                if (string.Equals(buttonId, ChampionSkillSandboxIds.StressTeamBDecreaseToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+                {
+                    control.AdjustTeamB(-ChampionSkillStressControlState.Step);
+                    return;
+                }
+
+                if (string.Equals(buttonId, ChampionSkillSandboxIds.StressTeamBIncreaseToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+                {
+                    control.AdjustTeamB(ChampionSkillStressControlState.Step);
+                    return;
+                }
+            }
+
             ResolveViewModeManager()?.SwitchTo(buttonId);
         }
 
@@ -141,6 +222,22 @@ namespace ChampionSkillSandboxMod.Runtime
             }
 
             return null;
+        }
+
+        private ChampionSkillStressControlState? ResolveStressControl()
+        {
+            return _engine?.GlobalContext.TryGetValue(ChampionSkillStressControlState.GlobalKey, out var value) == true &&
+                   value is ChampionSkillStressControlState control
+                ? control
+                : null;
+        }
+
+        private ChampionSkillStressTelemetry? ResolveStressTelemetry()
+        {
+            return _engine?.GlobalContext.TryGetValue(ChampionSkillStressTelemetry.GlobalKey, out var value) == true &&
+                   value is ChampionSkillStressTelemetry telemetry
+                ? telemetry
+                : null;
         }
     }
 }

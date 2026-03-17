@@ -32,6 +32,14 @@
         "value": "mods/Navigation2DPlaygroundMod",
         "projectPath": "Navigation2DPlaygroundMod.csproj"
       }
+    },
+    {
+      "name": "champion_skill_stress",
+      "target": {
+        "type": "path",
+        "value": "mods/showcases/champion_skill_stress_entry/ChampionSkillStressEntryMod",
+        "projectPath": "ChampionSkillStressEntryMod.csproj"
+      }
     }
   ],
   "adapters": {

@@ -226,6 +226,10 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Hammer.ToTheSkies", "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_cast");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Transform.Cannon", "champion_skill_sandbox.cue.jayce_transform_cannon");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Transform.Hammer", "champion_skill_sandbox.cue.jayce_transform_hammer");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.Warrior.Cleave", "champion_skill_sandbox.cue.stress_warrior_cleave");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.FireMage.Fireball", "champion_skill_sandbox.cue.stress_fireball_cast");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.LaserMage.Laser", "champion_skill_sandbox.cue.stress_laser_cast");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.Priest.Heal", "champion_skill_sandbox.cue.stress_priest_heal_cast");
 
             RegisterEffectCue(performers, "Effect.Champion.Ezreal.EssenceFluxHit", "champion_skill_sandbox.cue.ezreal_essence_flux_hit");
             RegisterEffectCue(performers, "Effect.Champion.Ezreal.MysticShotHit", "champion_skill_sandbox.cue.ezreal_mystic_shot_hit");
@@ -236,6 +240,10 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.LightningFieldHit", "champion_skill_sandbox.cue.jayce_hammer_lightning_field_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.ThunderingBlowHit", "champion_skill_sandbox.cue.jayce_hammer_thundering_blow_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.ToTheSkiesHit", "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.Warrior.CleaveHit", "champion_skill_sandbox.cue.stress_warrior_cleave_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.FireMage.FireballHit", "champion_skill_sandbox.cue.stress_fireball_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.LaserMage.LaserHit", "champion_skill_sandbox.cue.stress_laser_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.Priest.Heal", "champion_skill_sandbox.cue.stress_priest_heal_hit");
 
             _cueIdsInitialized = true;
         }
