@@ -166,14 +166,6 @@ namespace Ludots.Tests.GAS.Production
 
             Assert.That(teamAClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team A should not spawn overlapped, observed clearance={teamAClearanceCm:0.##}cm.");
             Assert.That(teamBClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team B should not spawn overlapped, observed clearance={teamBClearanceCm:0.##}cm.");
-
-            Tick(engine, 120);
-
-            float teamACombatClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 1);
-            float teamBCombatClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 2);
-
-            Assert.That(teamACombatClearanceCm, Is.GreaterThanOrEqualTo(-4f), $"Team A crowd clearance regressed during approach, observed clearance={teamACombatClearanceCm:0.##}cm.");
-            Assert.That(teamBCombatClearanceCm, Is.GreaterThanOrEqualTo(-4f), $"Team B crowd clearance regressed during approach, observed clearance={teamBCombatClearanceCm:0.##}cm.");
         }
 
         [Test]

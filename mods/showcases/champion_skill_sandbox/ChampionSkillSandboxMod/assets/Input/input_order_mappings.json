@@ -62,6 +62,10 @@
       "modifierBehavior": "IgnoreModifier"
     }
   ],
+  "groupMoveFormation": {
+    "mode": "Grid",
+    "spacingCm": 140
+  },
   "userOverrides": {
     "enabled": true,
     "persistPath": "user://ChampionSkillSandboxMod/input_preferences.json"
