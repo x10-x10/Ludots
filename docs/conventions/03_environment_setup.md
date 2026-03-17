@@ -1,115 +1,122 @@
-# 开发环境与构建
+# Environment Setup and Build
 
-本篇汇总 Ludots 仓库的 SDK 要求、构建命令、测试命令、服务启动方式和平台特定说明。
+This document summarizes the current Ludots SDK requirements, build commands, test commands, and launcher entrypoints.
 
-## 1 SDK 要求
+The launcher command contract is defined by:
 
-| SDK | 必需 | 原因 |
-|-----|------|------|
-| .NET 8.0 | 是 | 主目标框架 |
-| .NET 9.0 | 是 | DotRecast 多目标编译 |
-| .NET 10.0 (preview) | 是 | DotRecast 多目标编译 |
-| Node.js + npm | 仅 Editor | Editor React 前端 |
+- `scripts/run-mod-launcher.cmd`
+- `scripts/run-mod-launcher.ps1`
 
-缺少任一 .NET SDK 会导致 `dotnet restore` 失败。
+## 1. SDK Requirements
 
-### 1.1 Linux / Cloud VM 安装
+| SDK | Required | Reason |
+|-----|----------|--------|
+| .NET 8.0 | Yes | Primary target framework |
+| .NET 9.0 | Yes | Multi-target dependencies still require it |
+| .NET 10.0 preview | Yes | Some external multi-target dependencies still require it |
+| Node.js + npm | Yes | Web launcher and web client builds |
 
-SDKs 通过 `dotnet-install.sh` 安装到 `/usr/share/dotnet`，符号链接 `/usr/local/bin/dotnet`。`PATH` 和 `DOTNET_ROOT` 在 `~/.bashrc` 中设置。
+Missing any required .NET SDK may break `dotnet restore`.
 
-## 2 构建命令
+## 2. Common Build and Launch Commands
 
-```bash
-# 构建 Raylib 桌面应用
-dotnet build src/Apps/Raylib/Ludots.App.Raylib/Ludots.App.Raylib.csproj -c Release
+```powershell
+# Build launcher CLI
+dotnet build src/Tools/Ludots.Launcher.Cli/Ludots.Launcher.Cli.csproj -c Release
 
-# 构建指定 Mod
-dotnet run --project src/Tools/ModLauncher/Ludots.ModLauncher.csproj -c Release -- cli mods build --mods "MobaDemoMod"
+# Build web bridge
+dotnet build src/Tools/Ludots.Editor.Bridge/Ludots.Editor.Bridge.csproj -c Release
 
-# 写入 game.json
-dotnet run --project src/Tools/ModLauncher/Ludots.ModLauncher.csproj -c Release -- cli gamejson write --mods "MobaDemoMod"
+# Inspect a launch plan
+.\scripts\run-mod-launcher.cmd cli resolve camera_acceptance --adapter raylib
 
-# 运行游戏
-dotnet run --project src/Tools/ModLauncher/Ludots.ModLauncher.csproj -c Release -- cli run
+# Inspect the direct hotpath acceptance plan
+.\scripts\run-mod-launcher.cmd cli resolve camera_acceptance_hotpath --adapter raylib
+
+# Launch a single mod
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib
+
+# Launch directly into the camera hotpath acceptance map
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance_hotpath --adapter raylib
+
+# Launch multiple root mods on web
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance nav_playground --adapter web
+
+# Launch the currently selected preset
+.\scripts\run-mod-launcher.cmd cli launch --adapter web
+
+# Export SDK ref DLLs
+.\scripts\run-mod-launcher.cmd cli sdk export
 ```
 
-## 3 测试命令
+Rules:
 
-```bash
-# GAS 测试（核心 gameplay）
+- The canonical wrapper form is `.\scripts\run-mod-launcher.cmd cli ...`.
+- Selector inputs may be bindings, `mod:<id>`, `path:<mod-root>`, or `preset:<id>`.
+- `launch` automatically resolves dependencies, DLLs, and runtime bootstrap.
+- `game.json` is optional and only needed for direct adapter debugging.
+
+## 3. Test Commands
+
+```powershell
 dotnet test src/Tests/GasTests/GasTests.csproj
-
-# GAS 测试（详细输出）
-dotnet test src/Tests/GasTests/GasTests.csproj --logger "console;verbosity=detailed"
-
-# 运行指定测试类
-dotnet test src/Tests/GasTests/GasTests.csproj --filter "FullyQualifiedName~TagRuleSetTests"
-
-# 2D 导航测试
+dotnet test src/Tests/ThreeCTests/ThreeCTests.csproj
+dotnet test src/Tests/PresentationTests/PresentationTests.csproj
 dotnet test src/Tests/Navigation2DTests/Navigation2DTests.csproj
-
-# 架构边界测试
 dotnet test src/Tests/ArchitectureTests/ArchitectureTests.csproj
 ```
 
-测试框架：NUnit 4.2.2 + BenchmarkDotNet。测试风格见 `src/Tests/GasTests/TESTING_STYLE.md`。
+## 4. Service Entrypoints
 
-## 4 服务启动
+Ludots now treats web launcher and CLI as the product entry surface. They share `src/Tools/Ludots.Launcher.Backend`.
 
-Ludots 有两个开发时可运行的服务：
+### 4.1 Product Web Launcher
 
-### 4.1 Editor Bridge（ASP.NET Core API，端口 5299）
-
-```bash
-dotnet run --project src/Tools/Ludots.Editor.Bridge/Ludots.Editor.Bridge.csproj
+```powershell
+.\scripts\run-mod-launcher.cmd
 ```
 
-提供 Mod/Map/Terrain 数据的 REST API。
+This builds the React launcher, ensures the bridge is running, and opens the launcher URL.
 
-### 4.2 Editor React（Vite 前端，端口 5173）
+### 4.2 Product CLI Launcher
 
-```bash
-cd src/Tools/Ludots.Editor.React && npx vite --host 0.0.0.0 --port 5173
+```powershell
+.\scripts\run-mod-launcher.cmd cli launch camera_acceptance --adapter raylib
 ```
 
-可视化地图编辑器，连接 Editor Bridge。
+### 4.3 Direct Adapter Debug
 
-### 4.3 Raylib 桌面应用
-
-```bash
-dotnet run --project src/Apps/Raylib/Ludots.App.Raylib/Ludots.App.Raylib.csproj -c Release -- game.navigation2d.json
+```powershell
+dotnet run --project src/Apps/Raylib/Ludots.App.Raylib/Ludots.App.Raylib.csproj -c Release -- launcher.runtime.json
+dotnet run --project src/Apps/Web/Ludots.App.Web/Ludots.App.Web.csproj -c Release -- launcher.runtime.json
 ```
 
-## 5 平台特定说明
+This path is for debugging only. Product usage should go through launcher CLI or web launcher.
+
+## 5. Platform Notes
 
 ### 5.1 Linux / Raylib
 
-*   `libraylib.so`（raylib 5.5, x64）已签入 `src/Platforms/Desktop/`
-*   `SkiaSharp.NativeAssets.Linux` NuGet 包提供 `libSkiaSharp.so`
-*   csproj 使用 OS 条件 `<ItemGroup>` 按平台复制正确的原生库
-*   系统依赖：`libx11-dev`, `libxrandr-dev`, `libxi-dev`, `libxcursor-dev`, `libxinerama-dev`, `libgl1-mesa-dev`
+- Native raylib and Skia dependencies must be present.
+- Platform-specific native asset copy rules live in the relevant project files.
 
-### 5.2 Cloud VM 限制
+### 5.2 Cloud VM
 
-*   Raylib 桌面应用需要 GPU 和原生库，在无 GPU 的 Cloud VM 上可能无法运行
-*   测试和 Editor 技术栈（Bridge + React）在 Cloud VM 上完全可用
+- Raylib desktop usage may be limited by missing GPU or native graphics dependencies.
+- CLI, bridge, web launcher, and the web adapter path are usable without a local desktop session.
 
-### 5.3 已知问题
+## 6. Mod Paths and Workspaces
 
-*   `src/Tools/Ludots.Editor.React/src/App.tsx` 存在大小写敏感的 import（`@/Components/...` vs `@/components/...`），Linux 上可能导致 `tsc` 和 Vite 失败
-*   ESLint 报告约 71 个预存错误（`@typescript-eslint/no-explicit-any` 和 `no-case-declarations`），这些是历史问题
+Mods are no longer restricted to the repository `mods/` folder.
 
-## 6 Mod 目录结构
+Supported discovery paths:
 
-Mod 位于仓库根目录的 `mods/`，不在 `src/` 内。这与 UGC 分发布局一致。
+- `launcher.config.json` scan roots
+- `cli workspace add --path <dir>`
+- `cli binding set <name> --path <mod-root>`
 
-*   `modworkspace.json`（仓库根目录）列出要扫描 Mod 的目录
-*   `game.json` 中的 `ModPaths` 条目指向包含 `mod.json` 的 Mod 目录
-*   Mod 发现通过 workspace 配置或显式 `ModPaths`，不使用硬编码路径
+## 7. Related Docs
 
-## 7 相关文档
-
-*   编码标准：见 [00_coding_standards.md](00_coding_standards.md)
-*   CLI 启动与调试指南：见 `docs/developer-guide/04_cli_guide.md`
-*   Mod 架构与配置系统：见 `docs/developer-guide/02_mod_architecture.md`
-*   启动顺序与入口点：见 `docs/developer-guide/09_startup_entrypoints.md`
+- [Launcher CLI Runbook](../reference/cli_runbook.md)
+- [Startup Entrypoints](../architecture/startup_entrypoints.md)
+- [Mod Architecture](../architecture/mod_architecture.md)

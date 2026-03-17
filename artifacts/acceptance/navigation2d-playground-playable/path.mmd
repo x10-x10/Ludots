@@ -1,0 +1,11 @@
+flowchart TD
+    A[Boot GameEngine with CoreInputMod + Navigation2DPlaygroundMod] --> B[Mount UIRoot reactive panel]
+    B --> C[Drag box over team-0 crowd]
+    C --> D[SelectionBuffer + SelectedTag updated]
+    D --> E[Right click move target]
+    E --> F[Selected NavGoal2D updated in formation]
+    F --> G[Hotkey switch to spawn tool]
+    G --> H[Right click spawn agents and blockers]
+    H --> I[F2 follow mode]
+    I --> J[F1 command mode]
+    J --> K[Write battle-report + trace + path]

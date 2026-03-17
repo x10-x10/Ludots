@@ -1,0 +1,39 @@
+﻿name: skills-governance
+
+on:
+  pull_request:
+    paths:
+      - 'skills/**'
+      - 'docs/conventions/README.md'
+      - 'docs/conventions/05_shared_skill_governance.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - '.github/CODEOWNERS'
+      - '.github/workflows/skills-governance.yml'
+      - 'scripts/validate-skills.ps1'
+      - 'scripts/sync-skills.ps1'
+  push:
+    branches:
+      - main
+    paths:
+      - 'skills/**'
+      - 'docs/conventions/README.md'
+      - 'docs/conventions/05_shared_skill_governance.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - '.github/CODEOWNERS'
+      - '.github/workflows/skills-governance.yml'
+      - 'scripts/validate-skills.ps1'
+      - 'scripts/sync-skills.ps1'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate shared skills
+        shell: pwsh
+        run: ./scripts/validate-skills.ps1

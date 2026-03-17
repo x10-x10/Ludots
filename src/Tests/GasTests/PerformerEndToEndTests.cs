@@ -74,14 +74,17 @@ namespace Ludots.Tests.Presentation
             _healthAttrId = AttributeRegistry.Register("Health");
 
             // Register built-in definitions (CastCommitted marker, CastFailed marker, FloatingCombatText, EntityHealthBar)
-            BuiltinPerformerDefinitions.Register(_defs, new MeshAssetRegistry());
+            BuiltinPerformerDefinitions.Register(
+                _defs,
+                new MeshAssetRegistry(),
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
             var session = new GameSession();
             var graphApi = new GasGraphRuntimeApi(_world, null, null, null);
 
             _bridge = new PresentationBridgeSystem(_world, _eventBus, _presEvents, session, _gasEvents);
             _ruleSystem = new PerformerRuleSystem(_world, _presEvents, _commands, _defs, _programs, graphApi, _globals);
-            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances);
+            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances, new Ludots.Core.Presentation.PresentationStableIdAllocator());
             _emitSystem = new PerformerEmitSystem(_world, _instances, _defs, _overlays, _primitives, _hud, _programs, graphApi, _globals);
         }
 
@@ -138,6 +141,8 @@ namespace Ludots.Tests.Presentation
                 if (hudSpan[i].Kind == WorldHudItemKind.Text)
                 {
                     foundText = true;
+                    Assert.That(hudSpan[i].Text.TokenId, Is.EqualTo(1), "Floating combat text should carry the stable text token id.");
+                    Assert.That(hudSpan[i].Text.ArgCount, Is.EqualTo(1), "Floating combat text should expose one runtime text argument.");
                     break;
                 }
             }
@@ -471,6 +476,57 @@ namespace Ludots.Tests.Presentation
 
             // Act — should not throw
             Assert.DoesNotThrow(() => TickPipeline(0.016f));
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // E2E-8  Entity-scoped template filter — only matching template emits
+        // ═══════════════════════════════════════════════════════════════
+
+        [Test]
+        public void EntityScoped_TemplateFilter_OnlyMatchingTemplateEmits()
+        {
+            // Arrange — register a template-filtered bar
+            int heroTemplateId = 42;
+            var def = new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.WorldBar,
+                EntityScope = EntityScopeFilter.AllWithAttributes,
+                RequiredTemplateId = heroTemplateId,
+                DefaultColor = new Vector4(1f, 0f, 0f, 1f),
+                PositionOffset = new Vector3(0f, 2f, 0f),
+            };
+            _defs.Register("test_e2e_tmpl_bar", def);
+
+            // Hero entity — matches template
+            var heroAttr = new AttributeBuffer();
+            heroAttr.SetBase(_healthAttrId, 200f);
+            heroAttr.SetCurrent(_healthAttrId, 200f);
+            _world.Create(
+                new VisualTransform { Position = new Vector3(1, 0, 1) },
+                heroAttr,
+                new VisualTemplateRef { TemplateId = heroTemplateId });
+
+            // Minion entity — different template, should NOT get the template-filtered bar
+            var minionAttr = new AttributeBuffer();
+            minionAttr.SetBase(_healthAttrId, 50f);
+            minionAttr.SetCurrent(_healthAttrId, 50f);
+            _world.Create(
+                new VisualTransform { Position = new Vector3(5, 0, 5) },
+                minionAttr,
+                new VisualTemplateRef { TemplateId = 99 });
+
+            // Act
+            TickPipeline(0.016f);
+
+            // Assert — builtin EntityHealthBar emits 2 bars (no filter),
+            // test_e2e_tmpl_bar emits 1 bar (hero only). Total = 3.
+            var hudSpan = _hud.GetSpan();
+            int totalBars = 0;
+            for (int i = 0; i < hudSpan.Length; i++)
+                if (hudSpan[i].Kind == WorldHudItemKind.Bar) totalBars++;
+
+            Assert.That(totalBars, Is.EqualTo(3),
+                "Should have 2 builtin bars (unfiltered) + 1 template-filtered bar (hero only)");
         }
 
         // ═══════════════════════════════════════════════════════════════

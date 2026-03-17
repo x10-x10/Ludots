@@ -106,4 +106,4 @@ cursor/prs-dbf7 (当前)
 
 - [Phase 1 + Phase 2a 架构审计](phase1_phase2a_audit_report.md)
 - [端到端验收用例](e2e_acceptance_tests.md)
-- [Camera 标准规范](../developer-guide/16_camera_standards.md)
+- [相机标准规范](../reference/camera_standards.md)

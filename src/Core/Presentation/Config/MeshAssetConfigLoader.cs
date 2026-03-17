@@ -94,6 +94,7 @@ namespace Ludots.Core.Presentation.Config
                     return MeshAssetDescriptor.Primitive(0, kind);
                 }
                 case MeshAssetType.Model:
+                case MeshAssetType.Billboard:
                 {
                     var urisNode = node["sourceUris"];
                     string[] uris;
@@ -108,7 +109,9 @@ namespace Ludots.Core.Presentation.Config
                         string single = urisNode?.GetValue<string>();
                         uris = string.IsNullOrWhiteSpace(single) ? Array.Empty<string>() : new[] { single };
                     }
-                    return MeshAssetDescriptor.Model(0, uris);
+                    return type == MeshAssetType.Billboard
+                        ? MeshAssetDescriptor.Billboard(0, uris)
+                        : MeshAssetDescriptor.Model(0, uris);
                 }
                 case MeshAssetType.Prefab:
                 {

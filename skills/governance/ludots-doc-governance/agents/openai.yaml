@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ludots Doc Governance"
+  short_description: "Govern docs, links, and SSOT consistency"
+  default_prompt: "Use $ludots-doc-governance to audit docs scope, validate references, and output a severity-ranked governance report."
+

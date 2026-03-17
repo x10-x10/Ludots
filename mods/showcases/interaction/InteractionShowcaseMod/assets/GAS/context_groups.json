@@ -1,0 +1,98 @@
+[
+  {
+    "id": "interaction_arcweaver_action",
+    "rootAbilityId": "Ability.Interaction.Arcweaver.ActionContext",
+    "searchRadiusCm": 900,
+    "candidates": [
+      {
+        "abilityId": "Ability.Interaction.Arcweaver.ArcDash",
+        "basePriority": 40,
+        "maxDistanceCm": 900,
+        "distanceWeight": 30,
+        "maxAngleDeg": 110,
+        "angleWeight": 10,
+        "hoveredBiasScore": 8,
+        "requiresTarget": true
+      },
+      {
+        "abilityId": "Ability.Interaction.Arcweaver.DuelBolt",
+        "basePriority": 36,
+        "maxDistanceCm": 520,
+        "distanceWeight": 18,
+        "maxAngleDeg": 140,
+        "angleWeight": 4,
+        "hoveredBiasScore": 12,
+        "requiresTarget": true
+      },
+      {
+        "abilityId": "Ability.Interaction.Arcweaver.NovaPulse",
+        "basePriority": 10,
+        "requiresTarget": false
+      }
+    ]
+  },
+  {
+    "id": "interaction_vanguard_action",
+    "rootAbilityId": "Ability.Interaction.Vanguard.ActionContext",
+    "searchRadiusCm": 700,
+    "candidates": [
+      {
+        "abilityId": "Ability.Interaction.Vanguard.ChargeDash",
+        "basePriority": 45,
+        "maxDistanceCm": 700,
+        "distanceWeight": 28,
+        "maxAngleDeg": 100,
+        "angleWeight": 10,
+        "hoveredBiasScore": 8,
+        "requiresTarget": true
+      },
+      {
+        "abilityId": "Ability.Interaction.Vanguard.Challenge",
+        "basePriority": 34,
+        "maxDistanceCm": 260,
+        "distanceWeight": 18,
+        "maxAngleDeg": 150,
+        "angleWeight": 2,
+        "hoveredBiasScore": 10,
+        "requiresTarget": true
+      },
+      {
+        "abilityId": "Ability.Interaction.Vanguard.Shockwave",
+        "basePriority": 8,
+        "requiresTarget": false
+      }
+    ]
+  },
+  {
+    "id": "interaction_commander_action",
+    "rootAbilityId": "Ability.Interaction.Commander.ActionContext",
+    "searchRadiusCm": 950,
+    "candidates": [
+      {
+        "abilityId": "Ability.Interaction.Commander.ThrustJump",
+        "basePriority": 38,
+        "maxDistanceCm": 720,
+        "distanceWeight": 22,
+        "maxAngleDeg": 120,
+        "angleWeight": 8,
+        "hoveredBiasScore": 8,
+        "requiresTarget": true
+      },
+      {
+        "abilityId": "Ability.Interaction.Commander.VolleyLine",
+        "basePriority": 32,
+        "maxDistanceCm": 820,
+        "distanceWeight": 14,
+        "maxAngleDeg": 140,
+        "angleWeight": 6,
+        "hoveredBiasScore": 12,
+        "requiresTarget": true
+      },
+      {
+        "abilityId": "Ability.Interaction.Commander.Overclock",
+        "basePriority": 6,
+        "requiresTarget": false
+      }
+    ]
+  }
+]

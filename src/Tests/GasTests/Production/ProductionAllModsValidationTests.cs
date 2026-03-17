@@ -59,16 +59,58 @@ namespace Ludots.Tests.GAS.Production
                 .SetName("ProdModSmoke_Physics2DPlaygroundMod");
 
             yield return new TestCaseData(new ModCase(
+                    "Navigation2DPlaygroundMod",
+                    new[] { "LudotsCoreMod", "Navigation2DPlaygroundMod" },
+                    true))
+                .SetName("ProdModSmoke_Navigation2DPlaygroundMod");
+
+            yield return new TestCaseData(new ModCase(
                     "TerrainBenchmarkMod",
                     new[] { "LudotsCoreMod", "TerrainBenchmarkMod" },
                     true))
                 .SetName("ProdModSmoke_TerrainBenchmarkMod");
 
             yield return new TestCaseData(new ModCase(
-                    "Universal3CCameraMod",
-                    new[] { "LudotsCoreMod", "Universal3CCameraMod" },
+                    "CameraBootstrapMod",
+                    new[] { "LudotsCoreMod", "CameraBootstrapMod" },
                     true))
-                .SetName("ProdModSmoke_Universal3CCameraMod");
+                .SetName("ProdModSmoke_CameraBootstrapMod");
+
+            yield return new TestCaseData(new ModCase(
+                    "CameraProfilesMod",
+                    new[] { "LudotsCoreMod", "CoreInputMod", "CameraProfilesMod" },
+                    true))
+                .SetName("ProdModSmoke_CameraProfilesMod");
+
+            yield return new TestCaseData(new ModCase(
+                    "VirtualCameraShotsMod",
+                    new[] { "LudotsCoreMod", "VirtualCameraShotsMod" },
+                    true))
+                .SetName("ProdModSmoke_VirtualCameraShotsMod");
+
+            yield return new TestCaseData(new ModCase(
+                    "CameraAcceptanceMod",
+                    new[] { "LudotsCoreMod", "CoreInputMod", "CameraAcceptanceMod" },
+                    true))
+                .SetName("ProdModSmoke_CameraAcceptanceMod");
+
+            yield return new TestCaseData(new ModCase(
+                    "CameraAcceptanceHotpathEntryMod",
+                    new[] { "LudotsCoreMod", "CoreInputMod", "CameraAcceptanceMod", "CameraAcceptanceHotpathEntryMod" },
+                    true))
+                .SetName("ProdModSmoke_CameraAcceptanceHotpathEntryMod");
+
+            yield return new TestCaseData(new ModCase(
+                    "InteractionShowcaseMod",
+                    new[] { "LudotsCoreMod", "CoreInputMod", "CameraProfilesMod", "InteractionShowcaseMod" },
+                    true))
+                .SetName("ProdModSmoke_InteractionShowcaseMod");
+
+            yield return new TestCaseData(new ModCase(
+                    "ChampionSkillSandboxMod",
+                    new[] { "LudotsCoreMod", "CoreInputMod", "CameraProfilesMod", "EntityCommandPanelMod", "ChampionSkillSandboxMod" },
+                    true))
+                .SetName("ProdModSmoke_ChampionSkillSandboxMod");
 
             yield return new TestCaseData(new ModCase(
                     "UiTestMod",
@@ -148,13 +190,7 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "mods");
-
-            var modPaths = new List<string>(modCase.Mods.Length);
-            for (int i = 0; i < modCase.Mods.Length; i++)
-            {
-                modPaths.Add(Path.Combine(modsRoot, modCase.Mods[i]));
-            }
+            var modPaths = RepoModPaths.ResolveExplicit(repoRoot, modCase.Mods);
 
             var engine = new GameEngine();
             try

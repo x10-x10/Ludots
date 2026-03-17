@@ -1,5 +1,4 @@
 using System;
-using Ludots.Adapter.Raylib.UI;
 using Ludots.Client.Raylib.Diagnostics;
 using Ludots.Client.Raylib.Input;
 using Ludots.Core.Config;
@@ -11,10 +10,13 @@ using Ludots.Core.Input.Runtime;
 using Ludots.Core.Scripting;
 using Ludots.Platform.Abstractions;
 using Ludots.UI;
+using Ludots.UI.HtmlEngine.Markup;
+using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 
 namespace Ludots.Adapter.Raylib
 {
-    internal sealed record RaylibHostSetup(GameEngine Engine, GameConfig Config, UIRoot UiRoot);
+    internal sealed record RaylibHostSetup(GameEngine Engine, GameConfig Config, UIRoot UiRoot, SkiaUiRenderer Renderer);
 
     internal static class RaylibHostComposer
     {
@@ -27,7 +29,7 @@ namespace Ludots.Adapter.Raylib
             // Check if file logging is requested after config merge
             Log.Initialize(effectiveBackend);
 
-            var result = GameBootstrapper.InitializeFromBaseDirectory(baseDir, gameConfigFile ?? "game.json");
+            var result = GameBootstrapper.InitializeFromBaseDirectory(baseDir, gameConfigFile ?? "launcher.runtime.json");
             var engine = result.Engine;
             var config = result.Config;
 
@@ -43,9 +45,14 @@ namespace Ludots.Adapter.Raylib
 
             engine.SetService(CoreServiceKeys.LogBackend, effectiveBackend);
 
-            var uiRoot = new UIRoot();
+            var renderer = new SkiaUiRenderer();
+            IUiTextMeasurer textMeasurer = new SkiaTextMeasurer();
+            IUiImageSizeProvider imageSizeProvider = new SkiaImageSizeProvider();
+            var uiRoot = new UIRoot(renderer);
             engine.SetService(CoreServiceKeys.UIRoot, (object)uiRoot);
-            engine.SetService(CoreServiceKeys.UISystem, (Core.UI.IUiSystem)new DesktopUiSystem(uiRoot));
+            engine.SetService(CoreServiceKeys.UiTextMeasurer, (object)textMeasurer);
+            engine.SetService(CoreServiceKeys.UiImageSizeProvider, (object)imageSizeProvider);
+            engine.SetService(CoreServiceKeys.UISystem, (Core.UI.IUiSystem)new MarkupUiSystem(uiRoot, textMeasurer, imageSizeProvider));
 
             var inputConfig = new InputConfigPipelineLoader(engine.ConfigPipeline).Load();
             IInputBackend inputBackend = new RaylibInputBackend();
@@ -65,7 +72,7 @@ namespace Ludots.Adapter.Raylib
 
             ValidateRequiredContextBeforeStart(engine);
 
-            return new RaylibHostSetup(engine, config, uiRoot);
+            return new RaylibHostSetup(engine, config, uiRoot, renderer);
         }
 
         private static void ValidateRequiredContextBeforeStart(GameEngine engine)

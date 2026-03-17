@@ -1,0 +1,942 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using Arch.Core;
+using Ludots.Core.Components;
+using Ludots.Core.Gameplay.Camera;
+using Ludots.Core.Input.Config;
+using Ludots.Core.Input.Orders;
+using Ludots.Core.Input.Runtime;
+using Ludots.Core.Mathematics;
+using Ludots.Core.Mathematics.FixedPoint;
+using Ludots.Core.Physics2D.Components;
+using Ludots.Core.Physics2D.Systems;
+using Ludots.Core.Presentation.Camera;
+using Ludots.Core.Presentation.Components;
+using Ludots.Core.Presentation.Systems;
+using Ludots.Core.Presentation.Utils;
+using Ludots.Core.Gameplay.GAS.Orders;
+using Ludots.Core.Spatial;
+using Ludots.Core.Systems;
+using NUnit.Framework;
+using Schedulers;
+using static NUnit.Framework.Assert;
+
+namespace Ludots.Tests.ThreeC
+{
+    [TestFixture]
+    public class ThreeCSystemTests
+    {
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+        //  Test Doubles
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        /// <summary>Captures CameraRenderState3D sent by CameraPresenter.</summary>
+        private sealed class StubCameraAdapter : ICameraAdapter
+        {
+            public CameraRenderState3D LastState { get; private set; }
+            public int CallCount { get; private set; }
+
+            public void UpdateCamera(in CameraRenderState3D state)
+            {
+                LastState = state;
+                CallCount++;
+            }
+        }
+
+        /// <summary>Configurable view properties for CameraCullingSystem.</summary>
+        private sealed class StubViewController : IViewController
+        {
+            public Vector2 Resolution { get; set; } = new Vector2(1920, 1080);
+            public float Fov { get; set; } = 60f;
+            public float AspectRatio { get; set; } = 16f / 9f;
+        }
+
+        /// <summary>Returns a pre-loaded entity list from QueryAabb; other methods throw.</summary>
+        private sealed class StubSpatialQueryService : ISpatialQueryService
+        {
+            public List<Entity> Entities { get; } = new List<Entity>();
+
+            public SpatialQueryResult QueryAabb(in WorldAabbCm bounds, Span<Entity> buffer)
+            {
+                int count = System.Math.Min(Entities.Count, buffer.Length);
+                for (int i = 0; i < count; i++) buffer[i] = Entities[i];
+                int dropped = Entities.Count - count;
+                return new SpatialQueryResult(count, dropped > 0 ? dropped : 0);
+            }
+
+            public SpatialQueryResult QueryRadius(WorldCmInt2 center, int radiusCm, Span<Entity> buffer) => throw new NotSupportedException();
+            public SpatialQueryResult QueryCone(WorldCmInt2 origin, int directionDeg, int halfAngleDeg, int rangeCm, Span<Entity> buffer) => throw new NotSupportedException();
+            public SpatialQueryResult QueryRectangle(WorldCmInt2 center, int halfWidthCm, int halfHeightCm, int rotationDeg, Span<Entity> buffer) => throw new NotSupportedException();
+            public SpatialQueryResult QueryLine(WorldCmInt2 origin, int directionDeg, int lengthCm, int halfWidthCm, Span<Entity> buffer) => throw new NotSupportedException();
+            public SpatialQueryResult QueryHexRange(Ludots.Core.Map.Hex.HexCoordinates center, int hexRadius, Span<Entity> buffer) => throw new NotSupportedException();
+            public SpatialQueryResult QueryHexRing(Ludots.Core.Map.Hex.HexCoordinates center, int hexRadius, Span<Entity> buffer) => throw new NotSupportedException();
+        }
+
+        /// <summary>Dictionary-driven input backend for deterministic tests.</summary>
+        private sealed class StubInputBackend : IInputBackend
+        {
+            public Dictionary<string, bool> Buttons { get; } = new Dictionary<string, bool>();
+            public Dictionary<string, float> Axes { get; } = new Dictionary<string, float>();
+            public Vector2 MousePos { get; set; }
+            public float MouseWheel { get; set; }
+
+            public float GetAxis(string devicePath) => Axes.TryGetValue(devicePath, out var v) ? v : 0f;
+            public bool GetButton(string devicePath) => Buttons.TryGetValue(devicePath, out var v) && v;
+            public Vector2 GetMousePosition() => MousePos;
+            public float GetMouseWheel() => MouseWheel;
+            public void EnableIME(bool enable) { }
+            public void SetIMECandidatePosition(int x, int y) { }
+            public string GetCharBuffer() => string.Empty;
+        }
+
+        /// <summary>Identity coordinate converter for tests.</summary>
+        private sealed class StubSpatialCoordinateConverter : ISpatialCoordinateConverter
+        {
+            public int GridCellSizeCm => 100;
+            public WorldCmInt2 GridToWorld(in IntVector2 grid) => new WorldCmInt2(grid.X * 100, grid.Y * 100);
+            public IntVector2 WorldToGrid(in WorldCmInt2 world) => new IntVector2(world.X / 100, world.Y / 100);
+            public WorldCmInt2 HexToWorld(in Ludots.Core.Map.Hex.HexCoordinates hex) => WorldCmInt2.Zero;
+            public Ludots.Core.Map.Hex.HexCoordinates WorldToHex(in WorldCmInt2 world) => default;
+        }
+
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+        //  SetUp
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        [SetUp]
+        public void Setup()
+        {
+            if (World.SharedJobScheduler == null)
+            {
+                World.SharedJobScheduler = new JobScheduler(new JobScheduler.Config
+                {
+                    ThreadPrefixName = "ThreeCTests",
+                    ThreadCount = 0,
+                    MaxExpectedConcurrentJobs = 64,
+                    StrictAllocationMode = false
+                });
+            }
+        }
+
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+        //  A. Camera State & Manager
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        [Test]
+        public void CameraState_DefaultValues_MatchExpected()
+        {
+            var state = new CameraState();
+
+            That(state.Yaw, Is.EqualTo(45f));
+            That(state.Pitch, Is.EqualTo(45f));
+            That(state.DistanceCm, Is.EqualTo(2000f));
+            That(state.FovYDeg, Is.EqualTo(60f));
+            That(state.ZoomLevel, Is.EqualTo(5));
+            That(state.TargetCm, Is.EqualTo(Vector2.Zero));
+        }
+
+                [Test]
+        public void CameraManager_WithoutRuntimeConfigured_UpdateDoesNotThrow()
+        {
+            var manager = new CameraManager();
+            Assert.DoesNotThrow(() => manager.Update(0.016f));
+        }
+
+        [Test]
+        public void CameraManager_ConfiguredVirtualCamera_UpdatesStateFromInput()
+        {
+            var (backend, handler) = BuildOrbitInputHandler();
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
+            {
+                Id = "ManagerRotate",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                DistanceCm = 1000f,
+                Pitch = 45f,
+                FovYDeg = 60f,
+                Yaw = 355f,
+                PanMode = CameraPanMode.None,
+                RotateMode = CameraRotateMode.KeyRotate,
+                RotateDegPerSecond = 90f,
+                EnableZoom = false,
+                MinPitchDeg = 10f,
+                MaxPitchDeg = 85f
+            });
+
+            backend.Buttons["<Keyboard>/e"] = true;
+            handler.Update();
+            manager.Update(1f);
+
+            That(manager.State.Yaw, Is.EqualTo(85f).Within(0.01f));
+        }
+
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+        //  B. Camera Preset Runtime Behaviors
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        private static (StubInputBackend backend, PlayerInputHandler handler) BuildOrbitInputHandler()
+        {
+            var backend = new StubInputBackend();
+            var config = new InputConfigRoot
+            {
+                Actions = new List<InputActionDef>
+                {
+                    new() { Id = "Move", Type = InputActionType.Axis2D },
+                    new() { Id = "Zoom", Type = InputActionType.Axis1D },
+                    new() { Id = "Look", Type = InputActionType.Axis2D },
+                    new() { Id = "PointerDelta", Type = InputActionType.Axis2D },
+                    new() { Id = "PointerPos", Type = InputActionType.Axis2D },
+                    new() { Id = "OrbitRotateHold", Type = InputActionType.Button },
+                    new() { Id = "RotateLeft", Type = InputActionType.Button },
+                    new() { Id = "RotateRight", Type = InputActionType.Button },
+                },
+                Contexts = new List<InputContextDef>
+                {
+                    new()
+                    {
+                        Id = "OrbitCamera",
+                        Priority = 10,
+                        Bindings = new List<InputBindingDef>
+                        {
+                            new() { ActionId = "Zoom", Path = "<Mouse>/Scroll", Processors = new() },
+                            new() { ActionId = "Look", Path = "<Mouse>/Delta", Processors = new() { new InputModifierDef { Type = "Invert", Parameters = new() { new InputParameterDef { Name = "Y", Value = 1f } } } } },
+                            new() { ActionId = "PointerDelta", Path = "<Mouse>/Delta", Processors = new() },
+                            new() { ActionId = "PointerPos", Path = "<Mouse>/Pos", Processors = new() },
+                            new() { ActionId = "OrbitRotateHold", Path = "<Mouse>/MiddleButton", Processors = new() },
+                            new() { ActionId = "RotateLeft", Path = "<Keyboard>/q", Processors = new() },
+                            new() { ActionId = "RotateRight", Path = "<Keyboard>/e", Processors = new() },
+                        }
+                    }
+                }
+            };
+            var handler = new PlayerInputHandler(backend, config);
+            handler.PushContext("OrbitCamera");
+            return (backend, handler);
+        }
+
+        [Test]
+        public void VirtualCameraRuntime_Zoom_ClampsToMinMax()
+        {
+            var (backend, handler) = BuildOrbitInputHandler();
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
+            {
+                Id = "TestZoom",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                DistanceCm = 1000f,
+                Pitch = 45f,
+                FovYDeg = 60f,
+                Yaw = 180f,
+                PanMode = CameraPanMode.None,
+                RotateMode = CameraRotateMode.None,
+                EnableZoom = true,
+                MinDistanceCm = 500f,
+                MaxDistanceCm = 5000f,
+                ZoomCmPerWheel = 2000f
+            });
+
+            backend.MouseWheel = 10f;
+            handler.Update();
+            manager.Update(0.016f);
+            That(manager.State.DistanceCm, Is.EqualTo(500f), "Should clamp to MinDistanceCm");
+
+            manager.ApplyPose(new CameraPoseRequest { DistanceCm = 4000f });
+            backend.MouseWheel = -10f;
+            handler.Update();
+            manager.Update(0.016f);
+            That(manager.State.DistanceCm, Is.EqualTo(5000f), "Should clamp to MaxDistanceCm");
+        }
+
+        [Test]
+        public void VirtualCameraRuntime_Zoom_AccumulatesAcrossVisualFrames_AndConsumesOncePerFixedTick()
+        {
+            var (backend, handler) = BuildOrbitInputHandler();
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
+            {
+                Id = "AccumulatedZoom",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                DistanceCm = 5000f,
+                Pitch = 45f,
+                FovYDeg = 60f,
+                Yaw = 180f,
+                PanMode = CameraPanMode.None,
+                RotateMode = CameraRotateMode.None,
+                EnableZoom = true,
+                MinDistanceCm = 1000f,
+                MaxDistanceCm = 10000f,
+                ZoomCmPerWheel = 500f
+            });
+
+            backend.MouseWheel = 1f;
+            handler.Update();
+            manager.CaptureVisualInput();
+
+            backend.MouseWheel = 1f;
+            handler.Update();
+            manager.CaptureVisualInput();
+
+            backend.MouseWheel = 0f;
+            handler.Update();
+            manager.CaptureVisualInput();
+
+            manager.Update(0.016f);
+            That(manager.State.DistanceCm, Is.EqualTo(4000f), "Two visual-frame wheel steps should be consumed by the next fixed-step camera tick");
+
+            manager.Update(0.016f);
+            That(manager.State.DistanceCm, Is.EqualTo(4000f), "Wheel delta should not be consumed again without a new visual input sample");
+        }
+
+        [Test]
+        public void VirtualCameraRuntime_KeyboardRotate_YawWraps360()
+        {
+            var (backend, handler) = BuildOrbitInputHandler();
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
+            {
+                Id = "TestRotate",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                DistanceCm = 1000f,
+                Pitch = 45f,
+                FovYDeg = 60f,
+                Yaw = 355f,
+                PanMode = CameraPanMode.None,
+                RotateMode = CameraRotateMode.KeyRotate,
+                RotateDegPerSecond = 90f,
+                EnableZoom = false,
+                MinPitchDeg = 10f,
+                MaxPitchDeg = 85f
+            });
+
+            backend.Buttons["<Keyboard>/e"] = true;
+            handler.Update();
+            manager.Update(1f);
+
+            That(manager.State.Yaw, Is.GreaterThanOrEqualTo(0f));
+            That(manager.State.Yaw, Is.LessThan(360f));
+            That(manager.State.Yaw, Is.EqualTo(85f).Within(0.01f));
+        }
+
+        [Test]
+        public void VirtualCameraRuntime_PitchClamp_RespectsMaxBound()
+        {
+            var (backend, handler) = BuildOrbitInputHandler();
+            var manager = CreateOrbitCameraManager(handler, new VirtualCameraDefinition
+            {
+                Id = "TestPitch",
+                Priority = 0,
+                RigKind = CameraRigKind.Orbit,
+                DistanceCm = 1000f,
+                Pitch = 80f,
+                FovYDeg = 60f,
+                Yaw = 180f,
+                PanMode = CameraPanMode.None,
+                RotateMode = CameraRotateMode.DragRotate,
+                RotateDegPerPixel = 0.28f,
+                MinPitchDeg = 10f,
+                MaxPitchDeg = 85f,
+                EnableZoom = false
+            });
+
+            backend.Buttons["<Mouse>/MiddleButton"] = true;
+            backend.MousePos = new Vector2(100f, 500f);
+            handler.Update();
+            manager.Update(0.016f);
+
+            backend.MousePos = new Vector2(100f, 100f);
+            handler.Update();
+            manager.Update(0.016f);
+
+            That(manager.State.Pitch, Is.EqualTo(85f).Within(0.01f), "Upward drag should raise pitch until MaxPitchDeg");
+        }
+
+        private static CameraManager CreateOrbitCameraManager(PlayerInputHandler handler, VirtualCameraDefinition definition)
+        {
+            var manager = new CameraManager();
+            var registry = new VirtualCameraRegistry();
+            definition.AllowUserInput = true;
+            registry.Register(definition);
+            manager.SetVirtualCameraRegistry(registry);
+            manager.ConfigureRuntime(handler, new StubViewController());
+            manager.ActivateVirtualCamera(definition.Id, blendDurationSeconds: 0f);
+            return manager;
+        }
+        //  C. Camera Presenter
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        [Test]
+        public void Presenter_FirstUpdate_SphericalToCartesianCorrect()
+        {
+            var adapter = new StubCameraAdapter();
+            var coords = new StubSpatialCoordinateConverter();
+            var presenter = new CameraPresenter(coords, adapter);
+            var manager = new CameraManager();
+
+            manager.PreviousState.Yaw = 0f;
+            manager.PreviousState.Pitch = 45f;
+            manager.PreviousState.DistanceCm = 1000f;
+            manager.PreviousState.FovYDeg = 60f;
+            manager.PreviousState.TargetCm = Vector2.Zero;
+            manager.State.Yaw = 0f;
+            manager.State.Pitch = 45f;
+            manager.State.DistanceCm = 1000f;
+            manager.State.FovYDeg = 60f;
+            manager.State.TargetCm = Vector2.Zero;
+
+            presenter.Update(manager, 1f);
+
+            // Yaw=0 鈫?sin(0)=0, cos(0)=1
+            // Pitch=45掳 鈫?cos(蟺/4)鈮?.7071, sin(蟺/4)鈮?.7071
+            // distM = 10m, hDist = 10*cos(45掳)鈮?.071, vDist = 10*sin(45掳)鈮?.071
+            // offsetX = 7.071 * sin(0) = 0
+            // offsetZ = -7.071 * cos(0) = -7.071
+            // position 鈮?(0, 7.071, -7.071)
+            var pos = adapter.LastState.Position;
+            That(pos.X, Is.EqualTo(0f).Within(0.1f));
+            That(pos.Y, Is.EqualTo(7.071f).Within(0.1f));
+            That(pos.Z, Is.EqualTo(-7.071f).Within(0.1f));
+            That(adapter.CallCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Presenter_NearVerticalPitch_SwitchesUpToUnitZ()
+        {
+            var adapter = new StubCameraAdapter();
+            var coords = new StubSpatialCoordinateConverter();
+            var presenter = new CameraPresenter(coords, adapter);
+
+            // Pitch 鈮?89掳 鈫?forward 鈮?(0, -1, 0) 鈫?dot(forward, UnitY) > 0.99 鈫?up switches to UnitZ
+            var manager = new CameraManager();
+            manager.PreviousState.Yaw = 0f;
+            manager.PreviousState.Pitch = 89f;
+            manager.PreviousState.DistanceCm = 1000f;
+            manager.PreviousState.FovYDeg = 60f;
+            manager.PreviousState.TargetCm = Vector2.Zero;
+            manager.State.Yaw = 0f;
+            manager.State.Pitch = 89f;
+            manager.State.DistanceCm = 1000f;
+            manager.State.FovYDeg = 60f;
+            manager.State.TargetCm = Vector2.Zero;
+
+            presenter.Update(manager, 1f);
+
+            var up = adapter.LastState.Up;
+            // Up should be approximately UnitZ, not UnitY
+            That(MathF.Abs(up.Z), Is.GreaterThan(0.5f), "Near-vertical pitch should switch Up toward UnitZ");
+        }
+
+        [Test]
+        public void Presenter_InterpolatesBetweenPreviousAndCurrentLogicState()
+        {
+            var adapter = new StubCameraAdapter();
+            var coords = new StubSpatialCoordinateConverter();
+            var presenter = new CameraPresenter(coords, adapter);
+            var manager = new CameraManager();
+
+            manager.PreviousState.Yaw = 0f;
+            manager.PreviousState.Pitch = 45f;
+            manager.PreviousState.DistanceCm = 1000f;
+            manager.PreviousState.FovYDeg = 60f;
+            manager.PreviousState.TargetCm = Vector2.Zero;
+
+            // Second frame: move target 鈫?position should lerp, not snap
+            manager.State.Yaw = 0f;
+            manager.State.Pitch = 45f;
+            manager.State.DistanceCm = 1000f;
+            manager.State.FovYDeg = 60f;
+            manager.State.TargetCm = new Vector2(5000f, 5000f);
+
+            presenter.Update(manager, 0.5f);
+
+            That(presenter.CurrentTargetPosition.X, Is.EqualTo(25f).Within(0.01f));
+            That(presenter.CurrentTargetPosition.Z, Is.EqualTo(25f).Within(0.01f));
+            That(adapter.LastState.Position.X, Is.EqualTo(25f).Within(0.01f));
+            That(adapter.LastState.Target.X, Is.EqualTo(25f).Within(0.01f));
+        }
+
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+        //  D. Camera Culling
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        private static Entity CreateCullableEntity(World world, int xCm, int yCm)
+        {
+            var e = world.Create(
+                WorldPositionCm.FromCm(xCm, yCm),
+                new CullState(),
+                VisualRuntimeState.Create(
+                    meshAssetId: 1,
+                    materialId: 1,
+                    baseScale: 1f,
+                    renderPath: VisualRenderPath.StaticMesh)
+            );
+            return e;
+        }
+
+        [Test]
+        public void CoreScreenRayProvider_RoundTripsProjectedGroundPointThroughGroundRaycast()
+        {
+            var manager = new CameraManager();
+            manager.PreviousState.Yaw = 45f;
+            manager.PreviousState.Pitch = 55f;
+            manager.PreviousState.DistanceCm = 2800f;
+            manager.PreviousState.FovYDeg = 60f;
+            manager.PreviousState.TargetCm = new Vector2(2500f, 1700f);
+            manager.State.Yaw = 45f;
+            manager.State.Pitch = 55f;
+            manager.State.DistanceCm = 2800f;
+            manager.State.FovYDeg = 60f;
+            manager.State.TargetCm = new Vector2(2500f, 1700f);
+
+            var view = new StubViewController
+            {
+                Resolution = new Vector2(1920f, 1080f),
+                AspectRatio = 1920f / 1080f,
+                Fov = 60f
+            };
+            var adapter = new StubCameraAdapter();
+            var presenter = new CameraPresenter(new StubSpatialCoordinateConverter(), adapter);
+            presenter.Update(manager, 1f);
+
+            var projector = new CoreScreenProjector(manager, view);
+            var rayProvider = new CoreScreenRayProvider(manager, view);
+            projector.BindPresenter(presenter);
+            rayProvider.BindPresenter(presenter);
+
+            var targetWorldCm = new WorldCmInt2(3200, 2000);
+            Vector2 screen = projector.WorldToScreen(WorldUnits.WorldCmToVisualMeters(targetWorldCm, yMeters: 0f));
+            That(float.IsFinite(screen.X) && float.IsFinite(screen.Y), Is.True, "Projected screen coordinate must stay finite.");
+
+            var ray = rayProvider.GetRay(screen);
+            bool hit = GroundRaycastUtil.TryGetGroundWorldCm(in ray, out var hitWorldCm);
+
+            That(hit, Is.True);
+            That(hitWorldCm.X, Is.EqualTo(targetWorldCm.X).Within(1));
+            That(hitWorldCm.Y, Is.EqualTo(targetWorldCm.Y).Within(1));
+        }
+
+        [Test]
+        public void Culling_NearEntity_HighLOD()
+        {
+            using var world = World.Create();
+            var manager = new CameraManager();
+            manager.State.TargetCm = Vector2.Zero;
+            manager.State.DistanceCm = 2000f;
+            manager.State.Pitch = 45f;
+            manager.State.FovYDeg = 60f;
+
+            var spatial = new StubSpatialQueryService();
+            var view = new StubViewController();
+
+            var entity = CreateCullableEntity(world, 100, 100); // very close to camera target
+            spatial.Entities.Add(entity);
+
+            var system = new CameraCullingSystem(world, manager, spatial, view);
+            system.Update(0.016f);
+
+            ref var cull = ref world.Get<CullState>(entity);
+            That(cull.LOD, Is.EqualTo(LODLevel.High));
+            That(cull.IsVisible, Is.True);
+        }
+
+        [Test]
+        public void Culling_MediumDistance_MediumLOD()
+        {
+            using var world = World.Create();
+            var manager = new CameraManager();
+            manager.State.TargetCm = Vector2.Zero;
+            manager.State.DistanceCm = 30000f; // large distance 鈫?viewport covers test entities
+            manager.State.Pitch = 45f;
+            manager.State.FovYDeg = 60f;
+
+            var spatial = new StubSpatialQueryService();
+            var view = new StubViewController();
+
+            // Place entity at ~7000cm from origin 鈫?between High(4000) and Medium(10000)
+            var entity = CreateCullableEntity(world, 5000, 5000); // dist 鈮?7071cm
+            spatial.Entities.Add(entity);
+
+            var system = new CameraCullingSystem(world, manager, spatial, view);
+            system.Update(0.016f);
+
+            ref var cull = ref world.Get<CullState>(entity);
+            That(cull.LOD, Is.EqualTo(LODLevel.Medium));
+            That(cull.IsVisible, Is.True);
+        }
+
+        [Test]
+        public void Culling_FarEntity_LowLOD()
+        {
+            using var world = World.Create();
+            var manager = new CameraManager();
+            manager.State.TargetCm = Vector2.Zero;
+            manager.State.DistanceCm = 30000f; // large distance 鈫?viewport covers test entities
+            manager.State.Pitch = 45f;
+            manager.State.FovYDeg = 60f;
+
+            var spatial = new StubSpatialQueryService();
+            var view = new StubViewController();
+
+            // Place entity at ~14142cm from origin 鈫?between Medium(10000) and Low(20000)
+            var entity = CreateCullableEntity(world, 10000, 10000); // dist 鈮?14142cm
+            spatial.Entities.Add(entity);
+
+            var system = new CameraCullingSystem(world, manager, spatial, view);
+            system.Update(0.016f);
+
+            ref var cull = ref world.Get<CullState>(entity);
+            That(cull.LOD, Is.EqualTo(LODLevel.Low));
+            That(cull.IsVisible, Is.True);
+        }
+
+        [Test]
+        public void Culling_BeyondLow_Culled()
+        {
+            using var world = World.Create();
+            var manager = new CameraManager();
+            manager.State.TargetCm = Vector2.Zero;
+            manager.State.DistanceCm = 30000f; // large distance 鈫?viewport covers test entities
+            manager.State.Pitch = 45f;
+            manager.State.FovYDeg = 60f;
+
+            var spatial = new StubSpatialQueryService();
+            var view = new StubViewController();
+
+            // Place entity at ~28284cm 鈫?beyond Low(20000) threshold
+            var entity = CreateCullableEntity(world, 20000, 20000); // dist 鈮?28284cm
+            spatial.Entities.Add(entity);
+
+            var system = new CameraCullingSystem(world, manager, spatial, view);
+            system.Update(0.016f);
+
+            ref var cull = ref world.Get<CullState>(entity);
+            That(cull.LOD, Is.EqualTo(LODLevel.Culled));
+            That(cull.IsVisible, Is.False);
+        }
+
+        [Test]
+        public void Culling_PrevVisibleEntityRemoved_MarkedCulled()
+        {
+            using var world = World.Create();
+            var manager = new CameraManager();
+            manager.State.TargetCm = Vector2.Zero;
+            manager.State.DistanceCm = 2000f;
+            manager.State.Pitch = 45f;
+            manager.State.FovYDeg = 60f;
+
+            var spatial = new StubSpatialQueryService();
+            var view = new StubViewController();
+
+            var entity = CreateCullableEntity(world, 100, 100);
+            spatial.Entities.Add(entity);
+
+            var system = new CameraCullingSystem(world, manager, spatial, view);
+
+            // Frame 1: entity is visible
+            system.Update(0.016f);
+            That(world.Get<CullState>(entity).IsVisible, Is.True, "Frame 1: should be visible");
+
+            // Frame 2: entity no longer returned by spatial query
+            spatial.Entities.Clear();
+            system.Update(0.016f);
+
+            ref var cull = ref world.Get<CullState>(entity);
+            That(cull.IsVisible, Is.False, "Frame 2: previously visible entity should be marked culled");
+        }
+
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+        //  E. Character Position Pipeline
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        [Test]
+        public void Physics2DSync_ExactFixedPointCopy()
+        {
+            using var world = World.Create();
+            var physPos = Position2D.FromCm(12345, 67890);
+            var entity = world.Create(
+                physPos,
+                WorldPositionCm.FromCm(0, 0)
+            );
+
+            var system = new Physics2DToWorldPositionSyncSystem(world);
+            system.Update(0.02f);
+
+            ref var wp = ref world.Get<WorldPositionCm>(entity);
+            That(wp.Value.X.RawValue, Is.EqualTo(physPos.Value.X.RawValue), "X must be bit-exact copy");
+            That(wp.Value.Y.RawValue, Is.EqualTo(physPos.Value.Y.RawValue), "Y must be bit-exact copy");
+        }
+
+        [Test]
+        public void SavePrevious_RetainsOldPosition()
+        {
+            using var world = World.Create();
+            var entity = world.Create(
+                WorldPositionCm.FromCm(100, 200),
+                new PreviousWorldPositionCm { Value = Fix64Vec2.Zero }
+            );
+
+            var saveSystem = new SavePreviousWorldPositionSystem(world);
+            saveSystem.Update(0.02f);
+
+            // After save, previous should equal current
+            ref var prev = ref world.Get<PreviousWorldPositionCm>(entity);
+            That(prev.Value.X.RawValue, Is.EqualTo(Fix64.FromInt(100).RawValue));
+            That(prev.Value.Y.RawValue, Is.EqualTo(Fix64.FromInt(200).RawValue));
+
+            // Now change current position
+            ref var cur = ref world.Get<WorldPositionCm>(entity);
+            cur.Value = Fix64Vec2.FromInt(500, 600);
+
+            // Save again
+            saveSystem.Update(0.02f);
+
+            ref var prev2 = ref world.Get<PreviousWorldPositionCm>(entity);
+            That(prev2.Value.X.RawValue, Is.EqualTo(Fix64.FromInt(500).RawValue));
+            That(prev2.Value.Y.RawValue, Is.EqualTo(Fix64.FromInt(600).RawValue));
+        }
+
+        [Test]
+        public void VisualSync_HalfAlpha_InterpolatesMidpoint()
+        {
+            using var world = World.Create();
+
+            // Create PresentationFrameState singleton with alpha=0.5
+            world.Create(
+                new PresentationFrameState { InterpolationAlpha = 0.5f, Enabled = true },
+                new PresentationFrameStateTag()
+            );
+
+            var entity = world.Create(
+                WorldPositionCm.FromCm(1000, 2000),
+                new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(0, 0) },
+                VisualTransform.Default
+            );
+
+            var system = new WorldToVisualSyncSystem(world);
+            system.Update(0.016f);
+
+            ref var visual = ref world.Get<VisualTransform>(entity);
+            // Midpoint: (500, 1000) cm 鈫?(5, 0, 10) m (XY logic 鈫?XZ visual)
+            That(visual.Position.X, Is.EqualTo(5f).Within(0.05f));
+            That(visual.Position.Y, Is.EqualTo(0f).Within(0.01f));
+            That(visual.Position.Z, Is.EqualTo(10f).Within(0.05f));
+        }
+
+        [Test]
+        public void VisualSync_CullInvisible_StillUpdatesPositionForSnapshotContract()
+        {
+            using var world = World.Create();
+
+            world.Create(
+                new PresentationFrameState { InterpolationAlpha = 1f, Enabled = true },
+                new PresentationFrameStateTag()
+            );
+
+            var sentinel = new Vector3(999f, 999f, 999f);
+            var entity = world.Create(
+                WorldPositionCm.FromCm(100, 200),
+                new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(100, 200) },
+                new VisualTransform { Position = sentinel, Rotation = Quaternion.Identity, Scale = Vector3.One },
+                new CullState { IsVisible = false, LOD = LODLevel.Culled }
+            );
+
+            var system = new WorldToVisualSyncSystem(world);
+            system.Update(0.016f);
+
+            ref var visual = ref world.Get<VisualTransform>(entity);
+            That(visual.Position.X, Is.EqualTo(1f).Within(0.05f));
+            That(visual.Position.Y, Is.EqualTo(0f).Within(0.01f));
+            That(visual.Position.Z, Is.EqualTo(2f).Within(0.05f));
+        }
+
+        [Test]
+        public void VisualSync_CullInvisibleFacing_StillUpdatesRotationForSnapshotContract()
+        {
+            using var world = World.Create();
+
+            world.Create(
+                new PresentationFrameState { InterpolationAlpha = 1f, Enabled = true },
+                new PresentationFrameStateTag()
+            );
+
+            var entity = world.Create(
+                WorldPositionCm.FromCm(100, 200),
+                new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(100, 200) },
+                new VisualTransform { Position = Vector3.Zero, Rotation = Quaternion.Identity, Scale = Vector3.One },
+                new FacingDirection { AngleRad = MathF.PI * 0.5f },
+                new CullState { IsVisible = false, LOD = LODLevel.Culled }
+            );
+
+            var system = new WorldToVisualSyncSystem(world);
+            system.Update(0.016f);
+
+            ref var visual = ref world.Get<VisualTransform>(entity);
+            Quaternion expected = Quaternion.CreateFromAxisAngle(Vector3.UnitY, -MathF.PI * 0.5f);
+            float similarity = MathF.Abs(Quaternion.Dot(Quaternion.Normalize(visual.Rotation), Quaternion.Normalize(expected)));
+            That(similarity, Is.GreaterThanOrEqualTo(0.9999f));
+        }
+
+        [Test]
+        public void VisualSync_NoCullState_AlwaysUpdates()
+        {
+            using var world = World.Create();
+
+            world.Create(
+                new PresentationFrameState { InterpolationAlpha = 1f, Enabled = true },
+                new PresentationFrameStateTag()
+            );
+
+            // Entity WITHOUT CullState component 鈥?should always sync
+            var entity = world.Create(
+                WorldPositionCm.FromCm(300, 400),
+                new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(300, 400) },
+                new VisualTransform { Position = Vector3.Zero, Rotation = Quaternion.Identity, Scale = Vector3.One }
+            );
+
+            var system = new WorldToVisualSyncSystem(world);
+            system.Update(0.016f);
+
+            ref var visual = ref world.Get<VisualTransform>(entity);
+            // (300, 400) cm 鈫?(3, 0, 4) m
+            That(visual.Position.X, Is.EqualTo(3f).Within(0.05f));
+            That(visual.Position.Z, Is.EqualTo(4f).Within(0.05f));
+        }
+
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+        //  F. Input Edge Detection & Order Building
+        // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+
+        private static (StubInputBackend backend, PlayerInputHandler handler) BuildSimpleInputHandler()
+        {
+            var backend = new StubInputBackend();
+            var config = new InputConfigRoot
+            {
+                Actions = new List<InputActionDef>
+                {
+                    new() { Id = "Attack", Type = InputActionType.Button },
+                    new() { Id = "Move", Type = InputActionType.Button },
+                },
+                Contexts = new List<InputContextDef>
+                {
+                    new()
+                    {
+                        Id = "Gameplay",
+                        Priority = 10,
+                        Bindings = new List<InputBindingDef>
+                        {
+                            new() { ActionId = "Attack", Path = "<Keyboard>/a", Processors = new() },
+                            new() { ActionId = "Move", Path = "<Mouse>/LeftButton", Processors = new() },
+                        }
+                    }
+                }
+            };
+            var handler = new PlayerInputHandler(backend, config);
+            handler.PushContext("Gameplay");
+            return (backend, handler);
+        }
+
+        [Test]
+        public void PlayerInputHandler_PressRelease_EdgeDetection()
+        {
+            var (backend, handler) = BuildSimpleInputHandler();
+
+            // Frame 1: key not pressed
+            handler.Update();
+            That(handler.PressedThisFrame("Attack"), Is.False);
+            That(handler.ReleasedThisFrame("Attack"), Is.False);
+
+            // Frame 2: press key
+            backend.Buttons["<Keyboard>/a"] = true;
+            handler.Update();
+            That(handler.PressedThisFrame("Attack"), Is.True, "First frame of press should be PressedThisFrame");
+            That(handler.ReleasedThisFrame("Attack"), Is.False);
+
+            // Frame 3: key held (still pressed)
+            handler.Update();
+            That(handler.PressedThisFrame("Attack"), Is.False, "Subsequent held frames should not be PressedThisFrame");
+            That(handler.IsDown("Attack"), Is.True);
+
+            // Frame 4: release key
+            backend.Buttons["<Keyboard>/a"] = false;
+            handler.Update();
+            That(handler.ReleasedThisFrame("Attack"), Is.True, "First frame of release should be ReleasedThisFrame");
+            That(handler.PressedThisFrame("Attack"), Is.False);
+        }
+
+        [Test]
+        public void PlayerInputHandler_InputBlocked_SuppressesAll()
+        {
+            var (backend, handler) = BuildSimpleInputHandler();
+
+            // Press key first to establish triggered state
+            backend.Buttons["<Keyboard>/a"] = true;
+            handler.Update();
+            That(handler.IsDown("Attack"), Is.True);
+
+            // Block input
+            handler.InputBlocked = true;
+            handler.Update();
+
+            That(handler.IsDown("Attack"), Is.False, "Blocked input should suppress all actions");
+            That(handler.PressedThisFrame("Attack"), Is.False);
+            That(handler.ReleasedThisFrame("Attack"), Is.False);
+        }
+
+        [Test]
+        public void InputOrderMapping_NonSkillPress_SubmitsOrder()
+        {
+            var (backend, handler) = BuildSimpleInputHandler();
+
+            var orderConfig = new InputOrderMappingConfig
+            {
+                InteractionMode = InteractionModeType.TargetFirst,
+                Mappings = new List<InputOrderMapping>
+                {
+                    new()
+                    {
+                        ActionId = "Move",
+                        Trigger = InputTriggerType.PressedThisFrame,
+                        OrderTypeKey = "moveTo",
+                        IsSkillMapping = false,
+                        SelectionType = OrderSelectionType.Position,
+                        RequireSelection = false
+                    }
+                }
+            };
+
+            var system = new InputOrderMappingSystem(handler, orderConfig);
+            system.SetOrderTypeKeyResolver(key => key == "moveTo" ? 1 : 0);
+            system.SetGroundPositionProvider((out Vector3 pos) =>
+            {
+                pos = new Vector3(1000, 0, 2000);
+                return true;
+            });
+
+            Order? capturedOrder = null;
+            system.SetOrderSubmitHandler((in Order order) =>
+            {
+                capturedOrder = order;
+            });
+
+            using var world = World.Create();
+            var player = world.Create();
+            system.SetLocalPlayer(player, 1);
+
+            // Frame 1: no press
+            handler.Update();
+            system.Update(0.016f);
+            That(capturedOrder, Is.Null, "No order before button press");
+
+            // Frame 2: press left mouse button
+            backend.Buttons["<Mouse>/LeftButton"] = true;
+            handler.Update();
+            system.Update(0.016f);
+
+            That(capturedOrder, Is.Not.Null, "Order should be submitted on press");
+            That(capturedOrder.Value.OrderTypeId, Is.EqualTo(1));
+            That(capturedOrder.Value.PlayerId, Is.EqualTo(1));
+        }
+    }
+}
+
+

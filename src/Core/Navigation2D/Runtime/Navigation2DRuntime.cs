@@ -1,5 +1,6 @@
 using System;
 using Ludots.Core.Mathematics.FixedPoint;
+using Ludots.Core.Navigation2D.Config;
 using Ludots.Core.Navigation2D.FlowField;
 using Ludots.Core.Navigation2D.Spatial;
 using Ludots.Core.Spatial;
@@ -12,39 +13,74 @@ namespace Ludots.Core.Navigation2D.Runtime
         public readonly Nav2DCellMap CellMap;
         public readonly CrowdSurface2D Surface;
         public readonly CrowdFlow2D[] Flows;
-        private readonly CrowdFlowChunkStreaming? _streaming;
+        private CrowdFlowChunkStreaming? _streaming;
+
+        public Navigation2DConfig Config { get; }
+        public Fix64 WorldGridCellSizeCm { get; }
 
         public bool FlowEnabled { get; set; } = false;
         public bool FlowDebugEnabled { get; set; } = false;
         public int FlowDebugMode { get; set; } = 0;
+        public int FlowIterationsPerTick { get; set; }
 
-        public int FlowIterationsPerTick { get; set; } = 1024;
-
-        public Navigation2DRuntime(int maxAgents, int gridCellSizeCm, ILoadedChunks? loadedChunks)
+        public Navigation2DRuntime(Navigation2DConfig config, int gridCellSizeCm, ILoadedChunks? loadedChunks)
         {
-            var cellSize = Fix64.FromInt(gridCellSizeCm);
-            AgentSoA = new Navigation2DWorld(new Navigation2DWorldSettings(maxAgents, cellSize));
-            CellMap = new Nav2DCellMap(cellSize, initialAgentCapacity: maxAgents, initialCellCapacity: Math.Max(128, maxAgents / 2));
+            Config = (config ?? new Navigation2DConfig()).CloneValidated();
+            WorldGridCellSizeCm = Fix64.FromInt(gridCellSizeCm);
 
-            Surface = new CrowdSurface2D(cellSize, tileSizeCells: 64, initialTileCapacity: 256);
+            var steeringCellSize = Config.Spatial.CellSizeCm > 0
+                ? Fix64.FromInt(Config.Spatial.CellSizeCm)
+                : WorldGridCellSizeCm;
+            AgentSoA = new Navigation2DWorld(new Navigation2DWorldSettings(Config.MaxAgents, steeringCellSize));
+            CellMap = new Nav2DCellMap(
+                steeringCellSize,
+                initialAgentCapacity: Config.MaxAgents,
+                initialCellCapacity: Math.Max(128, Config.MaxAgents / 2),
+                settings: Nav2DCellMapSettings.FromConfig(Config.Spatial));
+
+            Surface = new CrowdSurface2D(WorldGridCellSizeCm, tileSizeCells: 64, initialTileCapacity: 256);
             Flows = new[]
             {
-                new CrowdFlow2D(Surface, initialTileCapacity: 256),
-                new CrowdFlow2D(Surface, initialTileCapacity: 256),
+                new CrowdFlow2D(Surface, Config.FlowStreaming, Config.FlowCrowd, hasLoadedTileSource: false, initialTileCapacity: 256, initialGoalCapacity: Math.Max(64, Config.MaxAgents)),
+                new CrowdFlow2D(Surface, Config.FlowStreaming, Config.FlowCrowd, hasLoadedTileSource: false, initialTileCapacity: 256, initialGoalCapacity: Math.Max(64, Config.MaxAgents)),
             };
 
-            if (loadedChunks != null)
-            {
-                _streaming = new CrowdFlowChunkStreaming(loadedChunks, Flows);
-            }
+            FlowIterationsPerTick = Config.FlowIterationsPerTick;
+            BindLoadedChunks(loadedChunks);
+        }
+
+        public Navigation2DRuntime(int maxAgents, int gridCellSizeCm, ILoadedChunks? loadedChunks)
+            : this(new Navigation2DConfig { Enabled = true, MaxAgents = maxAgents }, gridCellSizeCm, loadedChunks)
+        {
         }
 
         public int FlowCount => Flows.Length;
 
         public CrowdFlow2D? TryGetFlow(int flowId)
         {
-            if ((uint)flowId >= (uint)Flows.Length) return null;
+            if ((uint)flowId >= (uint)Flows.Length)
+            {
+                return null;
+            }
+
             return Flows[flowId];
+        }
+
+        public void BindLoadedChunks(ILoadedChunks? loadedChunks)
+        {
+            _streaming?.Dispose();
+            _streaming = null;
+
+            bool hasLoadedTileSource = loadedChunks != null;
+            for (int i = 0; i < Flows.Length; i++)
+            {
+                Flows[i].SetLoadedTileSourceEnabled(hasLoadedTileSource);
+            }
+
+            if (loadedChunks != null)
+            {
+                _streaming = new CrowdFlowChunkStreaming(loadedChunks, Flows);
+            }
         }
 
         public void Dispose()
@@ -54,6 +90,7 @@ namespace Ludots.Core.Navigation2D.Runtime
             {
                 Flows[i].Dispose();
             }
+
             CellMap.Dispose();
             AgentSoA.Dispose();
         }

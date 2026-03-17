@@ -2,94 +2,117 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Ludots.Core.Input.Config;
-using Ludots.Core.Input.Runtime.Processors;
-using Ludots.Core.Input.Runtime.Composites;
 
 namespace Ludots.Core.Input.Runtime
 {
-    public class PlayerInputHandler
+    public class PlayerInputHandler : IInputActionReader
     {
         private readonly IInputBackend _backend;
-        private readonly List<InputContextDef> _activeContexts = new List<InputContextDef>();
-        private readonly Dictionary<string, InputActionInstance> _actionStates = new Dictionary<string, InputActionInstance>();
-        private readonly Dictionary<string, Vector3> _tempValues;
-        private readonly string[] _actionIds;
-        private readonly InputConfigRoot _config;
-        private readonly Dictionary<string, Vector3> _injections = new Dictionary<string, Vector3>();
+        private readonly List<CompiledContext> _activeContexts = new();
+        private readonly Dictionary<string, CompiledContext> _contextsById = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _actionIndices = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Vector3> _injections = new(StringComparer.Ordinal);
+        private readonly InputActionInstance[] _actionStates;
+        private readonly Vector3[] _tempValues;
+        private Vector2 _mousePosition;
+        private Vector2 _mouseDelta;
+        private bool _hasMousePosition;
 
         public bool InputBlocked { get; set; } = false;
+        public long UpdateRevision { get; private set; }
 
         public PlayerInputHandler(IInputBackend backend, InputConfigRoot config)
         {
             _backend = backend;
-            _config = config;
-            
-            // Initialize Action States
-            _actionIds = new string[config.Actions.Count];
+            if (config == null) throw new ArgumentNullException(nameof(config));
+
+            _actionStates = new InputActionInstance[config.Actions.Count];
+            _tempValues = new Vector3[config.Actions.Count];
             for (int i = 0; i < config.Actions.Count; i++)
             {
                 var actionDef = config.Actions[i];
-                _actionStates[actionDef.Id] = new InputActionInstance(actionDef);
-                _actionIds[i] = actionDef.Id;
+                _actionIndices[actionDef.Id] = i;
+                _actionStates[i] = new InputActionInstance(actionDef);
             }
 
-            _tempValues = new Dictionary<string, Vector3>(_actionIds.Length);
-            for (int i = 0; i < _actionIds.Length; i++)
+            for (int i = 0; i < config.Contexts.Count; i++)
             {
-                _tempValues[_actionIds[i]] = Vector3.Zero;
+                var context = config.Contexts[i];
+                _contextsById[context.Id] = CompileContext(context);
             }
         }
 
         public void PushContext(string contextId)
         {
-            var context = _config.Contexts.Find(c => c.Id == contextId);
-            if (context != null && !_activeContexts.Contains(context))
+            if (!_contextsById.TryGetValue(contextId, out var context))
             {
-                _activeContexts.Add(context);
-                // Sort by priority descending
-                _activeContexts.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+                return;
             }
+
+            if (_activeContexts.Contains(context))
+            {
+                return;
+            }
+
+            _activeContexts.Add(context);
+            _activeContexts.Sort((a, b) => b.Priority.CompareTo(a.Priority));
         }
 
         public void PopContext(string contextId)
         {
-            _activeContexts.RemoveAll(c => c.Id == contextId);
+            _activeContexts.RemoveAll(c => string.Equals(c.Id, contextId, StringComparison.Ordinal));
         }
 
         public bool HasAction(string actionId)
         {
             if (string.IsNullOrWhiteSpace(actionId)) return false;
-            return _actionStates.ContainsKey(actionId);
+            return _actionIndices.ContainsKey(actionId);
         }
 
         public bool HasContext(string contextId)
         {
             if (string.IsNullOrWhiteSpace(contextId)) return false;
-            return _config.Contexts.Exists(c => c.Id == contextId);
+            return _contextsById.ContainsKey(contextId);
         }
 
         public T ReadAction<T>(string actionId) where T : struct
         {
-            if (_actionStates.TryGetValue(actionId, out var instance))
+            if (_actionIndices.TryGetValue(actionId, out int actionIndex))
             {
-                return instance.ReadValue<T>();
+                return _actionStates[actionIndex].ReadValue<T>();
             }
             return default;
         }
 
         public bool IsDown(string actionId)
         {
-            return _actionStates.TryGetValue(actionId, out var instance) && instance.Triggered;
+            return _actionIndices.TryGetValue(actionId, out int actionIndex) && _actionStates[actionIndex].Triggered;
         }
 
         public bool PressedThisFrame(string actionId)
         {
-            return _actionStates.TryGetValue(actionId, out var instance) && instance.PressedThisFrame;
+            return _actionIndices.TryGetValue(actionId, out int actionIndex) && _actionStates[actionIndex].PressedThisFrame;
         }
 
         public bool ReleasedThisFrame(string actionId)
         {
-            return _actionStates.TryGetValue(actionId, out var instance) && instance.ReleasedThisFrame;
+            return _actionIndices.TryGetValue(actionId, out int actionIndex) && _actionStates[actionIndex].ReleasedThisFrame;
+        }
+
+        public void CaptureFrame(AuthoritativeInputAccumulator accumulator)
+        {
+            if (accumulator == null) throw new ArgumentNullException(nameof(accumulator));
+
+            for (int i = 0; i < _actionStates.Length; i++)
+            {
+                var state = _actionStates[i];
+                accumulator.CaptureAction(
+                    state.Definition.Id,
+                    state.Value,
+                    state.Triggered,
+                    state.PressedThisFrame,
+                    state.ReleasedThisFrame);
+            }
         }
 
         /// <summary>
@@ -107,122 +130,348 @@ namespace Ludots.Core.Input.Runtime
 
         public void Update()
         {
+            UpdateRevision++;
+            RefreshPointerState();
+
             if (InputBlocked)
             {
-                foreach (var state in _actionStates.Values)
+                for (int i = 0; i < _actionStates.Length; i++)
                 {
-                    state.ClearSuppressed();
+                    _actionStates[i].ClearSuppressed();
                 }
                 return;
             }
 
-            for (int i = 0; i < _actionIds.Length; i++)
-            {
-                _tempValues[_actionIds[i]] = Vector3.Zero;
-            }
+            Array.Clear(_tempValues, 0, _tempValues.Length);
 
-            // Iterate active contexts (Highest Priority First)
-            foreach (var context in _activeContexts)
+            for (int contextIndex = 0; contextIndex < _activeContexts.Count; contextIndex++)
             {
-                foreach (var binding in context.Bindings)
+                var context = _activeContexts[contextIndex];
+                var bindings = context.Bindings;
+                for (int bindingIndex = 0; bindingIndex < bindings.Length; bindingIndex++)
                 {
-                    if (!_tempValues.TryGetValue(binding.ActionId, out var acc)) continue;
-
-                    Vector3 rawValue = ResolveBindingValue(binding);
-                    
-                    // Apply Processors
-                    foreach (var procDef in binding.Processors)
+                    ref readonly var binding = ref bindings[bindingIndex];
+                    if (binding.ActionIndex < 0)
                     {
-                        rawValue = ApplyProcessor(rawValue, procDef);
+                        continue;
                     }
 
-                    // Accumulate or Override?
-                    // Unity Input System usually accumulates for same action in same frame unless blocking.
-                    // For now, simple accumulation.
-                    acc += rawValue;
-                    _tempValues[binding.ActionId] = acc;
+                    Vector3 value = ResolveBindingValue(in binding);
+                    _tempValues[binding.ActionIndex] += value;
                 }
             }
 
             foreach (var (actionId, value) in _injections)
             {
-                if (_tempValues.ContainsKey(actionId))
+                if (_actionIndices.TryGetValue(actionId, out int actionIndex))
                 {
-                    _tempValues[actionId] = value;
+                    _tempValues[actionIndex] = value;
                 }
             }
             _injections.Clear();
 
-            // Update States
-            for (int i = 0; i < _actionIds.Length; i++)
+            for (int i = 0; i < _actionStates.Length; i++)
             {
-                string actionId = _actionIds[i];
-                _actionStates[actionId].Update(_tempValues[actionId]);
+                _actionStates[i].Update(_tempValues[i]);
             }
         }
 
-        private Vector3 ResolveBindingValue(InputBindingDef binding)
+        private CompiledContext CompileContext(InputContextDef context)
         {
+            var bindings = context.Bindings ?? new List<InputBindingDef>();
+            var compiledBindings = new CompiledBinding[bindings.Count];
+            for (int i = 0; i < bindings.Count; i++)
+            {
+                compiledBindings[i] = CompileBinding(bindings[i]);
+            }
+
+            return new CompiledContext
+            {
+                Id = context.Id,
+                Priority = context.Priority,
+                Bindings = compiledBindings,
+            };
+        }
+
+        private CompiledBinding CompileBinding(InputBindingDef binding)
+        {
+            int actionIndex = -1;
+            if (!string.IsNullOrWhiteSpace(binding.ActionId))
+            {
+                _actionIndices.TryGetValue(binding.ActionId, out actionIndex);
+            }
+
+            var compiled = new CompiledBinding
+            {
+                ActionIndex = actionIndex,
+                Path = binding.Path ?? string.Empty,
+                Processors = CompileProcessors(binding.Processors),
+            };
+
             if (!string.IsNullOrEmpty(binding.CompositeType))
             {
-                // Handle Composite
-                InputComposite composite = GetComposite(binding.CompositeType);
-                if (composite != null)
+                var parts = binding.CompositeParts ?? new List<InputBindingDef>();
+                compiled.CompositeParts = new CompiledBinding[parts.Count];
+                for (int i = 0; i < parts.Count; i++)
                 {
-                    return composite.Evaluate(index => 
-                    {
-                        if (index < binding.CompositeParts.Count)
-                        {
-                            return ResolveBindingValue(binding.CompositeParts[index]);
-                        }
-                        return Vector3.Zero;
-                    });
+                    compiled.CompositeParts[i] = CompileBinding(parts[i]);
                 }
+
+                compiled.SourceKind = binding.CompositeType switch
+                {
+                    string type when string.Equals(type, "Vector2", StringComparison.OrdinalIgnoreCase) =>
+                        BindingSourceKind.CompositeVector2,
+                    string type when string.Equals(type, "ButtonChord", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(type, "Chord", StringComparison.OrdinalIgnoreCase) =>
+                        BindingSourceKind.CompositeButtonChord,
+                    _ => BindingSourceKind.Unsupported
+                };
+                return compiled;
+            }
+
+            if (compiled.Path.StartsWith("<Mouse>/Pos", StringComparison.Ordinal))
+            {
+                compiled.SourceKind = BindingSourceKind.MousePosition;
+            }
+            else if (compiled.Path.StartsWith("<Mouse>/Delta", StringComparison.Ordinal))
+            {
+                compiled.SourceKind = BindingSourceKind.MouseDelta;
+            }
+            else if (compiled.Path.StartsWith("<Mouse>/Scroll", StringComparison.Ordinal))
+            {
+                compiled.SourceKind = BindingSourceKind.MouseScroll;
+            }
+            else if (compiled.Path.StartsWith("<Keyboard>", StringComparison.Ordinal) || compiled.Path.StartsWith("<Mouse>", StringComparison.Ordinal))
+            {
+                compiled.SourceKind = BindingSourceKind.Button;
             }
             else
             {
-                // Direct Binding
-                if (binding.Path.StartsWith("<Mouse>/Pos"))
-                {
-                    var pos = _backend.GetMousePosition();
-                    return new Vector3(pos.X, pos.Y, 0);
-                }
-                else if (binding.Path.StartsWith("<Mouse>/Scroll"))
-                {
-                    // Map wheel to X so it can be read as a scalar float/Axis1D
-                    return new Vector3(_backend.GetMouseWheel(), 0, 0); 
-                }
-                else if (binding.Path.StartsWith("<Keyboard>") || binding.Path.StartsWith("<Mouse>"))
-                {
-                    bool isDown = _backend.GetButton(binding.Path);
-                    return isDown ? Vector3.One : Vector3.Zero;
-                }
-                // Add Gamepad etc.
+                compiled.SourceKind = BindingSourceKind.Unsupported;
             }
-            return Vector3.Zero;
+
+            return compiled;
         }
 
-        private Vector3 ApplyProcessor(Vector3 value, InputModifierDef def)
+        private static CompiledProcessor[] CompileProcessors(List<InputModifierDef> processorDefs)
         {
-            // Simple factory
-            InputProcessor processor = def.Type switch
+            if (processorDefs == null || processorDefs.Count == 0)
             {
-                "Normalize" => new NormalizeProcessor(),
-                "Deadzone" => new DeadzoneProcessor(),
-                "Scale" => new ScaleProcessor(),
-                _ => null
-            };
+                return Array.Empty<CompiledProcessor>();
+            }
 
-            return processor != null ? processor.Process(value, def.Parameters) : value;
+            var compiled = new CompiledProcessor[processorDefs.Count];
+            for (int i = 0; i < processorDefs.Count; i++)
+            {
+                var def = processorDefs[i];
+                compiled[i] = def.Type switch
+                {
+                    "Normalize" => new CompiledProcessor(ProcessorKind.Normalize, 0f),
+                    "Deadzone" => new CompiledProcessor(ProcessorKind.Deadzone, GetParameter(def.Parameters, "Min", 0.1f)),
+                    "Scale" => new CompiledProcessor(ProcessorKind.Scale, GetParameter(def.Parameters, "Factor", 1f)),
+                    "Invert" => new CompiledProcessor(ProcessorKind.Invert, 0f, GetAxisMask(def.Parameters)),
+                    _ => new CompiledProcessor(ProcessorKind.Unknown, 0f)
+                };
+            }
+
+            return compiled;
         }
 
-        private InputComposite GetComposite(string type)
+        private static float GetParameter(IReadOnlyList<InputParameterDef> parameters, string name, float fallback)
         {
-            return type switch
+            if (parameters == null)
             {
-                "Vector2" => new Vector2Composite(),
-                _ => null
-            };
+                return fallback;
+            }
+
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                var parameter = parameters[i];
+                if (string.Equals(parameter.Name, name, StringComparison.Ordinal))
+                {
+                    return parameter.Value;
+                }
+            }
+
+            return fallback;
+        }
+
+        private static byte GetAxisMask(IReadOnlyList<InputParameterDef> parameters)
+        {
+            if (parameters == null || parameters.Count == 0)
+            {
+                return 0b111;
+            }
+
+            byte mask = 0;
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                var parameter = parameters[i];
+                if (parameter == null || parameter.Value == 0f)
+                {
+                    continue;
+                }
+
+                if (string.Equals(parameter.Name, "X", StringComparison.OrdinalIgnoreCase))
+                {
+                    mask |= 0b001;
+                }
+                else if (string.Equals(parameter.Name, "Y", StringComparison.OrdinalIgnoreCase))
+                {
+                    mask |= 0b010;
+                }
+                else if (string.Equals(parameter.Name, "Z", StringComparison.OrdinalIgnoreCase))
+                {
+                    mask |= 0b100;
+                }
+            }
+
+            return mask == 0 ? (byte)0b111 : mask;
+        }
+
+        private Vector3 ResolveBindingValue(in CompiledBinding binding)
+        {
+            Vector3 rawValue = ReadRawBindingValue(in binding);
+            var processors = binding.Processors;
+            for (int i = 0; i < processors.Length; i++)
+            {
+                rawValue = ApplyProcessor(rawValue, in processors[i]);
+            }
+
+            return rawValue;
+        }
+
+        private Vector3 ReadRawBindingValue(in CompiledBinding binding)
+        {
+            switch (binding.SourceKind)
+            {
+                case BindingSourceKind.MousePosition:
+                    return new Vector3(_mousePosition.X, _mousePosition.Y, 0f);
+                case BindingSourceKind.MouseDelta:
+                    return new Vector3(_mouseDelta.X, _mouseDelta.Y, 0f);
+                case BindingSourceKind.MouseScroll:
+                    return new Vector3(_backend.GetMouseWheel(), 0f, 0f);
+                case BindingSourceKind.Button:
+                    return _backend.GetButton(binding.Path) ? Vector3.One : Vector3.Zero;
+                case BindingSourceKind.CompositeVector2:
+                {
+                    float up = ReadCompositeScalar(binding.CompositeParts, 0);
+                    float down = ReadCompositeScalar(binding.CompositeParts, 1);
+                    float left = ReadCompositeScalar(binding.CompositeParts, 2);
+                    float right = ReadCompositeScalar(binding.CompositeParts, 3);
+                    return new Vector3(right - left, up - down, 0f);
+                }
+                case BindingSourceKind.CompositeButtonChord:
+                {
+                    if (binding.CompositeParts.Length == 0)
+                    {
+                        return Vector3.Zero;
+                    }
+
+                    for (int index = 0; index < binding.CompositeParts.Length; index++)
+                    {
+                        if (ResolveBindingValue(in binding.CompositeParts[index]).LengthSquared() <= 0.25f)
+                        {
+                            return Vector3.Zero;
+                        }
+                    }
+
+                    return Vector3.One;
+                }
+                default:
+                    return Vector3.Zero;
+            }
+        }
+
+        private void RefreshPointerState()
+        {
+            var currentMousePosition = _backend.GetMousePosition();
+            _mouseDelta = _hasMousePosition
+                ? currentMousePosition - _mousePosition
+                : Vector2.Zero;
+            _mousePosition = currentMousePosition;
+            _hasMousePosition = true;
+        }
+
+        private float ReadCompositeScalar(CompiledBinding[] parts, int index)
+        {
+            if ((uint)index >= (uint)parts.Length)
+            {
+                return 0f;
+            }
+
+            return ResolveBindingValue(in parts[index]).X;
+        }
+
+        private static Vector3 ApplyProcessor(Vector3 value, in CompiledProcessor processor)
+        {
+            switch (processor.Kind)
+            {
+                case ProcessorKind.Normalize:
+                    if (value.LengthSquared() > 1f)
+                    {
+                        return Vector3.Normalize(value);
+                    }
+                    return value;
+                case ProcessorKind.Deadzone:
+                    return value.Length() < processor.Scalar ? Vector3.Zero : value;
+                case ProcessorKind.Scale:
+                    return value * processor.Scalar;
+                case ProcessorKind.Invert:
+                    if ((processor.AxisMask & 0b001) != 0)
+                    {
+                        value.X = -value.X;
+                    }
+                    if ((processor.AxisMask & 0b010) != 0)
+                    {
+                        value.Y = -value.Y;
+                    }
+                    if ((processor.AxisMask & 0b100) != 0)
+                    {
+                        value.Z = -value.Z;
+                    }
+                    return value;
+                default:
+                    return value;
+            }
+        }
+
+        private sealed class CompiledContext
+        {
+            public string Id { get; init; } = string.Empty;
+            public int Priority { get; init; }
+            public CompiledBinding[] Bindings { get; init; } = Array.Empty<CompiledBinding>();
+        }
+
+        private sealed class CompiledBinding
+        {
+            public int ActionIndex { get; init; }
+            public string Path { get; init; } = string.Empty;
+            public BindingSourceKind SourceKind { get; set; }
+            public CompiledBinding[] CompositeParts { get; set; } = Array.Empty<CompiledBinding>();
+            public CompiledProcessor[] Processors { get; init; } = Array.Empty<CompiledProcessor>();
+        }
+
+        private readonly record struct CompiledProcessor(ProcessorKind Kind, float Scalar, byte AxisMask = 0);
+
+        private enum BindingSourceKind : byte
+        {
+            Unsupported = 0,
+            MousePosition = 1,
+            MouseDelta = 2,
+            MouseScroll = 3,
+            Button = 4,
+            CompositeVector2 = 5,
+            CompositeButtonChord = 6,
+        }
+
+        private enum ProcessorKind : byte
+        {
+            Unknown = 0,
+            Normalize = 1,
+            Deadzone = 2,
+            Scale = 3,
+            Invert = 4,
         }
     }
 }

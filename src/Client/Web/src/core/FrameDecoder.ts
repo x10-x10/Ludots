@@ -1,3 +1,5 @@
+import type { UiScenePayload } from './UiSceneTypes';
+
 const MSG_FULL = 0x01;
 const MSG_MESH_MAP = 0x03;
 const MSG_DELTA = 0x05;
@@ -8,7 +10,7 @@ const SEC_PRIMITIVES = 0x02;
 const SEC_GROUND_OVERLAYS = 0x03;
 const SEC_WORLD_HUD = 0x04;
 const SEC_SCREEN_HUD = 0x05;
-const SEC_UI_HTML = 0x09;
+const SEC_UI_SCENE = 0x09;
 const SEC_SCREEN_OVERLAY = 0x0a;
 const SEC_DEBUG_LINES = 0x10;
 const SEC_DEBUG_CIRCLES = 0x11;
@@ -58,6 +60,18 @@ export interface GroundOverlayItem {
   borderWidth: number;
 }
 
+export interface PresentationTextArg {
+  type: number;
+  format: number;
+  raw32: number;
+}
+
+export interface PresentationTextPacket {
+  tokenId: number;
+  argCount: number;
+  args: PresentationTextArg[];
+}
+
 export interface ScreenHudItem {
   kind: number;
   sx: number; sy: number;
@@ -67,6 +81,9 @@ export interface ScreenHudItem {
   v0: number; v1: number;
   id0: number; id1: number;
   fontSize: number;
+  text?: string;
+  textPacket?: PresentationTextPacket;
+  textTemplate?: string;
 }
 
 export interface ScreenOverlayItem {
@@ -77,11 +94,8 @@ export interface ScreenOverlayItem {
   cr: number; cg: number; cb: number; ca: number;
   bgr: number; bgg: number; bgb: number; bga: number;
   text: string;
-}
-
-export interface UiHtml {
-  html: string;
-  css: string;
+  textPacket?: PresentationTextPacket;
+  textTemplate?: string;
 }
 
 export interface MeshMapEntry {
@@ -101,7 +115,7 @@ export interface DecodedFrame {
   groundOverlays: GroundOverlayItem[];
   screenHud: ScreenHudItem[];
   screenOverlays: ScreenOverlayItem[];
-  uiHtml?: UiHtml;
+  uiScene?: UiScenePayload;
 }
 
 export class FrameDecoder {
@@ -161,7 +175,7 @@ export class FrameDecoder {
         case SEC_GROUND_OVERLAYS: p = this.readGroundOverlays(frame, v, p, itemCount); break;
         case SEC_WORLD_HUD: p += byteLen; break;
         case SEC_SCREEN_HUD: p = this.readScreenHud(frame, v, p, itemCount); break;
-        case SEC_UI_HTML: p = this.readUiHtml(frame, v, p); break;
+        case SEC_UI_SCENE: p = this.readUiScene(frame, v, p); break;
         case SEC_SCREEN_OVERLAY: p = this.readScreenOverlays(frame, v, p, itemCount); break;
         case SEC_DEBUG_LINES: p = this.readDebugLines(frame, v, p, itemCount); break;
         case SEC_DEBUG_CIRCLES: p = this.readDebugCircles(frame, v, p, itemCount); break;
@@ -195,7 +209,7 @@ export class FrameDecoder {
         case SEC_GROUND_OVERLAYS: p = this.readGroundOverlays(frame, v, p, itemCount); break;
         case SEC_WORLD_HUD: p += byteLen; break;
         case SEC_SCREEN_HUD: p = this.readScreenHud(frame, v, p, itemCount); break;
-        case SEC_UI_HTML: p = this.readUiHtml(frame, v, p); break;
+        case SEC_UI_SCENE: p = this.readUiScene(frame, v, p); break;
         case SEC_SCREEN_OVERLAY: p = this.readScreenOverlays(frame, v, p, itemCount); break;
         case SEC_DEBUG_LINES: p = this.readDebugLines(frame, v, p, itemCount); break;
         case SEC_DEBUG_CIRCLES: p = this.readDebugCircles(frame, v, p, itemCount); break;
@@ -272,9 +286,10 @@ export class FrameDecoder {
   }
 
   private readScreenHud(frame: DecodedFrame, v: DataView, p: number, count: number): number {
-    frame.screenHud = [];
+    const items: ScreenHudItem[] = [];
     for (let i = 0; i < count; i++) {
-      frame.screenHud.push({
+      const textPacket = this.readTextPacket(v, p + 73);
+      items.push({
         kind: v.getUint8(p),
         sx: v.getFloat32(p + 1, true), sy: v.getFloat32(p + 5, true),
         c0r: v.getFloat32(p + 13, true), c0g: v.getFloat32(p + 17, true), c0b: v.getFloat32(p + 21, true), c0a: v.getFloat32(p + 25, true),
@@ -283,9 +298,34 @@ export class FrameDecoder {
         v0: v.getFloat32(p + 53, true), v1: v.getFloat32(p + 57, true),
         id0: v.getInt32(p + 61, true), id1: v.getInt32(p + 65, true),
         fontSize: v.getInt32(p + 69, true),
+        textPacket,
       });
-      p += 73;
+      p += 113;
     }
+
+    const stringCount = v.getUint16(p, true); p += 2;
+    const strings: string[] = [];
+    for (let i = 0; i < stringCount; i++) {
+      const len = v.getUint16(p, true); p += 2;
+      const bytes = new Uint8Array(v.buffer, v.byteOffset + p, len);
+      strings.push(this._textDecoder.decode(bytes));
+      p += len;
+    }
+
+    const { templates, nextPos } = this.readTemplateTable(v, p);
+    p = nextPos;
+
+    for (const item of items) {
+      if (item.textPacket && item.textPacket.tokenId > 0) {
+        item.textTemplate = templates.get(item.textPacket.tokenId);
+      }
+
+      if (item.id0 > 0 && item.id0 < strings.length) {
+        item.text = strings[item.id0];
+      }
+    }
+
+    frame.screenHud = items;
     return p;
   }
 
@@ -293,6 +333,7 @@ export class FrameDecoder {
     const stringIds: number[] = [];
     const items: ScreenOverlayItem[] = [];
     for (let i = 0; i < count; i++) {
+      const textPacket = this.readTextPacket(v, p + 55);
       items.push({
         kind: v.getUint8(p),
         x: v.getInt32(p + 1, true),
@@ -305,9 +346,10 @@ export class FrameDecoder {
         bgr: v.getFloat32(p + 37, true), bgg: v.getFloat32(p + 41, true),
         bgb: v.getFloat32(p + 45, true), bga: v.getFloat32(p + 49, true),
         text: '',
+        textPacket,
       });
       stringIds.push(v.getUint16(p + 53, true));
-      p += 55;
+      p += 95;
     }
 
     const stringCount = v.getUint16(p, true); p += 2;
@@ -319,10 +361,22 @@ export class FrameDecoder {
       p += len;
     }
 
+    const { templates, nextPos } = this.readTemplateTable(v, p);
+    p = nextPos;
+
     for (let i = 0; i < items.length; i++) {
-      const sid = stringIds[i];
-      if (items[i].kind === 0 && sid < strings.length) {
-        items[i].text = strings[sid];
+      const item = items[i];
+      if (!item) {
+        continue;
+      }
+
+      const sid = stringIds[i] ?? -1;
+      if (item.textPacket && item.textPacket.tokenId > 0) {
+        item.textTemplate = templates.get(item.textPacket.tokenId);
+      }
+
+      if (item.kind === 0 && sid >= 0 && sid < strings.length) {
+        item.text = strings[sid];
       }
     }
 
@@ -330,22 +384,52 @@ export class FrameDecoder {
     return p;
   }
 
-  private readUiHtml(frame: DecodedFrame, v: DataView, p: number): number {
-    const htmlLen = v.getInt32(p, true); p += 4;
-    let html = '';
-    if (htmlLen > 0) {
-      const bytes = new Uint8Array(v.buffer, v.byteOffset + p, htmlLen);
-      html = this._textDecoder.decode(bytes);
-      p += htmlLen;
+  private readTextPacket(v: DataView, p: number): PresentationTextPacket {
+    return {
+      tokenId: v.getInt32(p, true),
+      argCount: v.getUint8(p + 4),
+      args: [
+        this.readTextArg(v, p + 8),
+        this.readTextArg(v, p + 16),
+        this.readTextArg(v, p + 24),
+        this.readTextArg(v, p + 32),
+      ],
+    };
+  }
+
+  private readTextArg(v: DataView, p: number): PresentationTextArg {
+    return {
+      type: v.getUint8(p),
+      format: v.getUint8(p + 1),
+      raw32: v.getInt32(p + 4, true),
+    };
+  }
+
+  private readTemplateTable(v: DataView, p: number): { templates: Map<number, string>; nextPos: number } {
+    const templateCount = v.getUint16(p, true); p += 2;
+    const templates = new Map<number, string>();
+
+    for (let i = 0; i < templateCount; i++) {
+      const tokenId = v.getInt32(p, true); p += 4;
+      const len = v.getUint16(p, true); p += 2;
+      const bytes = new Uint8Array(v.buffer, v.byteOffset + p, len);
+      templates.set(tokenId, this._textDecoder.decode(bytes));
+      p += len;
     }
-    const cssLen = v.getInt32(p, true); p += 4;
-    let css = '';
-    if (cssLen > 0) {
-      const bytes = new Uint8Array(v.buffer, v.byteOffset + p, cssLen);
-      css = this._textDecoder.decode(bytes);
-      p += cssLen;
+
+    return { templates, nextPos: p };
+  }
+
+  private readUiScene(frame: DecodedFrame, v: DataView, p: number): number {
+    const jsonLen = v.getInt32(p, true); p += 4;
+    if (jsonLen <= 0) {
+      frame.uiScene = undefined;
+      return p;
     }
-    frame.uiHtml = { html, css };
+
+    const bytes = new Uint8Array(v.buffer, v.byteOffset + p, jsonLen);
+    frame.uiScene = JSON.parse(this._textDecoder.decode(bytes)) as UiScenePayload;
+    p += jsonLen;
     return p;
   }
 
@@ -408,9 +492,19 @@ export class FrameDecoder {
       debugCircles: [...f.debugCircles],
       debugBoxes: [...f.debugBoxes],
       groundOverlays: [...f.groundOverlays],
-      screenHud: [...f.screenHud],
-      screenOverlays: [],
-      uiHtml: undefined,
+      screenHud: f.screenHud.map(item => ({
+        ...item,
+        textPacket: item.textPacket
+          ? { ...item.textPacket, args: item.textPacket.args.map(arg => ({ ...arg })) }
+          : undefined,
+      })),
+      screenOverlays: f.screenOverlays.map(item => ({
+        ...item,
+        textPacket: item.textPacket
+          ? { ...item.textPacket, args: item.textPacket.args.map(arg => ({ ...arg })) }
+          : undefined,
+      })),
+      uiScene: f.uiScene,
     };
   }
 }

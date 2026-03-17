@@ -89,14 +89,17 @@ namespace Ludots.Tests.Presentation
             _healthAttrId = AttributeRegistry.Register("Health");
 
             var meshes = new MeshAssetRegistry();
-            BuiltinPerformerDefinitions.Register(_defs, meshes);
+            BuiltinPerformerDefinitions.Register(
+                _defs,
+                meshes,
+                key => string.Equals(key, WellKnownHudTextKeys.CombatDelta, StringComparison.Ordinal) ? 1 : 0);
 
             var session = new GameSession();
             var graphApi = new GasGraphRuntimeApi(_world, null, null, null);
 
             _bridge = new PresentationBridgeSystem(_world, _eventBus, _presEvents, session, _gasEvents);
             _ruleSystem = new PerformerRuleSystem(_world, _presEvents, _commands, _defs, _programs, graphApi, _globals);
-            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances);
+            _runtimeSystem = new PerformerRuntimeSystem(_world, new PrefabRegistry(), _commands, _primitives, new TransientMarkerBuffer(), _instances, new Ludots.Core.Presentation.PresentationStableIdAllocator());
             _emitSystem = new PerformerEmitSystem(_world, _instances, _defs, _overlays, _primitives, _hud, _programs, graphApi, _globals);
         }
 

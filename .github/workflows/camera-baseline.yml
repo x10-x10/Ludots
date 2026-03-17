@@ -1,0 +1,53 @@
+name: camera-baseline
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/camera-baseline.yml'
+      - 'assets/Configs/Camera/**'
+      - 'mods/LudotsCoreMod/assets/Entities/templates.json'
+      - 'mods/VirtualCameraBaselineMod/**'
+      - 'src/Core/Engine/GameEngine.cs'
+      - 'src/Core/Config/ComponentRegistry.cs'
+      - 'src/Core/Gameplay/Camera/**'
+      - 'src/Core/Presentation/Systems/EntityVisualEmitSystem.cs'
+      - 'src/Tests/ThreeCTests/**'
+      - 'src/Tests/PresentationTests/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/camera-baseline.yml'
+      - 'assets/Configs/Camera/**'
+      - 'mods/LudotsCoreMod/assets/Entities/templates.json'
+      - 'mods/VirtualCameraBaselineMod/**'
+      - 'src/Core/Engine/GameEngine.cs'
+      - 'src/Core/Config/ComponentRegistry.cs'
+      - 'src/Core/Gameplay/Camera/**'
+      - 'src/Core/Presentation/Systems/EntityVisualEmitSystem.cs'
+      - 'src/Tests/ThreeCTests/**'
+      - 'src/Tests/PresentationTests/**'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build core
+        shell: pwsh
+        run: dotnet build src/Core/Ludots.Core.csproj -v minimal
+
+      - name: Run camera baseline tests
+        shell: pwsh
+        run: |
+          dotnet test src/Tests/ThreeCTests/ThreeCTests.csproj --filter "FullyQualifiedName~Ludots.Tests.ThreeC.CameraRuntimeConvergenceTests" -v minimal
+          dotnet test src/Tests/PresentationTests/PresentationTests.csproj -v minimal

@@ -8,6 +8,7 @@ using Ludots.Core.Mathematics;
 using Ludots.Core.NodeLibraries.GASGraph;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Presentation.Components;
+using Ludots.Core.Presentation.Commands;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Performers;
 using Ludots.Core.Presentation.Rendering;
@@ -97,6 +98,12 @@ namespace Ludots.Core.Presentation.Systems
                 if (!_definitions.TryGet(inst.DefId, out var def)) return;
                 if (def.EntityScope != EntityScopeFilter.None) return; // skip entity-scoped
 
+                if (inst.AnchorKind == PresentationAnchorKind.Entity && !World.IsAlive(inst.Owner))
+                {
+                    _instances.Release(handle);
+                    return;
+                }
+
                 // Auto-expire duration-based performers
                 if (def.DefaultLifetime > 0f && inst.Elapsed >= def.DefaultLifetime)
                 {
@@ -108,7 +115,7 @@ namespace Ludots.Core.Presentation.Systems
                 if (!EvaluateVisibility(def, inst.Owner)) return;
 
                 // Compute position with offset and Y-drift
-                Vector3 pos = ResolveOwnerPosition(inst.Owner) + def.PositionOffset;
+                Vector3 pos = ResolveAnchorPosition(in inst) + def.PositionOffset;
                 pos.Y += def.PositionYDriftPerSecond * inst.Elapsed;
 
                 // Compute alpha modulation
@@ -116,7 +123,7 @@ namespace Ludots.Core.Presentation.Systems
                 if (def.AlphaFadeOverLifetime && def.DefaultLifetime > 0f)
                     alphaMod = Math.Clamp(1f - inst.Elapsed / def.DefaultLifetime, 0f, 1f);
 
-                EmitForVisualKind(handle, def, inst.Owner, pos, alphaMod);
+                EmitForVisualKind(handle, inst.DefId, def, inst.Owner, pos, alphaMod);
             });
 
             // ── Part 2: Entity-scoped performers ──
@@ -126,29 +133,29 @@ namespace Ludots.Core.Presentation.Systems
                 if (!_definitions.TryGet(ids[di], out var def)) continue;
                 if (def.EntityScope == EntityScopeFilter.None) continue;
 
-                EmitEntityScoped(def);
+                EmitEntityScoped(ids[di], def);
             }
         }
 
         // ── Entity-Scoped Emission ──
 
-        private void EmitEntityScoped(PerformerDefinition def)
+        private void EmitEntityScoped(int definitionId, PerformerDefinition def)
         {
             switch (def.EntityScope)
             {
                 case EntityScopeFilter.AllWithAttributes:
-                    EmitEntityScopedWithAttr(def, _attrNoCullQuery, requireCullCheck: false);
-                    EmitEntityScopedWithAttr(def, _attrWithCullQuery, requireCullCheck: true);
+                    EmitEntityScopedWithAttr(definitionId, def, _attrNoCullQuery, requireCullCheck: false);
+                    EmitEntityScopedWithAttr(definitionId, def, _attrWithCullQuery, requireCullCheck: true);
                     break;
 
                 case EntityScopeFilter.AllWithVisualTransform:
-                    EmitEntityScopedVT(def, _vtNoCullQuery, requireCullCheck: false);
-                    EmitEntityScopedVT(def, _vtWithCullQuery, requireCullCheck: true);
+                    EmitEntityScopedVT(definitionId, def, _vtNoCullQuery, requireCullCheck: false);
+                    EmitEntityScopedVT(definitionId, def, _vtWithCullQuery, requireCullCheck: true);
                     break;
             }
         }
 
-        private void EmitEntityScopedWithAttr(PerformerDefinition def, QueryDescription query, bool requireCullCheck)
+        private void EmitEntityScopedWithAttr(int definitionId, PerformerDefinition def, QueryDescription query, bool requireCullCheck)
         {
             // When requireCullCheck is true, the chunk already contains only entities WITH CullState.
             // If the definition's visibility condition is OwnerCullVisible, the chunk-level cull check
@@ -156,6 +163,8 @@ namespace Ludots.Core.Presentation.Systems
             bool skipVisibilityEval = requireCullCheck
                 && def.VisibilityCondition.Inline == InlineConditionKind.OwnerCullVisible;
 
+            bool hasTemplateFilter = def.RequiredTemplateId > 0;
+
             var q = World.Query(in query);
             foreach (var chunk in q)
             {
@@ -165,6 +174,15 @@ namespace Ludots.Core.Presentation.Systems
                 {
                     if (requireCullCheck && culls != null && !culls[i].IsVisible) continue;
 
+                    // Template filter — runtime check via World.Has/Get
+                    if (hasTemplateFilter)
+                    {
+                        var entity = chunk.Entity(i);
+                        if (!World.Has<VisualTemplateRef>(entity) ||
+                            World.Get<VisualTemplateRef>(entity).TemplateId != def.RequiredTemplateId)
+                            continue;
+                    }
+
                     if (!skipVisibilityEval)
                     {
                         var entity = chunk.Entity(i);
@@ -172,15 +190,17 @@ namespace Ludots.Core.Presentation.Systems
                     }
 
                     Vector3 pos = transforms[i].Position + def.PositionOffset;
-                    EmitForVisualKind(-1, def, chunk.Entity(i), pos, 1f);
+                    EmitForVisualKind(-1, definitionId, def, chunk.Entity(i), pos, 1f);
                 }
             }
         }
 
-        private void EmitEntityScopedVT(PerformerDefinition def, QueryDescription query, bool requireCullCheck)
+        private void EmitEntityScopedVT(int definitionId, PerformerDefinition def, QueryDescription query, bool requireCullCheck)
         {
             bool skipVisibilityEval = requireCullCheck
                 && def.VisibilityCondition.Inline == InlineConditionKind.OwnerCullVisible;
+
+            bool hasTemplateFilter = def.RequiredTemplateId > 0;
 
             var q = World.Query(in query);
             foreach (var chunk in q)
@@ -191,6 +211,15 @@ namespace Ludots.Core.Presentation.Systems
                 {
                     if (requireCullCheck && culls != null && !culls[i].IsVisible) continue;
 
+                    // Template filter
+                    if (hasTemplateFilter)
+                    {
+                        var entity = chunk.Entity(i);
+                        if (!World.Has<VisualTemplateRef>(entity) ||
+                            World.Get<VisualTemplateRef>(entity).TemplateId != def.RequiredTemplateId)
+                            continue;
+                    }
+
                     if (!skipVisibilityEval)
                     {
                         var entity = chunk.Entity(i);
@@ -198,14 +227,14 @@ namespace Ludots.Core.Presentation.Systems
                     }
 
                     Vector3 pos = transforms[i].Position + def.PositionOffset;
-                    EmitForVisualKind(-1, def, chunk.Entity(i), pos, 1f);
+                    EmitForVisualKind(-1, definitionId, def, chunk.Entity(i), pos, 1f);
                 }
             }
         }
 
         // ── Unified Emit by VisualKind ──
 
-        private void EmitForVisualKind(int handle, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
+        private void EmitForVisualKind(int handle, int definitionId, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
         {
             switch (def.VisualKind)
             {
@@ -216,10 +245,10 @@ namespace Ludots.Core.Presentation.Systems
                     EmitMarker3D(handle, def, owner, pos, alphaMod);
                     break;
                 case PerformerVisualKind.WorldBar:
-                    EmitWorldBar(handle, def, owner, pos, alphaMod);
+                    EmitWorldBar(handle, definitionId, def, owner, pos, alphaMod);
                     break;
                 case PerformerVisualKind.WorldText:
-                    EmitWorldText(handle, def, owner, pos, alphaMod);
+                    EmitWorldText(handle, definitionId, def, owner, pos, alphaMod);
                     break;
             }
         }
@@ -362,51 +391,106 @@ namespace Ludots.Core.Presentation.Systems
             float sz = ResolveParam(handle, def, owner, 3, scaleUniform);
             var color = ResolveColor(handle, def, owner, 4, 5, 6, 7, def.DefaultColor);
             color.W *= alphaMod;
+            int stableId = 0;
+            if (handle >= 0 && _instances.IsActive(handle))
+                stableId = _instances.Get(handle).StableId;
 
             _primitives.TryAdd(new PrimitiveDrawItem
             {
                 MeshAssetId = def.MeshOrShapeId,
                 Position = pos,
+                Rotation = Quaternion.Identity,
                 Scale = new Vector3(sx, sy, sz),
                 Color = color,
+                StableId = stableId,
+                RenderPath = VisualRenderPath.StaticMesh,
+                Mobility = VisualMobility.Movable,
+                Flags = VisualRuntimeFlags.Visible,
+                Visibility = VisualVisibility.Visible,
             });
         }
 
-        private void EmitWorldBar(int handle, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
+        private void EmitWorldBar(int handle, int definitionId, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
         {
             var fg = ResolveColor(handle, def, owner, 4, 5, 6, 7, def.DefaultColor);
             fg.W *= alphaMod;
             var bg = ResolveColor(handle, def, owner, 8, 9, 10, 11, new Vector4(0.2f, 0.2f, 0.2f, 1f));
             bg.W *= alphaMod;
+            float value = ResolveParam(handle, def, owner, 0, 1f);
+            float width = ResolveParam(handle, def, owner, 1, 40f);
+            float height = ResolveParam(handle, def, owner, 2, 6f);
+            int stableId = ResolveHudStableId(handle, definitionId, owner, WorldHudItemKind.Bar);
+            int dirtySerial = HudItemIdentity.ComposeBarDirtySerial(width, height, value, bg, fg);
 
             _worldHud.TryAdd(new WorldHudItem
             {
+                StableId = stableId,
+                DirtySerial = dirtySerial,
                 Kind = WorldHudItemKind.Bar,
                 WorldPosition = pos,
-                Value0 = ResolveParam(handle, def, owner, 0, 1f),
-                Width = ResolveParam(handle, def, owner, 1, 40f),
-                Height = ResolveParam(handle, def, owner, 2, 6f),
+                Value0 = value,
+                Width = width,
+                Height = height,
                 Color0 = bg,
                 Color1 = fg,
             });
         }
 
-        private void EmitWorldText(int handle, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
+        private void EmitWorldText(int handle, int definitionId, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)
         {
             var color = ResolveColor(handle, def, owner, 4, 5, 6, 7, def.DefaultColor);
             color.W *= alphaMod;
+            float value0 = ResolveParam(handle, def, owner, 0, 0f);
+            float value1 = ResolveParam(handle, def, owner, 1, 0f);
+            int textTokenId = (int)ResolveParam(handle, def, owner, 15, def.DefaultTextId);
+            var legacyMode = (WorldHudValueMode)(int)ResolveParam(handle, def, owner, 16, (int)def.LegacyWorldTextMode);
+            int legacyStringId = legacyMode == WorldHudValueMode.None ? textTokenId : 0;
+            PresentationTextPacket packet = PresentationTextPacket.FromLegacyWorldHud(
+                textTokenId,
+                legacyMode,
+                value0,
+                value1);
+            int stableId = ResolveHudStableId(handle, definitionId, owner, WorldHudItemKind.Text);
+            int dirtySerial = HudItemIdentity.ComposeTextDirtySerial(
+                (int)ResolveParam(handle, def, owner, 3, def.DefaultFontSize),
+                legacyStringId,
+                (int)legacyMode,
+                value0,
+                value1,
+                color,
+                packet);
 
             _worldHud.TryAdd(new WorldHudItem
             {
+                StableId = stableId,
+                DirtySerial = dirtySerial,
                 Kind = WorldHudItemKind.Text,
                 WorldPosition = pos,
-                Value0 = ResolveParam(handle, def, owner, 0, 0f),
-                Value1 = ResolveParam(handle, def, owner, 1, 0f),
-                Id0 = (int)ResolveParam(handle, def, owner, 15, 0f), // string table id
-                Id1 = (int)ResolveParam(handle, def, owner, 16, 0f), // WorldHudValueMode
+                Value0 = value0,
+                Value1 = value1,
+                Id0 = legacyStringId,
+                Id1 = (int)legacyMode, // WorldHudValueMode legacy adapter contract
                 FontSize = (int)ResolveParam(handle, def, owner, 3, def.DefaultFontSize),
                 Color0 = color,
+                Text = packet,
             });
+        }
+
+        private int ResolveHudStableId(int handle, int definitionId, Entity owner, WorldHudItemKind kind)
+        {
+            int ownerStableId = 0;
+            if (handle >= 0 && _instances.IsActive(handle))
+            {
+                ownerStableId = _instances.Get(handle).StableId;
+            }
+            else if (World.IsAlive(owner) && World.Has<PresentationStableId>(owner))
+            {
+                ownerStableId = World.Get<PresentationStableId>(owner).Value;
+            }
+
+            return ownerStableId > 0
+                ? HudItemIdentity.ComposeStableId(ownerStableId, kind, definitionId)
+                : 0;
         }
 
         // ── Helpers ──
@@ -425,6 +509,13 @@ namespace Ludots.Core.Presentation.Systems
             if (World.IsAlive(owner) && World.Has<VisualTransform>(owner))
                 return World.Get<VisualTransform>(owner).Position;
             return Vector3.Zero;
+        }
+
+        private Vector3 ResolveAnchorPosition(in PerformerInstance instance)
+        {
+            return instance.AnchorKind == PresentationAnchorKind.WorldPosition
+                ? instance.WorldPosition
+                : ResolveOwnerPosition(instance.Owner);
         }
 
         private bool IsLocalPlayer(Entity entity)

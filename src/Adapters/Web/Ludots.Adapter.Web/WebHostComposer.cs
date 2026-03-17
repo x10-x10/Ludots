@@ -9,6 +9,9 @@ using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Scripting;
 using Ludots.UI;
+using Ludots.UI.HtmlEngine.Markup;
+using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 
 namespace Ludots.Adapter.Web
 {
@@ -19,7 +22,7 @@ namespace Ludots.Adapter.Web
         WebInputBackend InputBackend,
         WebViewController ViewController,
         WebCameraAdapter CameraAdapter,
-        WebScreenRayProvider ScreenRayProvider,
+        WebUiRuntimeBridge UiBridge,
         WebTransportLayer Transport
     );
 
@@ -31,7 +34,7 @@ namespace Ludots.Adapter.Web
             ILogBackend effectiveBackend = consoleBackend;
             Log.Initialize(effectiveBackend);
 
-            var result = GameBootstrapper.InitializeFromBaseDirectory(baseDir, gameConfigFile ?? "game.json");
+            var result = GameBootstrapper.InitializeFromBaseDirectory(baseDir, gameConfigFile ?? "launcher.runtime.json");
             var engine = result.Engine;
             var config = result.Config;
 
@@ -46,9 +49,14 @@ namespace Ludots.Adapter.Web
 
             engine.SetService(CoreServiceKeys.LogBackend, effectiveBackend);
 
-            var uiRoot = new UIRoot();
+            var renderer = new SkiaUiRenderer();
+            IUiTextMeasurer textMeasurer = new SkiaTextMeasurer();
+            IUiImageSizeProvider imageSizeProvider = new SkiaImageSizeProvider();
+            var uiRoot = new UIRoot(renderer);
             engine.SetService(CoreServiceKeys.UIRoot, (object)uiRoot);
-            engine.SetService(CoreServiceKeys.UISystem, (Core.UI.IUiSystem)new WebUiSystem());
+            engine.SetService(CoreServiceKeys.UiTextMeasurer, (object)textMeasurer);
+            engine.SetService(CoreServiceKeys.UiImageSizeProvider, (object)imageSizeProvider);
+            engine.SetService(CoreServiceKeys.UISystem, (Core.UI.IUiSystem)new MarkupUiSystem(uiRoot, textMeasurer, imageSizeProvider));
 
             var inputBackend = new WebInputBackend();
             var inputConfig = new InputConfigPipelineLoader(engine.ConfigPipeline).Load();
@@ -58,23 +66,32 @@ namespace Ludots.Adapter.Web
                 foreach (var contextId in config.StartupInputContexts)
                 {
                     if (!string.IsNullOrWhiteSpace(contextId))
+                    {
                         inputHandler.PushContext(contextId);
+                    }
                 }
             }
+
             engine.SetService(CoreServiceKeys.InputHandler, inputHandler);
             engine.SetService(CoreServiceKeys.InputBackend, (IInputBackend)inputBackend);
 
             var viewController = new WebViewController();
             var cameraAdapter = new WebCameraAdapter();
-            var screenRayProvider = new WebScreenRayProvider(cameraAdapter, viewController);
+            inputBackend.SyncNeutralViewport((int)viewController.Resolution.X, (int)viewController.Resolution.Y);
+            var uiBridge = new WebUiRuntimeBridge(uiRoot, inputBackend, viewController);
             var transport = new WebTransportLayer(inputBackend, viewController);
 
             ValidateRequiredContextBeforeStart(engine);
 
             return new WebHostSetup(
-                engine, config, uiRoot,
-                inputBackend, viewController, cameraAdapter, screenRayProvider, transport
-            );
+                engine,
+                config,
+                uiRoot,
+                inputBackend,
+                viewController,
+                cameraAdapter,
+                uiBridge,
+                transport);
         }
 
         private static void ValidateRequiredContextBeforeStart(GameEngine engine)
@@ -88,7 +105,9 @@ namespace Ludots.Adapter.Web
         private static void ValidateKey<T>(GameEngine engine, string key)
         {
             if (!engine.GlobalContext.TryGetValue(key, out var obj) || obj is not T)
+            {
                 throw new InvalidOperationException($"GlobalContext missing or invalid: {key} expected {typeof(T).FullName}");
+            }
         }
     }
 }

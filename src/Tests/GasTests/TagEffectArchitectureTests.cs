@@ -3,14 +3,19 @@ using System.IO;
 using Arch.Core;
 using Arch.Core.Extensions;
 using Ludots.Core.Config;
+using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Config;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Gameplay.GAS.Systems;
+using Ludots.Core.Gameplay.Components;
+using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Modding;
 using Ludots.Core.Scripting;
 using Ludots.Core.Mathematics.FixedPoint;
+using Ludots.Core.Components;
+using Ludots.Core.Presentation.Components;
 using NUnit.Framework;
 using static NUnit.Framework.Assert;
 
@@ -345,7 +350,7 @@ namespace Ludots.Tests.GAS
         public void BuiltinHandlers_CreateProjectile_CreatesEntity()
         {
             using var world = World.Create();
-            var caster = world.Create();
+            var caster = world.Create(WorldPositionCm.FromCm(1200, 800));
             var target = world.Create();
             var effect = world.Create();
 
@@ -369,28 +374,182 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
-        public void BuiltinHandlers_CreateUnit_CreatesEntities()
+        public void BuiltinHandlers_CreateProjectile_PreservesTargetPointAndLaunchOrigin()
         {
             using var world = World.Create();
-            var caster = world.Create();
+            var caster = world.Create(WorldPositionCm.FromCm(300, 500));
             var effect = world.Create();
+
+            var ctx = new EffectContext { Source = caster, Target = Entity.Null };
+            var tpl = new EffectTemplateData();
+            tpl.Projectile = new ProjectileDescriptor { Speed = 600, Range = 1200, ArcHeight = 0, ImpactEffectTemplateId = 0 };
+
+            var mergedParams = new EffectConfigParams();
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosX, 950f);
+            mergedParams.TryAddFloat(EffectParamKeys.TargetPosY, 640f);
+
+            BuiltinHandlers.HandleCreateProjectile(world, effect, ref ctx, in mergedParams, in tpl);
+
+            var query = new QueryDescription().WithAll<ProjectileState>();
+            int count = 0;
+            world.Query(in query, (ref ProjectileState ps) =>
+            {
+                count++;
+                That(ps.HasLaunchOrigin, Is.EqualTo(1));
+                That(ps.LaunchOriginCm.X.ToFloat(), Is.EqualTo(300f).Within(0.01f));
+                That(ps.LaunchOriginCm.Y.ToFloat(), Is.EqualTo(500f).Within(0.01f));
+                That(ps.HasTargetPoint, Is.EqualTo(1));
+                That(ps.TargetPointCm.X.ToFloat(), Is.EqualTo(950f).Within(0.01f));
+                That(ps.TargetPointCm.Y.ToFloat(), Is.EqualTo(640f).Within(0.01f));
+            });
+
+            That(count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ProjectileRuntimeSystem_TargetPointImpact_PublishesCallerParams()
+        {
+            using var world = World.Create();
+            var requests = new EffectRequestQueue();
+            var caster = world.Create(WorldPositionCm.FromCm(100, 200));
+            var projectile = world.Create(
+                new ProjectileState
+                {
+                    Speed = Fix64.FromInt(400),
+                    Range = 1200,
+                    ArcHeight = 0,
+                    ImpactEffectTemplateId = 77,
+                    Source = caster,
+                    Target = Entity.Null,
+                    LaunchOriginCm = Fix64Vec2.FromFloat(100f, 200f),
+                    HasLaunchOrigin = 1,
+                    TargetPointCm = Fix64Vec2.FromFloat(160f, 240f),
+                    HasTargetPoint = 1,
+                },
+                WorldPositionCm.FromCm(100, 200),
+                new PreviousWorldPositionCm { Value = WorldPositionCm.FromCm(100, 200).Value });
+
+            using var system = new ProjectileRuntimeSystem(world, new DiscreteClock(), requests);
+            system.Update(0.2f);
+
+            That(world.IsAlive(projectile), Is.False, "Projectile should despawn after reaching the preserved target point.");
+            That(requests.Count, Is.EqualTo(1));
+
+            var request = requests[0];
+            That(request.TemplateId, Is.EqualTo(77));
+            That(request.HasCallerParams, Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetOriginX, out float originX), Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetOriginY, out float originY), Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetPosX, out float targetX), Is.True);
+            That(request.CallerParams.TryGetFloat(EffectParamKeys.TargetPosY, out float targetY), Is.True);
+            That(originX, Is.EqualTo(100f).Within(0.01f));
+            That(originY, Is.EqualTo(200f).Within(0.01f));
+            That(targetX, Is.EqualTo(160f).Within(0.01f));
+            That(targetY, Is.EqualTo(240f).Within(0.01f));
+        }
+
+        [Test]
+        public void BuiltinHandlers_CreateUnit_EnqueuesRuntimeSpawnRequests()
+        {
+            using var world = World.Create();
+            var caster = world.Create(WorldPositionCm.FromCm(1200, 3400));
+            var effect = world.Create();
+            var queue = new RuntimeEntitySpawnQueue(capacity: 8);
+            var runtime = new BuiltinHandlerExecutionContext
+            {
+                SpawnRequests = queue,
+            };
+            var registry = new BuiltinHandlerRegistry();
+            BuiltinHandlers.RegisterAll(registry);
 
             var ctx = new EffectContext { Source = caster, Target = caster };
             var tpl = new EffectTemplateData();
             tpl.UnitCreation = new UnitCreationDescriptor { UnitTypeId = 7, Count = 3, OffsetRadius = 100, OnSpawnEffectTemplateId = 55 };
 
             var mergedParams = new EffectConfigParams();
-            BuiltinHandlers.HandleCreateUnit(world, effect, ref ctx, in mergedParams, in tpl);
+            registry.Invoke(BuiltinHandlerId.CreateUnit, world, effect, ref ctx, in mergedParams, in tpl, runtime);
 
-            var query = new QueryDescription().WithAll<SpawnedUnitState>();
             int count = 0;
-            world.Query(in query, (ref SpawnedUnitState su) =>
+            while (queue.TryDequeue(out var request))
             {
                 count++;
-                That(su.UnitTypeId, Is.EqualTo(7));
-                That(su.OnSpawnEffectTemplateId, Is.EqualTo(55));
-            });
+                That(request.Kind, Is.EqualTo(RuntimeEntitySpawnKind.UnitType));
+                That(request.UnitTypeId, Is.EqualTo(7));
+                That(request.OnSpawnEffectTemplateId, Is.EqualTo(55));
+                That(request.CopySourceTeam, Is.EqualTo(1));
+                That(request.WorldPositionCm, Is.Not.EqualTo(Fix64Vec2.Zero));
+            }
             That(count, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void RuntimeEntitySpawnSystem_SpawnUnitType_CreatesEntityAndPublishesOnSpawnEffect()
+        {
+            UnitTypeRegistry.Clear();
+            int unitTypeId = UnitTypeRegistry.Register("TestWolf");
+
+            using var world = World.Create();
+            var source = world.Create(
+                new Team { Id = 7 },
+                new MapEntity { MapId = new Ludots.Core.Map.MapId("runtime_spawn_test") });
+            var requests = new RuntimeEntitySpawnQueue(capacity: 4);
+            var effects = new EffectRequestQueue();
+            var templates = new DataRegistry<EntityTemplate>(CreateMinimalPipeline(@"{ ""id"": ""noop"", ""presetType"": ""None"" }"));
+            var system = new RuntimeEntitySpawnSystem(
+                world,
+                requests,
+                templates,
+                new Ludots.Core.Presentation.Config.PresentationAuthoringContext(
+                    new Ludots.Core.Presentation.Assets.VisualTemplateRegistry(),
+                    new Ludots.Core.Presentation.Performers.PerformerDefinitionRegistry(),
+                    new Ludots.Core.Presentation.Assets.AnimatorControllerRegistry(),
+                    new Ludots.Core.Presentation.PresentationStableIdAllocator()),
+                effects);
+
+            That(requests.TryEnqueue(new RuntimeEntitySpawnRequest
+            {
+                Kind = RuntimeEntitySpawnKind.UnitType,
+                Source = source,
+                WorldPositionCm = Fix64Vec2.FromInt(420, 840),
+                UnitTypeId = unitTypeId,
+                OnSpawnEffectTemplateId = 123,
+                CopySourceTeam = 1,
+            }), Is.True);
+
+            system.Update(0f);
+
+            Entity spawned = Entity.Null;
+            int spawnCount = 0;
+            var query = new QueryDescription().WithAll<Name, WorldPositionCm, PreviousWorldPositionCm, VisualTransform, CullState, AttributeBuffer>();
+            world.Query(in query, (Entity entity, ref Name name, ref WorldPositionCm position, ref PreviousWorldPositionCm previous, ref VisualTransform transform, ref CullState cull, ref AttributeBuffer buffer) =>
+            {
+                if (!string.Equals(name.Value, "Unit:TestWolf", StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                spawnCount++;
+                spawned = entity;
+                That(position.Value, Is.EqualTo(Fix64Vec2.FromInt(420, 840)));
+                That(previous.Value, Is.EqualTo(Fix64Vec2.FromInt(420, 840)));
+                That(transform.Scale, Is.EqualTo(System.Numerics.Vector3.One));
+                That(cull.IsVisible, Is.True);
+                That(cull.LOD, Is.EqualTo(Ludots.Core.Presentation.Components.LODLevel.High));
+            });
+
+            That(spawnCount, Is.EqualTo(1));
+            That(spawned, Is.Not.EqualTo(Entity.Null));
+            That(world.Has<Team>(spawned), Is.True);
+            That(world.Get<Team>(spawned).Id, Is.EqualTo(7));
+            That(world.Has<MapEntity>(spawned), Is.True);
+            That(world.Get<MapEntity>(spawned).MapId.Value, Is.EqualTo("runtime_spawn_test"));
+
+            That(effects.Count, Is.EqualTo(1));
+            That(effects[0].Source, Is.EqualTo(source));
+            That(effects[0].Target, Is.EqualTo(spawned));
+            That(effects[0].TemplateId, Is.EqualTo(123));
+
+            UnitTypeRegistry.Clear();
         }
 
         // ════════════════════════════════════════════════════════════════════

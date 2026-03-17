@@ -1,4 +1,4 @@
-# Feature 开发工作流规范
+﻿# Feature 开发工作流规范
 
 本篇定义 Ludots 仓库中新功能开发的完整流程，从需求发现到合并验收。核心目标：杜绝重复造轮子，消除幻觉代码（引用不存在的 API），确保每一行新代码都挂靠在已有架构管线上。
 
@@ -33,7 +33,7 @@ AI Agent 专项规则见 [02_ai_assisted_development.md](02_ai_assisted_developm
 | 已有配置管线 | 搜索 `ConfigCatalogEntry`、`MergeGameConfig` | `src/Core/Config/` |
 | 已有 Sink | 搜索 `AttributeSinkRegistry` 注册点 | `src/Core/Gameplay/GAS/Bindings/` |
 | 已有 Trigger/Event | 搜索 `EventKey`、`OnEvent` | `src/Core/Scripting/` |
-| 已有文档 | 浏览 `docs/developer-guide/README.md` 目录 | `docs/developer-guide/` |
+| 已有文档 | 浏览 `docs/architecture/README.md` 目录 | `docs/architecture/` |
 
 ### 2.2 发现结论记录
 
@@ -100,12 +100,24 @@ AI Agent 专项规则见 [02_ai_assisted_development.md](02_ai_assisted_developm
 | Core 新增 System | 单元测试覆盖核心逻辑 + 边界条件 |
 | Core 新增 Registry | 注册/查询/冲突/容量边界测试 |
 | GAS 相关变更 | GasTests 全量通过 |
-| Mod 新增/修改 | ModLauncher CLI build 通过 + 功能冒烟测试 |
+| Mod 新增/修改 | Launcher CLI `resolve`/`launch` 冒烟通过 + 功能冒烟测试 |
+| UI / Showcase / Presentation 变更 | 编译与相关测试通过 + adapter 可见冒烟 + 首帧可读性与接管/恢复验证 |
 | 架构边界变更 | ArchitectureTests 通过 |
 | 导航相关变更 | Navigation2DTests 全量通过 |
 
 测试风格遵循 `src/Tests/GasTests/TESTING_STYLE.md`。
 测试命令见 [03_environment_setup.md](03_environment_setup.md)。
+
+### 4.3 UI、Showcase 与表现层附加验收
+
+当变更涉及 `UiScene`、`ReactivePage`、HUD、overlay、showcase takeover 或玩家可见表现层时，除 4.1 与 4.2 外，还必须补齐以下验收：
+
+*   **Surface ownership 明确**：说明当前改动占用的是哪一类 surface（如 retained UI、`ScreenOverlayBuffer`、world HUD），谁是 owner，是否存在 takeover。
+*   **接管/恢复链路完整**：如果 showcase 或 mod 会临时接管已有 UI，必须验证 `MapLoaded`、`MapResumed`、`MapUnloaded` 上的 acquire / restore / release 行为，而不是只验证“能显示出来”。
+*   **首帧可读**：首个可见帧不得出现闪烁标题、反复 remount、占位文本或明显越界布局。
+*   **交互安全**：面板显示时，实体选择、世界点击、相机等无关交互仍然正常；若设计上需要屏蔽，必须显式记录边界。
+*   **双证据闭环**：不仅要有 engine-side 正确性的日志或测试，还要有 adapter 可见证据，证明玩家实际看到的内容正确。
+*   **性能边界可解释**：多实例或多实体显示必须说明 SoA、dirty-refresh、零分配边界，避免把展示成本扩散到 ECS 热路径。
 
 ## 5 分支与 PR 工作流
 
@@ -116,7 +128,7 @@ AI Agent 专项规则见 [02_ai_assisted_development.md](02_ai_assisted_developm
 | 功能 | `feat/<scope>-<short-desc>` | `feat/gas-shield-system` |
 | 修复 | `fix/<scope>-<short-desc>` | `fix/physics2d-collision-leak` |
 | 重构 | `refactor/<scope>-<short-desc>` | `refactor/config-pipeline-merge` |
-| 文档 | `docs/<short-desc>` | `docs/trigger-guide-update` |
+| 文档 | `docs/<short-desc>` | `docs/<topic>` |
 
 ### 5.2 PR 要求
 
@@ -135,6 +147,7 @@ Review 时优先检查以下项目：
 *   是否引用了不存在的 API（幻觉代码）
 *   是否遵循 ECS blittable/zero-GC 约束
 *   是否正确归属 SystemGroup phase
+*   UI / showcase 改动是否明确 surface owner，并覆盖 takeover / restore / first-frame readability
 *   命名是否耦合了具体业务
 
 ## 6 相关文档
@@ -142,7 +155,8 @@ Review 时优先检查以下项目：
 *   编码标准：见 [00_coding_standards.md](00_coding_standards.md)
 *   AI 辅助开发规范：见 [02_ai_assisted_development.md](02_ai_assisted_development.md)
 *   开发环境与构建：见 [03_environment_setup.md](03_environment_setup.md)
-*   文档编写规范：见 `docs/developer-guide/00_documentation_standards.md`
-*   ECS 开发实践：见 `docs/developer-guide/01_ecs_soa_principles.md`
-*   Mod 架构与配置系统：见 `docs/developer-guide/02_mod_architecture.md`
-*   GAS 分层架构：见 `docs/developer-guide/11_gas_layered_architecture.md`
+*   文档编写规范：见 [04_documentation_governance.md](04_documentation_governance.md)
+*   ECS 开发实践：见 [../architecture/ecs_soa.md](../architecture/ecs_soa.md)
+*   Mod 架构与配置系统：见 [../architecture/mod_architecture.md](../architecture/mod_architecture.md)
+*   GAS 分层架构：见 [../architecture/gas_layered_architecture.md](../architecture/gas_layered_architecture.md)
+

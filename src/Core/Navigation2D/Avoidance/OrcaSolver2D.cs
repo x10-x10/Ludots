@@ -6,6 +6,8 @@ namespace Ludots.Core.Navigation2D.Avoidance
 {
     public static class OrcaSolver2D
     {
+        public const int MaxProjectionLines = 64;
+
         public readonly struct Neighbor
         {
             public readonly Vector2 Position;
@@ -35,7 +37,8 @@ namespace Ludots.Core.Navigation2D.Avoidance
             float timeHorizon,
             float deltaTime,
             ReadOnlySpan<Neighbor> neighbors,
-            Span<OrcaLine> linesScratch)
+            Span<OrcaLine> linesScratch,
+            Span<OrcaLine> projectionLinesScratch)
         {
             if (maxSpeed <= 0f) return Vector2.Zero;
             int lineCount = 0;
@@ -44,16 +47,70 @@ namespace Ludots.Core.Navigation2D.Avoidance
 
             for (int i = 0; i < neighbors.Length && lineCount < linesScratch.Length; i++)
             {
-                linesScratch[lineCount++] = CreateAgentLine(position, velocity, radius, neighbors[i], invTimeHorizon, deltaTime);
+                ref readonly var neighbor = ref neighbors[i];
+                linesScratch[lineCount++] = CreateAgentLine(
+                    position,
+                    velocity,
+                    radius,
+                    neighbor.Position,
+                    neighbor.Velocity,
+                    neighbor.Radius,
+                    invTimeHorizon,
+                    deltaTime);
             }
 
-            var lines = linesScratch.Slice(0, lineCount);
-            Vector2 result = Vector2.Zero;
+            return SolveLinearPrograms(preferredVelocity, maxSpeed, linesScratch.Slice(0, lineCount), projectionLinesScratch);
+        }
 
+        public static Vector2 ComputeDesiredVelocity(
+            Vector2 position,
+            Vector2 velocity,
+            Vector2 preferredVelocity,
+            float maxSpeed,
+            float radius,
+            float timeHorizon,
+            float deltaTime,
+            ReadOnlySpan<int> neighborIndices,
+            ReadOnlySpan<Vector2> neighborPositions,
+            ReadOnlySpan<Vector2> neighborVelocities,
+            ReadOnlySpan<float> neighborRadii,
+            Span<OrcaLine> linesScratch,
+            Span<OrcaLine> projectionLinesScratch)
+        {
+            if (maxSpeed <= 0f) return Vector2.Zero;
+            int lineCount = 0;
+
+            float invTimeHorizon = timeHorizon > 1e-6f ? (1f / timeHorizon) : 0f;
+
+            for (int i = 0; i < neighborIndices.Length && lineCount < linesScratch.Length; i++)
+            {
+                int neighborIndex = neighborIndices[i];
+                linesScratch[lineCount++] = CreateAgentLine(
+                    position,
+                    velocity,
+                    radius,
+                    neighborPositions[neighborIndex],
+                    neighborVelocities[neighborIndex],
+                    neighborRadii[neighborIndex],
+                    invTimeHorizon,
+                    deltaTime);
+            }
+
+            return SolveLinearPrograms(preferredVelocity, maxSpeed, linesScratch.Slice(0, lineCount), projectionLinesScratch);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Vector2 SolveLinearPrograms(
+            Vector2 preferredVelocity,
+            float maxSpeed,
+            ReadOnlySpan<OrcaLine> lines,
+            Span<OrcaLine> projectionLinesScratch)
+        {
+            Vector2 result = Vector2.Zero;
             int lineFail = LinearProgram2(lines, maxSpeed, preferredVelocity, ref result);
             if (lineFail < lines.Length)
             {
-                LinearProgram3(lines, lineFail, maxSpeed, ref result);
+                LinearProgram3(lines, lineFail, maxSpeed, ref result, projectionLinesScratch);
             }
 
             return result;
@@ -68,10 +125,24 @@ namespace Ludots.Core.Navigation2D.Avoidance
             float invTimeHorizon,
             float deltaTime)
         {
-            Vector2 relativePosition = other.Position - position;
-            Vector2 relativeVelocity = velocity - other.Velocity;
+            return CreateAgentLine(position, velocity, radius, other.Position, other.Velocity, other.Radius, invTimeHorizon, deltaTime);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static OrcaLine CreateAgentLine(
+            Vector2 position,
+            Vector2 velocity,
+            float radius,
+            Vector2 otherPosition,
+            Vector2 otherVelocity,
+            float otherRadius,
+            float invTimeHorizon,
+            float deltaTime)
+        {
+            Vector2 relativePosition = otherPosition - position;
+            Vector2 relativeVelocity = velocity - otherVelocity;
             float distSq = relativePosition.LengthSquared();
-            float combinedRadius = radius + other.Radius;
+            float combinedRadius = radius + otherRadius;
             float combinedRadiusSq = combinedRadius * combinedRadius;
 
             OrcaLine line;
@@ -123,7 +194,6 @@ namespace Ludots.Core.Navigation2D.Avoidance
             line.Point = velocity + 0.5f * u;
             return line;
         }
-
         private static int LinearProgram2(ReadOnlySpan<OrcaLine> lines, float radius, Vector2 optVelocity, ref Vector2 result)
         {
             if (optVelocity.LengthSquared() > radius * radius)
@@ -197,17 +267,16 @@ namespace Ludots.Core.Navigation2D.Avoidance
             return true;
         }
 
-        private static void LinearProgram3(ReadOnlySpan<OrcaLine> lines, int beginLine, float radius, ref Vector2 result)
+        private static void LinearProgram3(ReadOnlySpan<OrcaLine> lines, int beginLine, float radius, ref Vector2 result, Span<OrcaLine> projectionLinesScratch)
         {
             float distance = 0.0f;
-            const int MaxProjLines = 64;
 
             for (int i = beginLine; i < lines.Length; i++)
             {
                 if (Det(lines[i].Direction, lines[i].Point - result) > distance)
                 {
-                    if (i > MaxProjLines) return;
-                    Span<OrcaLine> projLines = stackalloc OrcaLine[MaxProjLines];
+                    if (i > projectionLinesScratch.Length) return;
+                    Span<OrcaLine> projLines = projectionLinesScratch;
                     int projCount = 0;
 
                     for (int j = 0; j < i; j++)

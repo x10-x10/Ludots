@@ -1,0 +1,395 @@
+[
+  {
+    "id": "Ability.Champion.Ezreal.ArcaneShift",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 72, "tag": "Cooldown.Champion.Ezreal.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.ArcaneShift" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 440, "radius": 120, "showRangeCircle": true, "validColor": "#4FD7F077", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.E"] },
+    "presentation": {
+      "displayName": "Arcane Shift",
+      "iconGlyph": "E",
+      "accentColor": "#44C2F0",
+      "hintText": "Blink to cursor",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview blink",
+        "PressReleaseAimCast": "Release key, then confirm blink"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Ezreal.EssenceFlux",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 54, "tag": "Cooldown.Champion.Ezreal.W" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.EssenceFlux" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 760, "radius": 150, "showRangeCircle": true, "validColor": "#F0C35A77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.W"] },
+    "presentation": {
+      "displayName": "Essence Flux",
+      "iconGlyph": "W",
+      "accentColor": "#F0C35A",
+      "hintText": "Zone mark at cursor",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview zone",
+        "PressReleaseAimCast": "Release key, then confirm zone"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Ezreal.MysticShot",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 30, "tag": "Cooldown.Champion.Ezreal.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.MysticShot" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 840, "radius": 70, "showRangeCircle": true, "validColor": "#61C3FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.Q"] },
+    "presentation": {
+      "displayName": "Mystic Shot",
+      "iconGlyph": "Q",
+      "accentColor": "#61C3FF",
+      "hintText": "Line shot to cursor",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview line shot",
+        "PressReleaseAimCast": "Release key, then confirm line shot"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Ezreal.TrueshotBarrage",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 150, "tag": "Cooldown.Champion.Ezreal.R" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.TrueshotBarrage" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 1200, "radius": 120, "showRangeCircle": true, "validColor": "#9BE0FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.R"] },
+    "presentation": {
+      "displayName": "Trueshot Barrage",
+      "iconGlyph": "R",
+      "accentColor": "#9BE0FF",
+      "hintText": "Long line blast",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview barrage",
+        "PressReleaseAimCast": "Release key, then confirm barrage"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Garen.Courage",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 24, "tag": "Cooldown.Champion.Garen.W" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "toggleSpec": {
+      "toggleTag": "State.Champion.Garen.Courage",
+      "activeEffects": ["Effect.Champion.Garen.CourageAura"],
+      "deactivateExec": {
+        "clockId": "FixedFrame",
+        "items": [
+          { "kind": "End", "tick": 0 }
+        ]
+      }
+    },
+    "indicator": { "shape": "Circle", "range": 0, "radius": 220, "showRangeCircle": false, "validColor": "#C9E98766", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Garen.W"] },
+    "presentation": {
+      "displayName": "Courage",
+      "iconGlyph": "W",
+      "accentColor": "#C9E987",
+      "hintText": "Toggle defense stance",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview stance aura",
+        "PressReleaseAimCast": "Release key, then confirm stance"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Garen.DecisiveStrike",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 36, "tag": "Cooldown.Champion.Garen.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Garen.DecisiveStrike" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 320, "radius": 100, "showRangeCircle": true, "validColor": "#F6D37A77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Garen.Q"] },
+    "presentation": {
+      "displayName": "Decisive Strike",
+      "iconGlyph": "Q",
+      "accentColor": "#F6D37A",
+      "hintText": "Self buff, cursor ignored",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview engage range",
+        "PressReleaseAimCast": "Release key, then confirm engage"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Garen.DemacianJustice",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 120, "tag": "Cooldown.Champion.Garen.R" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Garen.DemacianJustice" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 520, "radius": 150, "showRangeCircle": true, "validColor": "#FF8B76AA", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Garen.R"] },
+    "presentation": {
+      "displayName": "Demacian Justice",
+      "iconGlyph": "R",
+      "accentColor": "#FF8B76",
+      "hintText": "Execute zone at cursor",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview execute zone",
+        "PressReleaseAimCast": "Release key, then confirm execute"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Garen.Judgment",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 48, "tag": "Cooldown.Champion.Garen.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Garen.Judgment" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 0, "radius": 260, "showRangeCircle": false, "validColor": "#E5A95A77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Garen.E"] },
+    "presentation": {
+      "displayName": "Judgment",
+      "iconGlyph": "E",
+      "accentColor": "#E5A95A",
+      "hintText": "Spin around self",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview spin radius",
+        "PressReleaseAimCast": "Release key, then confirm spin"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Cannon.AccelerationGate",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 54, "tag": "Cooldown.Champion.Jayce.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Jayce.Cannon.AccelerationGate" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Rectangle", "range": 640, "radius": 220, "showRangeCircle": true, "validColor": "#8ED9A977", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.E"] },
+    "presentation": {
+      "displayName": "Acceleration Gate",
+      "iconGlyph": "E",
+      "accentColor": "#8ED9A9",
+      "hintText": "Gate zone at cursor",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview gate",
+        "PressReleaseAimCast": "Release key, then confirm gate"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Cannon.HyperCharge",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 48, "tag": "Cooldown.Champion.Jayce.W" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Jayce.Cannon.HyperCharge" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 0, "radius": 220, "showRangeCircle": false, "validColor": "#B4F0C277", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.W"] },
+    "presentation": {
+      "displayName": "Hyper Charge",
+      "iconGlyph": "W",
+      "accentColor": "#B4F0C2",
+      "hintText": "Cannon self buff",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview aura",
+        "PressReleaseAimCast": "Release key, then confirm charge"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Cannon.ShockBlast",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 42, "tag": "Cooldown.Champion.Jayce.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Jayce.Cannon.ShockBlast" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 880, "radius": 90, "showRangeCircle": true, "validColor": "#67D4FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.Q"] },
+    "presentation": {
+      "displayName": "Shock Blast",
+      "iconGlyph": "Q",
+      "accentColor": "#67D4FF",
+      "hintText": "Cannon line shot",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview shock blast",
+        "PressReleaseAimCast": "Release key, then confirm shock blast"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Hammer.LightningField",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 48, "tag": "Cooldown.Champion.Jayce.W" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Jayce.Hammer.LightningField" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Ring", "range": 0, "radius": 280, "innerRadius": 90, "showRangeCircle": false, "validColor": "#FFD27B77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.W"] },
+    "presentation": {
+      "displayName": "Lightning Field",
+      "iconGlyph": "W",
+      "accentColor": "#FFD27B",
+      "hintText": "Hammer shock ring",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview shock ring",
+        "PressReleaseAimCast": "Release key, then confirm shock ring"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Hammer.ThunderingBlow",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 54, "tag": "Cooldown.Champion.Jayce.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Jayce.Hammer.ThunderingBlow" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Cone", "range": 300, "radius": 300, "angleDeg": 40, "showRangeCircle": true, "validColor": "#FFA76777", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.E"] },
+    "presentation": {
+      "displayName": "Thundering Blow",
+      "iconGlyph": "E",
+      "accentColor": "#FFA767",
+      "hintText": "Hammer cone burst",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview cone",
+        "PressReleaseAimCast": "Release key, then confirm cone"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Hammer.ToTheSkies",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 42, "tag": "Cooldown.Champion.Jayce.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Jayce.Hammer.ToTheSkies" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 520, "radius": 170, "showRangeCircle": true, "validColor": "#FFB85B77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.Q"] },
+    "presentation": {
+      "displayName": "To The Skies!",
+      "iconGlyph": "Q",
+      "accentColor": "#FFB85B",
+      "hintText": "Hammer leap strike",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview leap",
+        "PressReleaseAimCast": "Release key, then confirm leap"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Transform.Cannon",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 18, "tag": "Cooldown.Champion.Jayce.R" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "toggleSpec": {
+      "toggleTag": "State.Champion.Jayce.Hammer",
+      "deactivateExec": {
+        "clockId": "FixedFrame",
+        "items": [
+          { "kind": "End", "tick": 0 }
+        ]
+      }
+    },
+    "indicator": { "shape": "Circle", "range": 0, "radius": 200, "showRangeCircle": false, "validColor": "#8AA8FF66", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.R"] },
+    "presentation": {
+      "displayName": "Mercury Cannon",
+      "iconGlyph": "R",
+      "accentColor": "#8AA8FF",
+      "hintText": "Switch to cannon form",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview transform",
+        "PressReleaseAimCast": "Release key, then confirm transform"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Jayce.Transform.Hammer",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 18, "tag": "Cooldown.Champion.Jayce.R" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "toggleSpec": {
+      "toggleTag": "State.Champion.Jayce.Hammer",
+      "deactivateExec": {
+        "clockId": "FixedFrame",
+        "items": [
+          { "kind": "End", "tick": 0 }
+        ]
+      }
+    },
+    "indicator": { "shape": "Circle", "range": 0, "radius": 200, "showRangeCircle": false, "validColor": "#FFB55C66", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Jayce.R"] },
+    "presentation": {
+      "displayName": "Mercury Hammer",
+      "iconGlyph": "R",
+      "accentColor": "#FFB55C",
+      "hintText": "Switch to hammer form",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview transform",
+        "PressReleaseAimCast": "Release key, then confirm transform"
+      }
+    }
+  }
+]

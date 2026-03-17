@@ -1,0 +1,375 @@
+[
+  {
+    "id": "champion_skill_sandbox.selection_indicator",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.28, 0.88, 1.0, 0.16],
+    "defaultScale": 1.05,
+    "defaultLifetime": -1,
+    "positionOffset": [0, 0.04, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.68 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.47 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.94 },
+      { "paramKey": 10, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.035 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.hover_indicator",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [1.0, 0.73, 0.24, 0.2],
+    "defaultScale": 1.16,
+    "defaultLifetime": -1,
+    "positionOffset": [0, 0.06, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.8 },
+      { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.74 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.24 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.045 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.projectile.ezreal_q",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.34, 0.86, 1.0, 0.92],
+    "defaultScale": 0.22,
+    "defaultLifetime": -1
+  },
+  {
+    "id": "champion_skill_sandbox.projectile.ezreal_r",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.72, 0.93, 1.0, 0.94],
+    "defaultScale": 0.34,
+    "defaultLifetime": -1
+  },
+  {
+    "id": "champion_skill_sandbox.projectile.jayce_q",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.44, 0.84, 1.0, 0.92],
+    "defaultScale": 0.24,
+    "defaultLifetime": -1
+  },
+  {
+    "id": "champion_skill_sandbox.cue.ezreal_arcane_shift",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.38, 0.9, 1.0, 0.82],
+    "defaultScale": 0.42,
+    "defaultLifetime": 0.26,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.7, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.ezreal_essence_flux_cast",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Circle",
+    "defaultColor": [0.95, 0.78, 0.34, 0.18],
+    "defaultScale": 1.5,
+    "defaultLifetime": 0.34,
+    "positionOffset": [0, 0.04, 0],
+    "bindings": [
+      { "paramKey": 8, "source": "constant", "constantValue": 0.95 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.78 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.34 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.95 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.03 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.ezreal_essence_flux_hit",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.95, 0.78, 0.34, 0.12],
+    "defaultScale": 1.24,
+    "defaultLifetime": 0.42,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.78 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.97 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.83 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.42 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.04 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.ezreal_mystic_shot_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.38, 0.82, 1.0, 0.86],
+    "defaultScale": 0.26,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.6, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.ezreal_mystic_shot_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.55, 0.9, 1.0, 0.9],
+    "defaultScale": 0.32,
+    "defaultLifetime": 0.22,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.8, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.ezreal_trueshot_barrage_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.7, 0.94, 1.0, 0.9],
+    "defaultScale": 0.5,
+    "defaultLifetime": 0.28,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.8, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.ezreal_trueshot_barrage_hit",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Circle",
+    "defaultColor": [0.74, 0.94, 1.0, 0.18],
+    "defaultScale": 1.8,
+    "defaultLifetime": 0.28,
+    "positionOffset": [0, 0.06, 0],
+    "bindings": [
+      { "paramKey": 8, "source": "constant", "constantValue": 0.74 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.94 },
+      { "paramKey": 10, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.96 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.04 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.garen_decisive_strike",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Circle",
+    "defaultColor": [0.95, 0.84, 0.48, 0.18],
+    "defaultScale": 1.18,
+    "defaultLifetime": 0.32,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.88 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.54 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.035 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.garen_courage",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.78, 0.9, 0.46, 0.14],
+    "defaultScale": 1.36,
+    "defaultLifetime": 0.46,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.88 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.85 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.95 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.58 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.045 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.garen_judgment",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.9, 0.64, 0.32, 0.12],
+    "defaultScale": 2.6,
+    "defaultLifetime": 0.5,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 1.76 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.96 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.71 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.41 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.05 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.garen_judgment_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.66, 0.42, 0.9],
+    "defaultScale": 0.28,
+    "defaultLifetime": 0.2,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.78, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.garen_demacian_justice_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.58, 0.42, 0.84],
+    "defaultScale": 0.44,
+    "defaultLifetime": 0.22,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.92, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.garen_demacian_justice_hit",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Circle",
+    "defaultColor": [1.0, 0.54, 0.36, 0.2],
+    "defaultScale": 1.45,
+    "defaultLifetime": 0.26,
+    "positionOffset": [0, 0.06, 0],
+    "bindings": [
+      { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.58 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.4 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.045 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_acceleration_gate",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [0.52, 0.9, 0.66, 0.12],
+    "defaultScale": 1.8,
+    "defaultLifetime": 0.38,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 1.1 },
+      { "paramKey": 8, "source": "constant", "constantValue": 0.57 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.92 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.71 },
+      { "paramKey": 11, "source": "constant", "constantValue": 0.98 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.04 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_hyper_charge",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.66, 0.96, 0.72, 0.86],
+    "defaultScale": 0.32,
+    "defaultLifetime": 0.22,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.7, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_shock_blast_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.44, 0.84, 1.0, 0.88],
+    "defaultScale": 0.28,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.62, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_shock_blast_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.64, 0.92, 1.0, 0.92],
+    "defaultScale": 0.34,
+    "defaultLifetime": 0.22,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.82, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_hammer_lightning_field",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Ring",
+    "defaultColor": [1.0, 0.83, 0.46, 0.12],
+    "defaultScale": 2.8,
+    "defaultLifetime": 0.44,
+    "positionOffset": [0, 0.05, 0],
+    "bindings": [
+      { "paramKey": 1, "source": "constant", "constantValue": 0.92 },
+      { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.84 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.49 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.05 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_hammer_lightning_field_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.84, 0.52, 0.88],
+    "defaultScale": 0.24,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.76, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_hammer_thundering_blow_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.66, 0.42, 0.86],
+    "defaultScale": 0.36,
+    "defaultLifetime": 0.18,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.72, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_hammer_thundering_blow_hit",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.72, 0.48, 0.9],
+    "defaultScale": 0.3,
+    "defaultLifetime": 0.2,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.84, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_cast",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.72, 0.34, 0.88],
+    "defaultScale": 0.38,
+    "defaultLifetime": 0.2,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.74, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_hit",
+    "visualKind": "GroundOverlay",
+    "meshOrShapeId": "Circle",
+    "defaultColor": [1.0, 0.72, 0.36, 0.18],
+    "defaultScale": 1.32,
+    "defaultLifetime": 0.26,
+    "positionOffset": [0, 0.06, 0],
+    "bindings": [
+      { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 9, "source": "constant", "constantValue": 0.75 },
+      { "paramKey": 10, "source": "constant", "constantValue": 0.42 },
+      { "paramKey": 11, "source": "constant", "constantValue": 1.0 },
+      { "paramKey": 12, "source": "constant", "constantValue": 0.04 }
+    ]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_transform_cannon",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.52, 0.7, 1.0, 0.86],
+    "defaultScale": 0.34,
+    "defaultLifetime": 0.22,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.72, 0]
+  },
+  {
+    "id": "champion_skill_sandbox.cue.jayce_transform_hammer",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [1.0, 0.74, 0.42, 0.86],
+    "defaultScale": 0.34,
+    "defaultLifetime": 0.22,
+    "alphaFadeOverLifetime": true,
+    "positionOffset": [0, 0.72, 0]
+  }
+]
