@@ -197,6 +197,21 @@ namespace Ludots.Core.Input.Orders
         /// </summary>
         AlwaysQueued = 3
     }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum GroupMoveFormationMode
+    {
+        None = 0,
+        Grid = 1
+    }
+
+    public sealed class GroupMoveFormationSettings
+    {
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public GroupMoveFormationMode Mode { get; set; } = GroupMoveFormationMode.None;
+
+        public int SpacingCm { get; set; } = 120;
+    }
     
     /// <summary>
     /// A single input-to-order mapping.
@@ -330,6 +345,11 @@ namespace Ludots.Core.Input.Orders
         /// List of mappings.
         /// </summary>
         public List<InputOrderMapping> Mappings { get; set; } = new();
+
+        /// <summary>
+        /// Global move formation behavior for multi-selected moveTo position commands.
+        /// </summary>
+        public GroupMoveFormationSettings GroupMoveFormation { get; set; } = new();
         
         /// <summary>
         /// User override settings.

@@ -26,6 +26,7 @@ namespace CoreInputMod.Systems
         private readonly Dictionary<string, object> _globals;
         private readonly OrderQueue _orders;
         private readonly InputInteractionContextAccessor _context;
+        private readonly CompositeOrderPlanner? _planner;
 
         public int CastAbilityOrderTypeId { get; }
         public int MoveToOrderTypeId { get; }
@@ -42,6 +43,14 @@ namespace CoreInputMod.Systems
                 CastAbilityOrderTypeId = config.Constants.OrderTypeIds["castAbility"];
                 MoveToOrderTypeId = config.Constants.OrderTypeIds["moveTo"];
                 StopOrderTypeId = config.Constants.OrderTypeIds["stop"];
+            }
+
+            if (globals.TryGetValue(CoreServiceKeys.AbilityDefinitionRegistry.Name, out var abilitiesObj) &&
+                abilitiesObj is AbilityDefinitionRegistry abilities &&
+                CastAbilityOrderTypeId > 0 &&
+                MoveToOrderTypeId > 0)
+            {
+                _planner = new CompositeOrderPlanner(world, orders, abilities, CastAbilityOrderTypeId, MoveToOrderTypeId);
             }
         }
 
@@ -95,7 +104,15 @@ namespace CoreInputMod.Systems
                 mapping.CancelActionId = bindings.CancelActionId;
                 mapping.CommandActionId = bindings.CommandActionId;
             }
-            mapping.SetOrderSubmitHandler((in Order order) => _orders.TryEnqueue(order));
+            mapping.SetOrderSubmitHandler((in Order order) =>
+            {
+                if (_planner != null && _planner.TrySubmit(in order))
+                {
+                    return;
+                }
+
+                _orders.TryEnqueue(order);
+            });
             if (TryCreateContextScoredResolver(out var contextResolver))
             {
                 mapping.SetContextScoredProvider(contextResolver.TryResolve);

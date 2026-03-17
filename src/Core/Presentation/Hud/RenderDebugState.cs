@@ -10,6 +10,9 @@ namespace Ludots.Core.Presentation.Hud
         public bool DrawPrimitives { get; set; } = true;
         public bool DrawDebugDraw { get; set; } = true;
         public bool DrawSkiaUi { get; set; } = true;
+        public bool DrawWorldHudBars { get; set; } = true;
+        public bool DrawWorldHudText { get; set; } = true;
+        public bool DrawCombatText { get; set; } = true;
         public float AcceptanceScaleMultiplier { get; set; } = 1f;
     }
 }

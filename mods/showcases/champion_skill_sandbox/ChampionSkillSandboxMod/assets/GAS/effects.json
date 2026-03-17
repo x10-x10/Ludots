@@ -275,5 +275,101 @@
     "modifiers": [
       { "attribute": "Health", "op": "Add", "value": -19.0 }
     ]
+  },
+  {
+    "id": "Effect.ChampionStress.Warrior.Cleave",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": { "kind": "BuiltinSpatial", "shape": "Circle", "radius": 180 },
+    "targetFilter": { "relationFilter": "Hostile", "excludeSource": true, "maxTargets": 4 },
+    "targetDispatch": { "payloadEffect": "Effect.ChampionStress.Warrior.CleaveHit" }
+  },
+  {
+    "id": "Effect.ChampionStress.Warrior.CleaveHit",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -8.0 }
+    ]
+  },
+  {
+    "id": "Effect.ChampionStress.FireMage.Fireball",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "LaunchProjectile",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "projectile": {
+      "speed": 1300,
+      "range": 1400,
+      "arcHeight": 0,
+      "impactEffect": "Effect.ChampionStress.FireMage.FireballResolve"
+    }
+  },
+  {
+    "id": "Effect.ChampionStress.FireMage.FireballResolve",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": { "kind": "BuiltinSpatial", "shape": "Circle", "radius": 180 },
+    "targetFilter": { "relationFilter": "Hostile", "excludeSource": true, "maxTargets": 16 },
+    "targetDispatch": { "payloadEffect": "Effect.ChampionStress.FireMage.FireballHit" }
+  },
+  {
+    "id": "Effect.ChampionStress.FireMage.FireballHit",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -12.0 }
+    ]
+  },
+  {
+    "id": "Effect.ChampionStress.LaserMage.Laser",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "LaunchProjectile",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "projectile": {
+      "speed": 2600,
+      "range": 1500,
+      "arcHeight": 0,
+      "impactEffect": "Effect.ChampionStress.LaserMage.LaserResolve"
+    }
+  },
+  {
+    "id": "Effect.ChampionStress.LaserMage.LaserResolve",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "Search",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "targetQuery": { "kind": "BuiltinSpatial", "shape": "Circle", "radius": 110 },
+    "targetFilter": { "relationFilter": "Hostile", "excludeSource": true, "maxTargets": 4 },
+    "targetDispatch": { "payloadEffect": "Effect.ChampionStress.LaserMage.LaserHit" }
+  },
+  {
+    "id": "Effect.ChampionStress.LaserMage.LaserHit",
+    "tags": ["Effect.ChampionStress.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -10.0 }
+    ]
+  },
+  {
+    "id": "Effect.ChampionStress.Priest.Heal",
+    "tags": ["Effect.ChampionStress.Heal"],
+    "presetType": "Heal",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": 9.0 }
+    ]
   }
 ]

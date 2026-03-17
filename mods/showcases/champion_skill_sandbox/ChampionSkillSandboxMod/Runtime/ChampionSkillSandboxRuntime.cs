@@ -119,6 +119,10 @@ namespace ChampionSkillSandboxMod.Runtime
             Entity fallback = ResolveChampionEntity(engine, ChampionSkillSandboxIds.EzrealAlphaName);
             if (fallback == Entity.Null)
             {
+                fallback = ResolveFirstControllableChampion(engine);
+            }
+            if (fallback == Entity.Null)
+            {
                 return false;
             }
 
@@ -306,7 +310,7 @@ namespace ChampionSkillSandboxMod.Runtime
 
             if (!_focusPanelHandle.IsValid)
             {
-                Entity initialTarget = visible ? target : ResolveChampionEntity(engine, ChampionSkillSandboxIds.EzrealAlphaName);
+                Entity initialTarget = visible ? target : ResolveFirstControllableChampion(engine);
                 _focusPanelHandle = service.Open(new EntityCommandPanelOpenRequest
                 {
                     TargetEntity = initialTarget,
@@ -483,12 +487,16 @@ namespace ChampionSkillSandboxMod.Runtime
 
         private static Entity ResolveHoverIndicatorTarget(GameEngine engine)
         {
-            if (engine.GetService(CoreServiceKeys.ActiveInputOrderMapping) is not InputOrderMappingSystem mapping ||
-                !mapping.IsAiming ||
-                !engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) ||
+            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) ||
                 hoveredObj is not Entity hovered ||
                 hovered == Entity.Null ||
                 !engine.World.IsAlive(hovered))
+            {
+                return Entity.Null;
+            }
+
+            Entity selected = engine.GetService(CoreServiceKeys.SelectedEntity);
+            if (selected == hovered)
             {
                 return Entity.Null;
             }

@@ -3,6 +3,7 @@ using ChampionSkillSandboxMod.Runtime;
 using ChampionSkillSandboxMod.Systems;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS.Orders;
+using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Gameplay.Teams;
 using Ludots.Core.Modding;
 using Ludots.Core.Scripting;
@@ -44,6 +45,10 @@ namespace ChampionSkillSandboxMod.Triggers
 
             engine.GlobalContext[InstalledKey] = true;
             TeamManager.SetRelationshipSymmetric(1, 2, TeamRelationship.Hostile);
+            var stressControl = new ChampionSkillStressControlState();
+            var stressTelemetry = new ChampionSkillStressTelemetry();
+            engine.GlobalContext[ChampionSkillStressControlState.GlobalKey] = stressControl;
+            engine.GlobalContext[ChampionSkillStressTelemetry.GlobalKey] = stressTelemetry;
 
             if (engine.GlobalContext.TryGetValue(CoreServiceKeys.OrderQueue.Name, out var ordersObj) &&
                 ordersObj is OrderQueue orders)
@@ -51,6 +56,16 @@ namespace ChampionSkillSandboxMod.Triggers
                 engine.RegisterSystem(
                     new ChampionSkillSandboxLocalOrderSourceSystem(engine.World, engine.GlobalContext, orders, _context),
                     SystemGroup.InputCollection);
+
+                if (engine.GetService(CoreServiceKeys.RuntimeEntitySpawnQueue) is RuntimeEntitySpawnQueue spawnQueue)
+                {
+                    engine.RegisterSystem(
+                        new ChampionSkillStressSpawnSystem(engine, spawnQueue, stressControl, stressTelemetry),
+                        SystemGroup.InputCollection);
+                    engine.RegisterSystem(
+                        new ChampionSkillStressCombatSystem(engine, orders, stressTelemetry),
+                        SystemGroup.InputCollection);
+                }
             }
 
             _toolbarProvider.Bind(engine);

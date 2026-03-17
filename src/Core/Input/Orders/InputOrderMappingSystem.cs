@@ -1021,8 +1021,26 @@ namespace Ludots.Core.Input.Orders
 
                 var cloned = order;
                 cloned.Actor = actor;
+                ApplyGroupMoveFormation(mapping, selectedActors.Count, i, ref cloned);
                 _orderSubmitHandler!(in cloned);
             }
+        }
+
+        private void ApplyGroupMoveFormation(InputOrderMapping mapping, int totalCount, int index, ref Order order)
+        {
+            if (totalCount <= 1 ||
+                mapping.IsSkillMapping ||
+                mapping.SelectionType != OrderSelectionType.Position ||
+                !string.Equals(mapping.OrderTypeKey, "moveTo", StringComparison.OrdinalIgnoreCase) ||
+                _config.GroupMoveFormation.Mode != GroupMoveFormationMode.Grid ||
+                order.Args.Spatial.Kind != OrderSpatialKind.WorldCm ||
+                order.Args.Spatial.Mode != OrderCollectionMode.Single)
+            {
+                return;
+            }
+
+            int spacingCm = Math.Max(1, _config.GroupMoveFormation.SpacingCm);
+            order.Args.Spatial.WorldCm = MoveFormationPlanner.ComputeOffsetTarget(order.Args.Spatial.WorldCm, index, totalCount, spacingCm);
         }
         
         private OrderSubmitMode DetermineSubmitMode(ModifierSubmitBehavior behavior)
