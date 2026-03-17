@@ -1,0 +1,6 @@
+{
+  "Navigation2D": {
+    "Enabled": true,
+    "MaxAgents": 128
+  }
+}

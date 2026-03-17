@@ -700,6 +700,8 @@ namespace Ludots.Core.Engine
                 SetService(CoreServiceKeys.Navigation2DRuntime, navigation2dRuntime);
 
                 const string nav2dSystemTypeName = "Ludots.Core.Physics2D.Systems.Navigation2DSimulationSystem2D";
+                const string integrationSystemTypeName = "Ludots.Core.Physics2D.Systems.IntegrationSystem2D";
+                const string worldSyncSystemTypeName = "Ludots.Core.Physics2D.Systems.Physics2DToWorldPositionSyncSystem";
                 const string physics2dAssemblyName = "Ludots.Physics2D";
                 var nav2dSystemType = Type.GetType($"{nav2dSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
                 if (nav2dSystemType == null)
@@ -714,10 +716,31 @@ namespace Ludots.Core.Engine
                 }
                 else
                 {
+                    var integrationSystemType = Type.GetType($"{integrationSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
+                    var worldSyncSystemType = Type.GetType($"{worldSyncSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
+                    if (integrationSystemType == null || worldSyncSystemType == null)
+                    {
+                        throw new InvalidOperationException("Navigation2D.Enabled=true requires IntegrationSystem2D and Physics2DToWorldPositionSyncSystem to be loadable.");
+                    }
+
+                    RegisterSystem(new Ludots.Core.Navigation2D.Systems.NavOrderAgentBootstrapSystem(World), SystemGroup.InputCollection);
+
                     var nav2dSystemObj = Activator.CreateInstance(nav2dSystemType, World, navigation2dRuntime, clock, navigation2dTickPolicy);
                     if (nav2dSystemObj is ISystem<float> nav2dSystem)
                     {
                         RegisterSystem(nav2dSystem, SystemGroup.InputCollection);
+                    }
+
+                    var integrationSystemObj = Activator.CreateInstance(integrationSystemType, World);
+                    if (integrationSystemObj is ISystem<float> integrationSystem)
+                    {
+                        RegisterSystem(integrationSystem, SystemGroup.InputCollection);
+                    }
+
+                    var worldSyncSystemObj = Activator.CreateInstance(worldSyncSystemType, World);
+                    if (worldSyncSystemObj is ISystem<float> worldSyncSystem)
+                    {
+                        RegisterSystem(worldSyncSystem, SystemGroup.PostMovement);
                     }
                 }
             }

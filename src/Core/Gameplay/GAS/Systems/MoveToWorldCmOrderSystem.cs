@@ -7,6 +7,8 @@ using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Mathematics.FixedPoint;
+using Ludots.Core.Navigation2D.Components;
+using Ludots.Core.Physics2D.Components;
 
 namespace Ludots.Core.Gameplay.GAS.Systems
 {
@@ -59,17 +61,25 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     ref var buffer = ref buffers[index];
                     if (!buffer.HasActive || buffer.ActiveOrder.Order.OrderTypeId != _moveToOrderTypeId)
                     {
+                        ClearNavGoal(entity);
                         continue;
                     }
 
                     if (!TryResolveTarget(in buffer.ActiveOrder.Order, out var target))
                     {
+                        ClearNavGoal(entity);
                         OrderSubmitter.NotifyOrderComplete(World, entity, _orderTypeRegistry);
                         continue;
                     }
 
                     float speedCmPerSec = ResolveMoveSpeed(entity);
                     if (speedCmPerSec <= 0f)
+                    {
+                        ClearNavGoal(entity);
+                        continue;
+                    }
+
+                    if (TryDriveNavigationGoal(entity, target, speedCmPerSec))
                     {
                         continue;
                     }
@@ -85,6 +95,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
                     if (arrived)
                     {
+                        ClearNavGoal(entity);
                         OrderSubmitter.NotifyOrderComplete(World, entity, _orderTypeRegistry);
                     }
                 }
@@ -93,7 +104,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
         private float ResolveMoveSpeed(Entity entity)
         {
-            if (_moveSpeedAttributeId > 0 &&
+            if (_moveSpeedAttributeId != AttributeRegistry.InvalidId &&
                 World.TryGet(entity, out AttributeBuffer attributes))
             {
                 float configured = attributes.GetCurrent(_moveSpeedAttributeId);
@@ -104,6 +115,53 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
 
             return _defaultSpeedCmPerSec;
+        }
+
+        private bool TryDriveNavigationGoal(Entity entity, Fix64Vec2 target, float speedCmPerSec)
+        {
+            if (!World.Has<NavAgent2D>(entity) ||
+                !World.Has<Position2D>(entity))
+            {
+                return false;
+            }
+
+            if (!World.Has<NavGoal2D>(entity))
+            {
+                World.Add(entity, new NavGoal2D());
+            }
+
+            ref var goal = ref World.Get<NavGoal2D>(entity);
+            goal.Kind = NavGoalKind2D.Point;
+            goal.TargetCm = target;
+            goal.RadiusCm = Fix64.FromFloat(_stopRadiusCm);
+
+            if (World.Has<NavKinematics2D>(entity))
+            {
+                ref var kinematics = ref World.Get<NavKinematics2D>(entity);
+                kinematics.MaxSpeedCmPerSec = Fix64.FromFloat(speedCmPerSec);
+            }
+
+            ref var position = ref World.Get<Position2D>(entity);
+            var delta = target - position.Value;
+            if (delta.LengthSquared() > goal.RadiusCm * goal.RadiusCm)
+            {
+                return true;
+            }
+
+            goal.Kind = NavGoalKind2D.None;
+            OrderSubmitter.NotifyOrderComplete(World, entity, _orderTypeRegistry);
+            return true;
+        }
+
+        private void ClearNavGoal(Entity entity)
+        {
+            if (!World.Has<NavGoal2D>(entity))
+            {
+                return;
+            }
+
+            ref var goal = ref World.Get<NavGoal2D>(entity);
+            goal.Kind = NavGoalKind2D.None;
         }
 
         private static bool TryResolveTarget(in Order order, out Fix64Vec2 target)
