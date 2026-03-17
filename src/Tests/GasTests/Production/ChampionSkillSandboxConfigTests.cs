@@ -16,9 +16,14 @@ using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
+using Ludots.Core.Navigation2D.Components;
+using Ludots.Core.Navigation2D.Systems;
 using Ludots.Core.Presentation.Performers;
+using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Projectiles;
 using Ludots.Core.Presentation.Rendering;
+using Ludots.Core.Physics2D;
+using Ludots.Core.Physics2D.Components;
 using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
 using Ludots.Platform.Abstractions;
@@ -33,16 +38,23 @@ namespace Ludots.Tests.GAS.Production
     public sealed class ChampionSkillSandboxConfigTests
     {
         private const float DeltaTime = 1f / 60f;
+        private const string StressMapId = "champion_skill_stress";
         private const string SandboxTacticalCameraId = "ChampionSkillSandbox.Camera.Tactical";
         private const string FreeCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Free";
         private const string FollowSelectionToolbarButtonId = "ChampionSkillSandbox.Camera.Selection";
         private const string FollowSelectionGroupToolbarButtonId = "ChampionSkillSandbox.Camera.SelectionGroup";
         private const string ResetCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Reset";
+        private const string StressTeamAIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamA.Increase";
+        private const string StressTeamBIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamB.Increase";
+        private const string StressHudBarToggleToolbarButtonId = "ChampionSkillSandbox.Stress.HudBar.Toggle";
+        private const string StressHudTextToggleToolbarButtonId = "ChampionSkillSandbox.Stress.HudText.Toggle";
+        private const string StressCombatTextToggleToolbarButtonId = "ChampionSkillSandbox.Stress.CombatText.Toggle";
         private static readonly string[] SandboxMods =
         {
             "LudotsCoreMod",
             "CoreInputMod",
             "CameraProfilesMod",
+            "DiagnosticsOverlayMod",
             "EntityCommandPanelMod",
             "ChampionSkillSandboxMod"
         };
@@ -97,6 +109,100 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(
                 AbilitySlotResolver.Resolve(in abilities, in formSlots, hasForm: true, in grantedSlots, hasGranted: false, slotIndex: 3).AbilityId,
                 Is.EqualTo(cannonR));
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_StressTemplates_AuthorCollisionAndNavRuntimeComponents()
+        {
+            using var engine = CreateEngine();
+
+            var templates = new Dictionary<string, EntityTemplate>(StringComparer.OrdinalIgnoreCase);
+            foreach (var template in engine.MapLoader.TemplateRegistry.GetAll())
+            {
+                templates[template.Id] = template;
+            }
+
+            var warrior = new EntityBuilder(engine.World, templates, engine.MapLoader.PresentationAuthoringContext)
+                .UseTemplate("champion_skill_stress_team_a_warrior")
+                .Build();
+
+            Assert.That(engine.World.Has<Collider2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<PhysicsMaterial2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<NavKinematics2D>(warrior), Is.True);
+
+            var collider = engine.World.Get<Collider2D>(warrior);
+            Assert.That(collider.Type, Is.EqualTo(ColliderType2D.Circle));
+            Assert.That(ShapeDataStorage2D.TryGetCircle(collider.ShapeDataIndex, out var circle), Is.True);
+            Assert.That(circle.Radius.ToFloat(), Is.EqualTo(46f).Within(0.01f));
+
+            var physicsMaterial = engine.World.Get<PhysicsMaterial2D>(warrior);
+            Assert.That(physicsMaterial.Friction.ToFloat(), Is.EqualTo(0.92f).Within(0.001f));
+            Assert.That(physicsMaterial.Restitution.ToFloat(), Is.EqualTo(0f).Within(0.001f));
+            Assert.That(physicsMaterial.BaseDamping.ToFloat(), Is.EqualTo(0.94f).Within(0.001f));
+
+            var navKinematics = engine.World.Get<NavKinematics2D>(warrior);
+            Assert.That(navKinematics.MaxAccelCmPerSec2.ToFloat(), Is.EqualTo(1800f).Within(0.01f));
+            Assert.That(navKinematics.RadiusCm.ToFloat(), Is.EqualTo(46f).Within(0.01f));
+            Assert.That(navKinematics.NeighborDistCm.ToFloat(), Is.EqualTo(320f).Within(0.01f));
+            Assert.That(navKinematics.TimeHorizonSec.ToFloat(), Is.EqualTo(2.4f).Within(0.01f));
+            Assert.That(navKinematics.MaxNeighbors, Is.EqualTo(20));
+
+            var bootstrap = new NavOrderAgentBootstrapSystem(engine.World);
+            bootstrap.Update(0f);
+
+            Assert.That(engine.World.Has<NavAgent2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<Position2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<PreviousWorldPositionCm>(warrior), Is.True);
+            Assert.That(engine.World.Has<PreviousPosition2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<Velocity2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<Mass2D>(warrior), Is.True);
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_StressMap_SpawnsCombatTeamsWithoutInitialOverlap()
+        {
+            using var engine = CreateEngine();
+            LoadMap(engine, StressMapId, frames: 8);
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 48 && counts.TeamB >= 48;
+            }, maxFrames: 240);
+
+            float teamAClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 1);
+            float teamBClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 2);
+
+            Assert.That(teamAClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team A should not spawn overlapped, observed clearance={teamAClearanceCm:0.##}cm.");
+            Assert.That(teamBClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team B should not spawn overlapped, observed clearance={teamBClearanceCm:0.##}cm.");
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_StressMap_SustainsPhysicsCollisionClearanceDuringCombat()
+        {
+            using var engine = CreateEngine();
+            LoadMap(engine, StressMapId, frames: 8);
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 48 && counts.TeamB >= 48;
+            }, maxFrames: 240);
+
+            StressPhysicsTelemetry telemetry = SampleStressPhysicsTelemetry(engine, frames: 240);
+
+            Assert.That(telemetry.PeakPhysicsStepsLastFixedTick, Is.GreaterThan(0), "Stress map should advance the Physics2D fixed-step runtime.");
+            Assert.That(telemetry.PeakContactPairs, Is.GreaterThan(0), "Stress map should produce active contact pairs once both combat teams engage.");
+            Assert.That(telemetry.PeakActiveCollisionPairs, Is.GreaterThan(0), "Stress map should keep collision-pair entities alive while formations clash.");
+            Assert.That(telemetry.PeakProjectiles, Is.GreaterThan(0), "Stress map should remain in live combat while collision sampling runs.");
+            Assert.That(
+                telemetry.WorstTeamAClearanceCm,
+                Is.GreaterThanOrEqualTo(-6f),
+                $"Team A should keep effective body separation during combat. Observed telemetry: {telemetry}");
+            Assert.That(
+                telemetry.WorstTeamBClearanceCm,
+                Is.GreaterThanOrEqualTo(-6f),
+                $"Team B should keep effective body separation during combat. Observed telemetry: {telemetry}");
         }
 
         [Test]
@@ -256,6 +362,7 @@ namespace Ludots.Tests.GAS.Production
             Tick(engine, 2);
             toolbar.CopyButtons(buttons);
             Assert.That(buttons[5].Active, Is.True);
+            engine.GameSession.Camera.Update(DeltaTime);
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm.HasValue, Is.True);
 
             Vector2 ezrealPos = engine.World.Get<WorldPositionCm>(ezreal).Value.ToVector2();
@@ -292,6 +399,89 @@ namespace Ludots.Tests.GAS.Production
         }
 
         [Test]
+        public void ChampionSkillSandbox_StressMap_LoadsToolbarControlsAndMaintainsCombatFormations()
+        {
+            using var engine = CreateEngine();
+            LoadMap(engine, StressMapId, frames: 8);
+
+            var toolbar = engine.GetService(CoreServiceKeys.EntityCommandPanelToolbarProvider)
+                ?? throw new InvalidOperationException("Toolbar provider missing.");
+            var overlays = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer)
+                ?? throw new InvalidOperationException("ScreenOverlayBuffer missing.");
+
+            Assert.That(toolbar.IsVisible, Is.True);
+            Assert.That(toolbar.Title, Is.EqualTo("Stress Harness"));
+            Assert.That(
+                OverlayContainsText(overlays, "Runtime HUD | FPS="),
+                Is.True,
+                "Stress showcase should reuse DiagnosticsOverlayMod runtime HUD for FPS/performance readout.");
+
+            var buttons = new EntityCommandPanelToolbarButtonView[16];
+            int buttonCount = toolbar.CopyButtons(buttons);
+            Assert.That(buttonCount, Is.EqualTo(14));
+            Assert.That(buttons[7].ButtonId, Is.EqualTo("ChampionSkillSandbox.Stress.TeamA.Decrease"));
+            Assert.That(buttons[8].ButtonId, Is.EqualTo(StressTeamAIncreaseToolbarButtonId));
+            Assert.That(buttons[9].ButtonId, Is.EqualTo("ChampionSkillSandbox.Stress.TeamB.Decrease"));
+            Assert.That(buttons[10].ButtonId, Is.EqualTo(StressTeamBIncreaseToolbarButtonId));
+            Assert.That(buttons[11].ButtonId, Is.EqualTo(StressHudBarToggleToolbarButtonId));
+            Assert.That(buttons[12].ButtonId, Is.EqualTo(StressHudTextToggleToolbarButtonId));
+            Assert.That(buttons[13].ButtonId, Is.EqualTo(StressCombatTextToggleToolbarButtonId));
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 48 &&
+                       counts.TeamB >= 48 &&
+                       counts.TeamAWarriors > 0 &&
+                       counts.TeamAFireMages > 0 &&
+                       counts.TeamALaserMages > 0 &&
+                       counts.TeamAPriests > 0 &&
+                       counts.TeamBWarriors > 0 &&
+                       counts.TeamBFireMages > 0 &&
+                       counts.TeamBLaserMages > 0 &&
+                       counts.TeamBPriests > 0;
+            }, maxFrames: 240);
+
+            StressCounts saturated = ReadStressCounts(engine.World);
+            Assert.That(saturated.TeamA, Is.GreaterThanOrEqualTo(48));
+            Assert.That(saturated.TeamB, Is.GreaterThanOrEqualTo(48));
+            Assert.That(toolbar.Subtitle, Does.Contain("Proj"));
+
+            int peakProjectiles = SamplePeakProjectiles(engine, frames: 180);
+            Assert.That(peakProjectiles, Is.GreaterThan(0), "Stress map should drive projectile combat once the formations saturate.");
+
+            toolbar.Activate(StressTeamAIncreaseToolbarButtonId);
+            toolbar.Activate(StressTeamBIncreaseToolbarButtonId);
+            Tick(engine, 1);
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 56 && counts.TeamB >= 56;
+            }, maxFrames: 240);
+
+            StressCounts scaled = ReadStressCounts(engine.World);
+            Assert.That(scaled.TeamA, Is.GreaterThanOrEqualTo(56));
+            Assert.That(scaled.TeamB, Is.GreaterThanOrEqualTo(56));
+
+            for (int i = 0; i < 27; i++)
+            {
+                toolbar.Activate(StressTeamAIncreaseToolbarButtonId);
+                toolbar.Activate(StressTeamBIncreaseToolbarButtonId);
+            }
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 272 && counts.TeamB >= 272;
+            }, maxFrames: 600);
+
+            StressCounts uncapped = ReadStressCounts(engine.World);
+            Assert.That(uncapped.TeamA, Is.GreaterThanOrEqualTo(272), "Stress controls should scale beyond the old 256-unit cap.");
+            Assert.That(uncapped.TeamB, Is.GreaterThanOrEqualTo(272), "Stress controls should scale beyond the old 256-unit cap.");
+        }
+
+        [Test]
         public void ChampionSkillSandbox_ProjectileBindingsAndSkillCueConfigs_AreRegistered()
         {
             using var engine = CreateEngine();
@@ -324,6 +514,20 @@ namespace Ludots.Tests.GAS.Production
                 projectileEffectKey: "Effect.Champion.Jayce.Cannon.ShockBlast",
                 resolveEffectKey: "Effect.Champion.Jayce.Cannon.ShockBlastResolve",
                 projectilePerformerKey: "champion_skill_sandbox.projectile.jayce_q");
+            AssertProjectileEffect(
+                effects,
+                projectileBindings,
+                performers,
+                projectileEffectKey: "Effect.ChampionStress.FireMage.Fireball",
+                resolveEffectKey: "Effect.ChampionStress.FireMage.FireballResolve",
+                projectilePerformerKey: "champion_skill_sandbox.projectile.stress_fireball");
+            AssertProjectileEffect(
+                effects,
+                projectileBindings,
+                performers,
+                projectileEffectKey: "Effect.ChampionStress.LaserMage.Laser",
+                resolveEffectKey: "Effect.ChampionStress.LaserMage.LaserResolve",
+                projectilePerformerKey: "champion_skill_sandbox.projectile.stress_laser");
 
             Assert.That(performers.GetId("champion_skill_sandbox.cue.ezreal_arcane_shift"), Is.GreaterThan(0));
             Assert.That(performers.GetId("champion_skill_sandbox.cue.ezreal_essence_flux_cast"), Is.GreaterThan(0));
@@ -332,6 +536,13 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(performers.GetId("champion_skill_sandbox.cue.garen_demacian_justice_hit"), Is.GreaterThan(0));
             Assert.That(performers.GetId("champion_skill_sandbox.cue.jayce_hammer_lightning_field"), Is.GreaterThan(0));
             Assert.That(performers.GetId("champion_skill_sandbox.cue.jayce_transform_hammer"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.stress_warrior_cleave"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.stress_fireball_cast"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.stress_fireball_hit"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.stress_laser_cast"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.stress_laser_hit"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.stress_priest_heal_cast"), Is.GreaterThan(0));
+            Assert.That(performers.GetId("champion_skill_sandbox.cue.stress_priest_heal_hit"), Is.GreaterThan(0));
         }
 
         private static GameEngine CreateEngine()
@@ -404,6 +615,21 @@ namespace Ludots.Tests.GAS.Production
             }
         }
 
+        private static void TickUntil(GameEngine engine, Func<bool> predicate, int maxFrames)
+        {
+            for (int i = 0; i < maxFrames; i++)
+            {
+                if (predicate())
+                {
+                    return;
+                }
+
+                Tick(engine, 1);
+            }
+
+            Assert.That(predicate(), Is.True, $"Predicate was not satisfied within {maxFrames} frames.");
+        }
+
         private static int CountOverlays(GroundOverlayBuffer overlays, GroundOverlayShape shape)
         {
             int count = 0;
@@ -416,6 +642,217 @@ namespace Ludots.Tests.GAS.Production
             }
 
             return count;
+        }
+
+        private static bool OverlayContainsText(ScreenOverlayBuffer overlay, string expected)
+        {
+            foreach (ref readonly var item in overlay.GetSpan())
+            {
+                if (item.Kind != ScreenOverlayItemKind.Text)
+                {
+                    continue;
+                }
+
+                string? text = overlay.GetString(item.StringId);
+                if (!string.IsNullOrEmpty(text) &&
+                    text.Contains(expected, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int SamplePeakProjectiles(GameEngine engine, int frames)
+        {
+            int peak = 0;
+            for (int i = 0; i < frames; i++)
+            {
+                Tick(engine, 1);
+                peak = Math.Max(peak, CountProjectiles(engine.World));
+            }
+
+            return peak;
+        }
+
+        private static int CountProjectiles(World world)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<ProjectileState>();
+            world.Query(in query, (Entity _, ref ProjectileState __) => count++);
+            return count;
+        }
+
+        private static StressPhysicsTelemetry SampleStressPhysicsTelemetry(GameEngine engine, int frames)
+        {
+            float worstTeamAClearanceCm = float.PositiveInfinity;
+            float worstTeamBClearanceCm = float.PositiveInfinity;
+            int peakProjectiles = 0;
+            int peakContactPairs = 0;
+            int peakActiveCollisionPairs = 0;
+            int peakPhysicsStepsLastFixedTick = 0;
+
+            for (int i = 0; i < frames; i++)
+            {
+                Tick(engine, 1);
+
+                Physics2DPerfStats stats = ReadPhysicsPerfStats(engine.World);
+                peakPhysicsStepsLastFixedTick = Math.Max(peakPhysicsStepsLastFixedTick, stats.PhysicsStepsLastFixedTick);
+                peakContactPairs = Math.Max(peakContactPairs, stats.ContactPairs);
+                peakActiveCollisionPairs = Math.Max(peakActiveCollisionPairs, CountActiveCollisionPairs(engine.World));
+                peakProjectiles = Math.Max(peakProjectiles, CountProjectiles(engine.World));
+                worstTeamAClearanceCm = Math.Min(worstTeamAClearanceCm, ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 1));
+                worstTeamBClearanceCm = Math.Min(worstTeamBClearanceCm, ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 2));
+            }
+
+            return new StressPhysicsTelemetry(
+                worstTeamAClearanceCm,
+                worstTeamBClearanceCm,
+                peakProjectiles,
+                peakContactPairs,
+                peakActiveCollisionPairs,
+                peakPhysicsStepsLastFixedTick);
+        }
+
+        private static Physics2DPerfStats ReadPhysicsPerfStats(World world)
+        {
+            var query = new QueryDescription().WithAll<Physics2DPerfStats>();
+            Physics2DPerfStats stats = default;
+            bool found = false;
+            world.Query(in query, (Entity _, ref Physics2DPerfStats value) =>
+            {
+                if (found)
+                {
+                    return;
+                }
+
+                stats = value;
+                found = true;
+            });
+
+            Assert.That(found, Is.True, "Physics2DPerfStats should be published while the stress map is running.");
+            return stats;
+        }
+
+        private static int CountActiveCollisionPairs(World world)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<CollisionPair, ActiveCollisionPairTag>();
+            world.Query(in query, (Entity _, ref CollisionPair __, ref ActiveCollisionPairTag ___) => count++);
+            return count;
+        }
+
+        private static StressCounts ReadStressCounts(World world)
+        {
+            int teamA = 0;
+            int teamB = 0;
+            int teamAWarriors = 0;
+            int teamAFireMages = 0;
+            int teamALaserMages = 0;
+            int teamAPriests = 0;
+            int teamBWarriors = 0;
+            int teamBFireMages = 0;
+            int teamBLaserMages = 0;
+            int teamBPriests = 0;
+
+            var query = new QueryDescription().WithAll<Name, Team, MapEntity, AbilityStateBuffer>();
+            world.Query(in query, (Entity _, ref Name name, ref Team team, ref MapEntity mapEntity, ref AbilityStateBuffer __) =>
+            {
+                if (!string.Equals(mapEntity.MapId.Value, StressMapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (team.Id == 1)
+                {
+                    teamA++;
+                    if (name.Value.Contains("FireMage", StringComparison.Ordinal))
+                    {
+                        teamAFireMages++;
+                    }
+                    else if (name.Value.Contains("LaserMage", StringComparison.Ordinal))
+                    {
+                        teamALaserMages++;
+                    }
+                    else if (name.Value.Contains("Priest", StringComparison.Ordinal))
+                    {
+                        teamAPriests++;
+                    }
+                    else
+                    {
+                        teamAWarriors++;
+                    }
+                }
+                else if (team.Id == 2)
+                {
+                    teamB++;
+                    if (name.Value.Contains("FireMage", StringComparison.Ordinal))
+                    {
+                        teamBFireMages++;
+                    }
+                    else if (name.Value.Contains("LaserMage", StringComparison.Ordinal))
+                    {
+                        teamBLaserMages++;
+                    }
+                    else if (name.Value.Contains("Priest", StringComparison.Ordinal))
+                    {
+                        teamBPriests++;
+                    }
+                    else
+                    {
+                        teamBWarriors++;
+                    }
+                }
+            });
+
+            return new StressCounts(
+                teamA,
+                teamB,
+                teamAWarriors,
+                teamAFireMages,
+                teamALaserMages,
+                teamAPriests,
+                teamBWarriors,
+                teamBFireMages,
+                teamBLaserMages,
+                teamBPriests);
+        }
+
+        private static float ComputeMinimumStressTeamClearance(World world, string mapId, int teamId)
+        {
+            var units = new List<StressBodySample>(128);
+            var query = new QueryDescription().WithAll<Team, MapEntity, AbilityStateBuffer, WorldPositionCm, Collider2D>();
+            world.Query(in query, (Entity _, ref Team team, ref MapEntity mapEntity, ref AbilityStateBuffer __, ref WorldPositionCm position, ref Collider2D collider) =>
+            {
+                if (team.Id != teamId ||
+                    !string.Equals(mapEntity.MapId.Value, mapId, StringComparison.OrdinalIgnoreCase) ||
+                    collider.Type != ColliderType2D.Circle ||
+                    !ShapeDataStorage2D.TryGetCircle(collider.ShapeDataIndex, out var circle))
+                {
+                    return;
+                }
+
+                units.Add(new StressBodySample(position.Value.ToVector2(), circle.Radius.ToFloat()));
+            });
+
+            float minimumClearanceCm = float.MaxValue;
+            for (int i = 0; i < units.Count; i++)
+            {
+                StressBodySample a = units[i];
+                for (int j = i + 1; j < units.Count; j++)
+                {
+                    StressBodySample b = units[j];
+                    float distanceCm = Vector2.Distance(a.PositionCm, b.PositionCm);
+                    float clearanceCm = distanceCm - (a.RadiusCm + b.RadiusCm);
+                    if (clearanceCm < minimumClearanceCm)
+                    {
+                        minimumClearanceCm = clearanceCm;
+                    }
+                }
+            }
+
+            return minimumClearanceCm == float.MaxValue ? float.PositiveInfinity : minimumClearanceCm;
         }
 
         private static void AssertProjectileEffect(
@@ -516,6 +953,28 @@ namespace Ludots.Tests.GAS.Production
 
             throw new DirectoryNotFoundException("Failed to locate repository root from test output directory.");
         }
+
+        private readonly record struct StressCounts(
+            int TeamA,
+            int TeamB,
+            int TeamAWarriors,
+            int TeamAFireMages,
+            int TeamALaserMages,
+            int TeamAPriests,
+            int TeamBWarriors,
+            int TeamBFireMages,
+            int TeamBLaserMages,
+            int TeamBPriests);
+
+        private readonly record struct StressPhysicsTelemetry(
+            float WorstTeamAClearanceCm,
+            float WorstTeamBClearanceCm,
+            int PeakProjectiles,
+            int PeakContactPairs,
+            int PeakActiveCollisionPairs,
+            int PeakPhysicsStepsLastFixedTick);
+
+        private readonly record struct StressBodySample(Vector2 PositionCm, float RadiusCm);
 
         private sealed class NullInputBackend : IInputBackend
         {

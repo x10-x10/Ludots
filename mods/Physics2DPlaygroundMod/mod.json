@@ -5,6 +5,7 @@
   "main": "bin/net8.0/Physics2DPlaygroundMod.dll",
   "priority": 0,
   "dependencies": {
-    "LudotsCoreMod": "^1.0.0"
+    "LudotsCoreMod": "^1.0.0",
+    "CoreInputMod": "^1.0.0"
   }
 }
