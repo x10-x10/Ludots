@@ -12,6 +12,7 @@ using Ludots.Core.Components;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Gameplay.Components;
+using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Registry;
@@ -42,10 +43,13 @@ namespace Ludots.Tests.GAS.Production
     {
         private const float DeltaTime = 1f / 60f;
         private const string MapId = "champion_skill_sandbox";
+        private const string StressMapId = "champion_skill_stress";
         private const string SmartCastModeId = "ChampionSkillSandbox.Mode.SmartCast";
         private const string IndicatorModeId = "ChampionSkillSandbox.Mode.Indicator";
         private const string PressReleaseModeId = "ChampionSkillSandbox.Mode.PressReleaseAim";
         private const string SandboxTacticalCameraId = "ChampionSkillSandbox.Camera.Tactical";
+        private const string StressTeamAIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamA.Increase";
+        private const string StressTeamBIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamB.Increase";
         private const string TestInputBackendKey = "Tests.ChampionSkillSandbox.InputBackend";
         private const string HeadlessCameraKey = "Tests.ChampionSkillSandbox.HeadlessCamera";
 
@@ -304,6 +308,98 @@ namespace Ludots.Tests.GAS.Production
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildTraceJsonl(snapshots));
             File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildBattleReport(timeline, snapshots, frameTimesMs));
             File.WriteAllText(Path.Combine(artifactDir, "path.mmd"), BuildPathMermaid());
+        }
+
+        [Test]
+        public void ChampionSkillStress_PlayableFlow_WritesAcceptanceArtifacts()
+        {
+            string repoRoot = FindRepoRoot();
+            string artifactDir = Path.Combine(repoRoot, "artifacts", "acceptance", "champion-skill-stress");
+            Directory.CreateDirectory(artifactDir);
+
+            var timeline = new List<string>();
+            var snapshots = new List<StressAcceptanceSnapshot>();
+            var frameTimesMs = new List<double>();
+
+            using var engine = CreateEngine();
+            var primitives = engine.GetService(CoreServiceKeys.PresentationPrimitiveDrawBuffer)
+                ?? throw new InvalidOperationException("PrimitiveDrawBuffer missing.");
+            var worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer)
+                ?? throw new InvalidOperationException("WorldHudBatchBuffer missing.");
+            var toolbar = engine.GetService(CoreServiceKeys.EntityCommandPanelToolbarProvider)
+                ?? throw new InvalidOperationException("Toolbar provider missing.");
+
+            LoadMap(engine, StressMapId, frameTimesMs);
+            Assert.That(engine.TriggerManager.Errors.Count, Is.EqualTo(0));
+            Assert.That(toolbar.IsVisible, Is.True);
+            Assert.That(toolbar.Title, Is.EqualTo("Stress Harness"));
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "map_loaded");
+            timeline.Add("[T+001] champion_skill_stress loaded | stress toolbar mounted for both team-size controls");
+
+            TickUntil(engine, frameTimesMs, () =>
+            {
+                StressCombatSnapshot snapshot = ReadStressCombatSnapshot(engine.World);
+                return snapshot.TeamA >= 48 &&
+                       snapshot.TeamB >= 48 &&
+                       snapshot.TeamAWarriors > 0 &&
+                       snapshot.TeamAFireMages > 0 &&
+                       snapshot.TeamALaserMages > 0 &&
+                       snapshot.TeamAPriests > 0 &&
+                       snapshot.TeamBWarriors > 0 &&
+                       snapshot.TeamBFireMages > 0 &&
+                       snapshot.TeamBLaserMages > 0 &&
+                       snapshot.TeamBPriests > 0;
+            }, maxFrames: 360);
+
+            StressCombatSnapshot saturated = ReadStressCombatSnapshot(engine.World);
+            Assert.That(saturated.TeamA, Is.GreaterThanOrEqualTo(48));
+            Assert.That(saturated.TeamB, Is.GreaterThanOrEqualTo(48));
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "formations_saturated");
+            timeline.Add($"[T+002] Formations saturated | A={saturated.TeamA} (W/F/L/P {saturated.TeamAWarriors}/{saturated.TeamAFireMages}/{saturated.TeamALaserMages}/{saturated.TeamAPriests}) | B={saturated.TeamB} (W/F/L/P {saturated.TeamBWarriors}/{saturated.TeamBFireMages}/{saturated.TeamBLaserMages}/{saturated.TeamBPriests})");
+
+            var healthHistory = ReadStressEntityHealthMap(engine.World);
+            bool sawHeal = false;
+            int peakProjectiles = 0;
+            int peakPrimitives = 0;
+            int peakWorldText = 0;
+            for (int i = 0; i < 240; i++)
+            {
+                Tick(engine, 1, frameTimesMs);
+
+                StressCombatSnapshot combat = ReadStressCombatSnapshot(engine.World);
+                peakProjectiles = Math.Max(peakProjectiles, combat.Projectiles);
+                peakPrimitives = Math.Max(peakPrimitives, CountPrimitiveMarkers(primitives));
+                peakWorldText = Math.Max(peakWorldText, CountWorldHudItems(worldHud, WorldHudItemKind.Text));
+                sawHeal |= DetectStressHeal(engine.World, healthHistory);
+            }
+
+            StressCombatSnapshot active = ReadStressCombatSnapshot(engine.World);
+            Assert.That(peakProjectiles, Is.GreaterThan(0), "Stress exchange should create live projectile traffic.");
+            Assert.That(peakPrimitives, Is.GreaterThan(0), "Stress exchange should emit performer feedback.");
+            Assert.That(peakWorldText, Is.GreaterThan(0), "Stress exchange should emit readable combat text.");
+            Assert.That(active.TeamAInjured + active.TeamBInjured, Is.GreaterThan(0), "Frontline trading should injure live units.");
+            Assert.That(sawHeal, Is.True, "Priests should heal damaged allies during the sustained exchange.");
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "combat_active");
+            timeline.Add($"[T+003] Frontline melee plus fireball/laser volleys engaged | peak_projectiles={peakProjectiles} | peak_primitives={peakPrimitives} | peak_world_text={peakWorldText} | heal_observed={sawHeal}");
+
+            toolbar.Activate(StressTeamAIncreaseToolbarButtonId);
+            toolbar.Activate(StressTeamBIncreaseToolbarButtonId);
+            Tick(engine, 1, frameTimesMs);
+            TickUntil(engine, frameTimesMs, () =>
+            {
+                StressCombatSnapshot snapshot = ReadStressCombatSnapshot(engine.World);
+                return snapshot.TeamA >= 56 && snapshot.TeamB >= 56;
+            }, maxFrames: 360);
+
+            StressCombatSnapshot scaled = ReadStressCombatSnapshot(engine.World);
+            Assert.That(scaled.TeamA, Is.GreaterThanOrEqualTo(56));
+            Assert.That(scaled.TeamB, Is.GreaterThanOrEqualTo(56));
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "scaled_up");
+            timeline.Add($"[T+004] Toolbar scale-up converged | A={scaled.TeamA} | B={scaled.TeamB} | injured A/B={scaled.TeamAInjured}/{scaled.TeamBInjured}");
+
+            File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildStressTraceJsonl(snapshots));
+            File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildStressBattleReport(timeline, snapshots, frameTimesMs, peakProjectiles, peakPrimitives, peakWorldText, sawHeal));
+            File.WriteAllText(Path.Combine(artifactDir, "path.mmd"), BuildStressPathMermaid());
         }
 
         private static GameEngine CreateEngine()
@@ -662,6 +758,129 @@ namespace Ludots.Tests.GAS.Production
             });
         }
 
+        private static void CaptureStressSnapshot(
+            GameEngine engine,
+            PrimitiveDrawBuffer primitives,
+            WorldHudBatchBuffer worldHud,
+            IEntityCommandPanelToolbarProvider toolbar,
+            List<StressAcceptanceSnapshot> snapshots,
+            string step)
+        {
+            snapshots.Add(new StressAcceptanceSnapshot(
+                Step: step,
+                ActiveModeId: GetActiveModeId(engine),
+                ToolbarSubtitle: toolbar.Subtitle,
+                Metrics: ReadStressCombatSnapshot(engine.World),
+                PrimitiveCount: CountPrimitiveMarkers(primitives),
+                WorldTextCount: CountWorldHudItems(worldHud, WorldHudItemKind.Text)));
+        }
+
+        private static string BuildStressTraceJsonl(IReadOnlyList<StressAcceptanceSnapshot> snapshots)
+        {
+            var lines = new List<string>(snapshots.Count);
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                StressAcceptanceSnapshot snapshot = snapshots[i];
+                lines.Add(JsonSerializer.Serialize(new
+                {
+                    event_id = $"champion-stress-{i + 1:000}",
+                    step = snapshot.Step,
+                    active_mode_id = snapshot.ActiveModeId,
+                    toolbar_subtitle = snapshot.ToolbarSubtitle,
+                    team_a = snapshot.Metrics.TeamA,
+                    team_b = snapshot.Metrics.TeamB,
+                    team_a_roles = new
+                    {
+                        warriors = snapshot.Metrics.TeamAWarriors,
+                        fire_mages = snapshot.Metrics.TeamAFireMages,
+                        laser_mages = snapshot.Metrics.TeamALaserMages,
+                        priests = snapshot.Metrics.TeamAPriests
+                    },
+                    team_b_roles = new
+                    {
+                        warriors = snapshot.Metrics.TeamBWarriors,
+                        fire_mages = snapshot.Metrics.TeamBFireMages,
+                        laser_mages = snapshot.Metrics.TeamBLaserMages,
+                        priests = snapshot.Metrics.TeamBPriests
+                    },
+                    injured = new
+                    {
+                        team_a = snapshot.Metrics.TeamAInjured,
+                        team_b = snapshot.Metrics.TeamBInjured
+                    },
+                    projectiles = snapshot.Metrics.Projectiles,
+                    primitive_count = snapshot.PrimitiveCount,
+                    world_text_count = snapshot.WorldTextCount
+                }));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        private static string BuildStressBattleReport(
+            IReadOnlyList<string> timeline,
+            IReadOnlyList<StressAcceptanceSnapshot> snapshots,
+            IReadOnlyList<double> frameTimesMs,
+            int peakProjectiles,
+            int peakPrimitives,
+            int peakWorldText,
+            bool sawHeal)
+        {
+            double medianTickMs = Median(frameTimesMs);
+            double maxTickMs = frameTimesMs.Count == 0 ? 0d : frameTimesMs.Max();
+            StressAcceptanceSnapshot finalSnapshot = snapshots[^1];
+
+            var sb = new StringBuilder();
+            sb.AppendLine("# Scenario: champion-skill-stress");
+            sb.AppendLine();
+            sb.AppendLine("## Header");
+            sb.AppendLine("- build: GasTests / ChampionSkillStress_PlayableFlow_WritesAcceptanceArtifacts");
+            sb.AppendLine("- map: champion_skill_stress");
+            sb.AppendLine("- clock: FixedFrame @ 60 Hz");
+            sb.AppendLine($"- execution_timestamp_utc: {DateTime.UtcNow:O}");
+            sb.AppendLine();
+            sb.AppendLine("## Timeline");
+            foreach (string entry in timeline)
+            {
+                sb.AppendLine(entry);
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("## Outcome");
+            sb.AppendLine("- result: success");
+            sb.AppendLine("- failure_branch: toolbar scale-up must converge; otherwise stress spawn or order routing regressed");
+            sb.AppendLine($"- final_toolbar: {finalSnapshot.ToolbarSubtitle}");
+            sb.AppendLine($"- final_team_counts: A={finalSnapshot.Metrics.TeamA}, B={finalSnapshot.Metrics.TeamB}");
+            sb.AppendLine($"- final_injured_counts: A={finalSnapshot.Metrics.TeamAInjured}, B={finalSnapshot.Metrics.TeamBInjured}");
+            sb.AppendLine($"- final_projectiles: {finalSnapshot.Metrics.Projectiles}");
+            sb.AppendLine();
+            sb.AppendLine("## Summary Stats");
+            sb.AppendLine("- total_actions: 4");
+            sb.AppendLine("- formation_saturations: 1");
+            sb.AppendLine("- sustained_combat_windows: 1");
+            sb.AppendLine("- toolbar_scale_ups: 1");
+            sb.AppendLine($"- peak_projectiles: {peakProjectiles}");
+            sb.AppendLine($"- peak_primitives: {peakPrimitives}");
+            sb.AppendLine($"- peak_world_text: {peakWorldText}");
+            sb.AppendLine($"- heal_observed: {sawHeal}");
+            sb.AppendLine($"- median_tick_ms: {medianTickMs:0.###}");
+            sb.AppendLine($"- max_tick_ms: {maxTickMs:0.###}");
+            return sb.ToString();
+        }
+
+        private static string BuildStressPathMermaid()
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                "flowchart TD",
+                "    A[\"MapLoaded: stress battlefield boot -> toolbar mounted\"] --> B[\"Spawn: both teams converge to 48 units with W/F/L/P roles\"]",
+                "    B --> C[\"Combat: warriors melee while fireball and laser projectiles peak above zero\"]",
+                "    C --> D[\"Support: priests heal damaged allies -> health rises on tracked entities\"]",
+                "    D --> E[\"Toolbar: A+ and B+ -> both teams scale to 56 units\"]",
+                "    B --> F[\"if counts do not converge -> fail stress spawn / queue regression\"]"
+            });
+        }
+
         private static bool IsCameraNear(CameraState state, Vector2 targetCm, float distanceCm, float pitch, float fovYDeg)
         {
             return MathF.Abs(state.TargetCm.X - targetCm.X) <= 0.01f &&
@@ -715,6 +934,14 @@ namespace Ludots.Tests.GAS.Production
                 }
             }
 
+            return count;
+        }
+
+        private static int CountProjectiles(World world)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<ProjectileState>();
+            world.Query(in query, (Entity _, ref ProjectileState __) => count++);
             return count;
         }
 
@@ -931,6 +1158,145 @@ namespace Ludots.Tests.GAS.Production
             return attributes.GetCurrent(healthId);
         }
 
+        private static StressCombatSnapshot ReadStressCombatSnapshot(World world)
+        {
+            int healthId = AttributeRegistry.GetId("Health");
+            int teamA = 0;
+            int teamB = 0;
+            int teamAWarriors = 0;
+            int teamAFireMages = 0;
+            int teamALaserMages = 0;
+            int teamAPriests = 0;
+            int teamBWarriors = 0;
+            int teamBFireMages = 0;
+            int teamBLaserMages = 0;
+            int teamBPriests = 0;
+            int teamAInjured = 0;
+            int teamBInjured = 0;
+
+            var query = new QueryDescription().WithAll<Name, Team, MapEntity, AttributeBuffer>();
+            world.Query(in query, (Entity _, ref Name name, ref Team team, ref MapEntity mapEntity, ref AttributeBuffer attributes) =>
+            {
+                if (!string.Equals(mapEntity.MapId.Value, StressMapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                float currentHealth = healthId >= 0 ? attributes.GetCurrent(healthId) : 0f;
+                float maxHealth = healthId >= 0 ? attributes.GetBase(healthId) : 0f;
+                bool injured = maxHealth > 0f && currentHealth < maxHealth - 0.01f;
+
+                if (team.Id == 1)
+                {
+                    teamA++;
+                    if (injured)
+                    {
+                        teamAInjured++;
+                    }
+
+                    if (name.Value.Contains("FireMage", StringComparison.Ordinal))
+                    {
+                        teamAFireMages++;
+                    }
+                    else if (name.Value.Contains("LaserMage", StringComparison.Ordinal))
+                    {
+                        teamALaserMages++;
+                    }
+                    else if (name.Value.Contains("Priest", StringComparison.Ordinal))
+                    {
+                        teamAPriests++;
+                    }
+                    else
+                    {
+                        teamAWarriors++;
+                    }
+                }
+                else if (team.Id == 2)
+                {
+                    teamB++;
+                    if (injured)
+                    {
+                        teamBInjured++;
+                    }
+
+                    if (name.Value.Contains("FireMage", StringComparison.Ordinal))
+                    {
+                        teamBFireMages++;
+                    }
+                    else if (name.Value.Contains("LaserMage", StringComparison.Ordinal))
+                    {
+                        teamBLaserMages++;
+                    }
+                    else if (name.Value.Contains("Priest", StringComparison.Ordinal))
+                    {
+                        teamBPriests++;
+                    }
+                    else
+                    {
+                        teamBWarriors++;
+                    }
+                }
+            });
+
+            return new StressCombatSnapshot(
+                TeamA: teamA,
+                TeamB: teamB,
+                TeamAWarriors: teamAWarriors,
+                TeamAFireMages: teamAFireMages,
+                TeamALaserMages: teamALaserMages,
+                TeamAPriests: teamAPriests,
+                TeamBWarriors: teamBWarriors,
+                TeamBFireMages: teamBFireMages,
+                TeamBLaserMages: teamBLaserMages,
+                TeamBPriests: teamBPriests,
+                TeamAInjured: teamAInjured,
+                TeamBInjured: teamBInjured,
+                Projectiles: CountProjectiles(world));
+        }
+
+        private static Dictionary<int, float> ReadStressEntityHealthMap(World world)
+        {
+            int healthId = AttributeRegistry.GetId("Health");
+            var values = new Dictionary<int, float>();
+            var query = new QueryDescription().WithAll<Team, MapEntity, AttributeBuffer>();
+            world.Query(in query, (Entity entity, ref Team _, ref MapEntity mapEntity, ref AttributeBuffer attributes) =>
+            {
+                if (!string.Equals(mapEntity.MapId.Value, StressMapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (healthId >= 0)
+                {
+                    values[entity.Id] = attributes.GetCurrent(healthId);
+                }
+            });
+
+            return values;
+        }
+
+        private static bool DetectStressHeal(World world, Dictionary<int, float> previousHealthByEntity)
+        {
+            bool sawHeal = false;
+            Dictionary<int, float> current = ReadStressEntityHealthMap(world);
+            foreach ((int entityId, float health) in current)
+            {
+                if (previousHealthByEntity.TryGetValue(entityId, out float previousHealth) &&
+                    health > previousHealth + 0.1f)
+                {
+                    sawHeal = true;
+                }
+            }
+
+            previousHealthByEntity.Clear();
+            foreach ((int entityId, float health) in current)
+            {
+                previousHealthByEntity[entityId] = health;
+            }
+
+            return sawHeal;
+        }
+
         private static string BuildAbilityDiagnostics(GameEngine engine, string actorName)
         {
             Entity actor = FindEntityByName(engine.World, actorName);
@@ -1106,6 +1472,29 @@ namespace Ludots.Tests.GAS.Production
         private sealed record EntityState(
             string Name,
             float Health);
+
+        private sealed record StressAcceptanceSnapshot(
+            string Step,
+            string ActiveModeId,
+            string ToolbarSubtitle,
+            StressCombatSnapshot Metrics,
+            int PrimitiveCount,
+            int WorldTextCount);
+
+        private sealed record StressCombatSnapshot(
+            int TeamA,
+            int TeamB,
+            int TeamAWarriors,
+            int TeamAFireMages,
+            int TeamALaserMages,
+            int TeamAPriests,
+            int TeamBWarriors,
+            int TeamBFireMages,
+            int TeamBLaserMages,
+            int TeamBPriests,
+            int TeamAInjured,
+            int TeamBInjured,
+            int Projectiles);
 
         private sealed class TestInputBackend : IInputBackend
         {
