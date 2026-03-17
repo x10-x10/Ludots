@@ -483,5 +483,99 @@
         "PressReleaseAimCast": "Release key, then confirm transform"
       }
     }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.SpellBeacon",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 48, "tag": "Cooldown.Champion.SpellEngineer.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.SpellBeacon" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 760, "radius": 110, "showRangeCircle": true, "validColor": "#73E1FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.Q"] },
+    "presentation": {
+      "displayName": "Spell Beacon",
+      "iconGlyph": "Q",
+      "accentColor": "#73E1FF",
+      "hintText": "Deploy a forward scout beacon",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview beacon landing",
+        "PressReleaseAimCast": "Release key, then confirm beacon"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.GravityWell",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 60, "tag": "Cooldown.Champion.SpellEngineer.W" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.GravityWell" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 760, "radius": 240, "showRangeCircle": true, "validColor": "#78AFFF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.W"] },
+    "presentation": {
+      "displayName": "Gravity Well",
+      "iconGlyph": "W",
+      "accentColor": "#78AFFF",
+      "hintText": "Place a damaging control zone",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview well radius",
+        "PressReleaseAimCast": "Release key, then confirm well"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.CataclysmRing",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 90, "tag": "Cooldown.Champion.SpellEngineer.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.CataclysmRing" },
+        { "kind": "EventGate", "tick": 0, "payloadA": 180 },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 700, "radius": 300, "showRangeCircle": true, "validColor": "#FF9D6F77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.E"] },
+    "presentation": {
+      "displayName": "Cataclysm Ring",
+      "iconGlyph": "E",
+      "accentColor": "#FF9D6F",
+      "hintText": "Raise a temporary arena wall",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview arena center",
+        "PressReleaseAimCast": "Release key, then confirm arena"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.GuidedLaser",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 132, "tag": "Cooldown.Champion.SpellEngineer.R" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.GuidedLaser" },
+        { "kind": "EventGate", "tick": 0, "payloadA": 210 },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 1050, "radius": 75, "showRangeCircle": true, "validColor": "#B07CFF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.R"] },
+    "presentation": {
+      "displayName": "Guided Laser",
+      "iconGlyph": "R",
+      "accentColor": "#B07CFF",
+      "hintText": "Channel a steerable beam, stop with S",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview laser lane",
+        "PressReleaseAimCast": "Release key, then confirm channel"
+      }
+    }
   }
 ]

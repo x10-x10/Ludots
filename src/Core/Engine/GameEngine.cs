@@ -19,6 +19,7 @@ using Ludots.Core.Gameplay.GAS.Systems;
 using Ludots.Core.Gameplay.GAS.Bindings;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Gameplay.Spawning;
+using Ludots.Core.Gameplay.Spawning.Systems;
 using Schedulers; // Added for JobScheduler
 using Ludots.Core.Systems;
 using Ludots.Core.Engine.Pacemaker;
@@ -736,6 +737,8 @@ namespace Ludots.Core.Engine
                 ChainNegate = cfgChainNegate,
                 ChainActivateEffect = cfgChainActivateEffect
             };
+            RegisterSystem(new DestroyWhenParentExecutionEndsSystem(World), SystemGroup.EffectProcessing);
+            RegisterSystem(new ManifestationMotion2DSystem(World), SystemGroup.EffectProcessing);
             RegisterSystem(new EffectProcessingLoopSystem(World, effectRequestQueue, clock, gasConditions, gasBudget, effectTemplateRegistry, inputRequestQueue, chainOrderQueue, responseChainTelemetry, orderRequestQueue, responseChainOrderTypes, gasPresentationEvents, SpatialQueries, runtimeEntitySpawnQueue, phaseExecutor: phaseExecutor, graphApi: gasGraphApi, tagOps: tagOps), SystemGroup.EffectProcessing);
             RegisterSystem(new ProjectileRuntimeSystem(World, clock, effectRequestQueue), SystemGroup.EffectProcessing);
             RegisterSystem(new RuntimeEntitySpawnSystem(World, runtimeEntitySpawnQueue, MapLoader.TemplateRegistry, presentationAuthoring, effectRequestQueue), SystemGroup.EffectProcessing);

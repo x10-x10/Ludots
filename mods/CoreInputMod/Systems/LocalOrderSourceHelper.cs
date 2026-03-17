@@ -26,6 +26,7 @@ namespace CoreInputMod.Systems
         private readonly Dictionary<string, object> _globals;
         private readonly OrderQueue _orders;
         private readonly InputInteractionContextAccessor _context;
+        private readonly IReadOnlyDictionary<string, int> _orderTypeIds;
 
         public int CastAbilityOrderTypeId { get; }
         public int MoveToOrderTypeId { get; }
@@ -39,9 +40,14 @@ namespace CoreInputMod.Systems
             _context = new InputInteractionContextAccessor(world, globals);
             if (globals.TryGetValue(CoreServiceKeys.GameConfig.Name, out var configObj) && configObj is GameConfig config)
             {
+                _orderTypeIds = config.Constants.OrderTypeIds;
                 CastAbilityOrderTypeId = config.Constants.OrderTypeIds["castAbility"];
                 MoveToOrderTypeId = config.Constants.OrderTypeIds["moveTo"];
                 StopOrderTypeId = config.Constants.OrderTypeIds["stop"];
+            }
+            else
+            {
+                _orderTypeIds = new Dictionary<string, int>();
             }
         }
 
@@ -63,13 +69,7 @@ namespace CoreInputMod.Systems
             var config = InputOrderMappingLoader.LoadFromStream(stream);
             var mapping = new InputOrderMappingSystem(input, config);
 
-            mapping.SetOrderTypeKeyResolver(key => key switch
-            {
-                "castAbility" => CastAbilityOrderTypeId,
-                "moveTo" => MoveToOrderTypeId,
-                "stop" => StopOrderTypeId,
-                _ => 0
-            });
+            mapping.SetOrderTypeKeyResolver(key => _orderTypeIds.TryGetValue(key, out int orderTypeId) ? orderTypeId : 0);
             mapping.SetGroundPositionProvider((out Vector3 worldCm) =>
             {
                 worldCm = default;

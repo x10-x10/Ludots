@@ -194,6 +194,7 @@ namespace Ludots.Core.Presentation.Config
                 "attributebase" => ValueRef.FromAttributeBase(ResolveAttributeId(node)),
                 "graph" => ValueRef.FromGraph(node["sourceId"]?.GetValue<int>() ?? 0),
                 "entitycolor" => ValueRef.FromEntityColor(node["sourceId"]?.GetValue<int>() ?? 0),
+                "facingdegrees" => ValueRef.FromFacingDegrees(),
                 "texttoken" => ValueRef.FromConstant(ResolveTextTokenId(node)),
                 _ => ValueRef.FromConstant(node["constantValue"]?.GetValue<float>() ?? 0f),
             };

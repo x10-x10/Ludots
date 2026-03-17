@@ -370,6 +370,154 @@ namespace Ludots.Tests.GAS.Production
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "stone_pillar_selected");
             timeline.Add("[T+015] Geomancer Alpha.Cast(Stone Pillar) -> blocker manifestation spawned | selectable | bridged to nav/physics obstacle");
 
+            SelectNamedEntity(engine, backend, "Spell Engineer Alpha", frameTimesMs);
+            toolbar.Activate(SmartCastModeId);
+            Tick(engine, 1, frameTimesMs);
+            var spellEngineerSlots = CopySelectedSlots(engine);
+            Assert.That(spellEngineerSlots[0].Label, Is.EqualTo("Spell Beacon"));
+            Assert.That(spellEngineerSlots[1].Label, Is.EqualTo("Gravity Well"));
+            Assert.That(spellEngineerSlots[2].Label, Is.EqualTo("Cataclysm Ring"));
+            Assert.That(spellEngineerSlots[3].Label, Is.EqualTo("Guided Laser"));
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "select_spell_engineer");
+            timeline.Add("[T+016] Select(Spell Engineer Alpha) -> panel exposes beacon / well / arena / guided laser showcase");
+
+            Vector2 spellBeaconWorld = new Vector2(2320f, 1600f);
+            SetMouseWorld(engine, backend, GetGroundScreenFromWorld(engine, spellBeaconWorld), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/q", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => EntityExists(engine.World, "Spell Beacon"),
+                maxFrames: 12);
+            AssertManifestationOwnership(engine.World, "Spell Beacon", "Spell Engineer Alpha");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "spell_beacon_spawned");
+            timeline.Add("[T+017] Spell Engineer Alpha.Cast(Spell Beacon) -> summon manifestation spawned with shared owner/team/map/parent contract");
+
+            SelectNamedEntity(engine, backend, "Spell Engineer Alpha", frameTimesMs);
+            float dummyHealthBeforeGravityWell = ReadHealth(engine.World, "Target Dummy D");
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy D"), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/w", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => EntityExists(engine.World, "Gravity Well"),
+                maxFrames: 12);
+            AssertManifestationOwnership(engine.World, "Gravity Well", "Spell Engineer Alpha");
+            bool gravityWellHitConfirmed = false;
+            for (int i = 0; i < 96; i++)
+            {
+                if (ReadHealth(engine.World, "Target Dummy D") < dummyHealthBeforeGravityWell)
+                {
+                    gravityWellHitConfirmed = true;
+                    break;
+                }
+
+                Tick(engine, 1, frameTimesMs);
+            }
+
+            float dummyHealthAfterGravityWell = ReadHealth(engine.World, "Target Dummy D");
+            Assert.That(
+                gravityWellHitConfirmed,
+                Is.True,
+                $"{BuildAbilityDiagnostics(engine, "Spell Engineer Alpha")} || {BuildSelectionStateDiagnostics(engine)}");
+            Assert.That(
+                dummyHealthAfterGravityWell,
+                Is.LessThan(dummyHealthBeforeGravityWell),
+                "Gravity Well should keep resolving periodic hostile hits.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "gravity_well_tick");
+            timeline.Add($"[T+018] Spell Engineer Alpha.Cast(Gravity Well) -> Target Dummy D zone tick confirmed | HP {dummyHealthBeforeGravityWell:0} -> {dummyHealthAfterGravityWell:0}");
+
+            SelectNamedEntity(engine, backend, "Spell Engineer Alpha", frameTimesMs);
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy D"), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/e", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => CountEntitiesByName(engine.World, "Barrier Segment") == 10,
+                maxFrames: 12);
+            IReadOnlyList<Entity> barrierSegments = FindEntitiesByName(engine.World, "Barrier Segment");
+            Assert.That(barrierSegments.Count, Is.EqualTo(10), "Cataclysm Ring should materialize the configured wall segment count.");
+            for (int i = 0; i < barrierSegments.Count; i++)
+            {
+                AssertManifestationOwnership(engine.World, barrierSegments[i], "Spell Engineer Alpha");
+                AssertBarrierSegmentManifestationBridge(engine.World, barrierSegments[i], $"Barrier Segment[{i}]");
+            }
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "cataclysm_ring_spawned");
+            timeline.Add("[T+019] Spell Engineer Alpha.Cast(Cataclysm Ring) -> 10 blocker segments spawned and sunk into box physics/nav obstacles");
+            PressButton(engine, backend, "<Keyboard>/s", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => CountEntitiesByName(engine.World, "Barrier Segment") == 0,
+                maxFrames: 8);
+
+            SelectNamedEntity(engine, backend, "Spell Engineer Alpha", frameTimesMs);
+            float dummyHealthBeforeLaserD = ReadHealth(engine.World, "Target Dummy D");
+            float dummyHealthBeforeLaserE = ReadHealth(engine.World, "Target Dummy E");
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy D"), frameTimesMs);
+            PressButton(engine, backend, "<Keyboard>/r", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => EntityExists(engine.World, "Guided Laser"),
+                maxFrames: 12);
+            AssertManifestationOwnership(engine.World, "Guided Laser", "Spell Engineer Alpha");
+            float guidedLaserFacingBefore = ReadFacingRadians(engine.World, "Guided Laser");
+            bool laserHitDummyD = false;
+            for (int i = 0; i < 24; i++)
+            {
+                if (ReadHealth(engine.World, "Target Dummy D") < dummyHealthBeforeLaserD)
+                {
+                    laserHitDummyD = true;
+                    break;
+                }
+
+                Tick(engine, 1, frameTimesMs);
+            }
+
+            Assert.That(
+                laserHitDummyD,
+                Is.True,
+                $"{BuildAbilityDiagnostics(engine, "Spell Engineer Alpha")} || {BuildSelectionStateDiagnostics(engine)}");
+
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy E"), frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => MathF.Abs(NormalizeRadians(ReadFacingRadians(engine.World, "Guided Laser") - guidedLaserFacingBefore)) > 0.2f,
+                maxFrames: 12);
+            float guidedLaserFacingAfter = ReadFacingRadians(engine.World, "Guided Laser");
+            Assert.That(
+                MathF.Abs(NormalizeRadians(guidedLaserFacingAfter - guidedLaserFacingBefore)),
+                Is.GreaterThan(0.2f),
+                "Guided Laser should keep following updated input aim while the parent execution stays active.");
+
+            bool laserHitDummyE = false;
+            for (int i = 0; i < 24; i++)
+            {
+                if (ReadHealth(engine.World, "Target Dummy E") < dummyHealthBeforeLaserE)
+                {
+                    laserHitDummyE = true;
+                    break;
+                }
+
+                Tick(engine, 1, frameTimesMs);
+            }
+
+            Assert.That(
+                laserHitDummyE,
+                Is.True,
+                $"{BuildAbilityDiagnostics(engine, "Spell Engineer Alpha")} || {BuildSelectionStateDiagnostics(engine)}");
+            PressButton(engine, backend, "<Keyboard>/s", frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => !EntityExists(engine.World, "Guided Laser"),
+                maxFrames: 8);
+            Assert.That(EntityExists(engine.World, "Guided Laser"), Is.False, "Stop order should cancel the active exec and clean up the guided laser manifestation.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "guided_laser_stopped");
+            timeline.Add($"[T+020] Spell Engineer Alpha.Cast(Guided Laser) -> Dummy D hit, retarget to Dummy E rotates beam, Stop(S) removes channel | HP D {dummyHealthBeforeLaserD:0}->{ReadHealth(engine.World, "Target Dummy D"):0} | HP E {dummyHealthBeforeLaserE:0}->{ReadHealth(engine.World, "Target Dummy E"):0}");
+
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildTraceJsonl(snapshots));
             File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildBattleReport(timeline, snapshots, frameTimesMs));
             File.WriteAllText(Path.Combine(artifactDir, "path.mmd"), BuildPathMermaid());
@@ -592,8 +740,12 @@ namespace Ludots.Tests.GAS.Production
                 "Garen Courage",
                 "Jayce Hammer",
                 "Geomancer Alpha",
+                "Spell Engineer Alpha",
                 "Target Dummy A",
-                "Target Dummy C"
+                "Target Dummy C",
+                "Target Dummy D",
+                "Target Dummy E",
+                "Target Dummy F"
             };
 
             var states = new List<EntityState>(trackedEntities.Length + 3);
@@ -605,6 +757,10 @@ namespace Ludots.Tests.GAS.Production
             AddEntityStateIfPresent(engine.World, states, "Runic Beacon");
             AddEntityStateIfPresent(engine.World, states, "Rune Field");
             AddEntityStateIfPresent(engine.World, states, "Stone Pillar");
+            AddEntityStateIfPresent(engine.World, states, "Spell Beacon");
+            AddEntityStateIfPresent(engine.World, states, "Gravity Well");
+            AddEntityStateIfPresent(engine.World, states, "Guided Laser");
+            AddEntityStateIfPresent(engine.World, states, "Barrier Segment");
 
             snapshots.Add(new AcceptanceSnapshot(
                 Step: step,
@@ -738,7 +894,12 @@ namespace Ludots.Tests.GAS.Production
                 "    M --> N[\"Beam: Prismatic Beam -> Target Dummy C hit\"]",
                 "    N --> O[\"Summon: Runic Beacon spawned -> selectable summon\"]",
                 "    O --> P[\"Zone: Rune Field spawned under Target Dummy C -> periodic hit confirmed\"]",
-                "    P --> Q[\"Blocker: Stone Pillar spawned -> nav/physics obstacle bridge active\"]"
+                "    P --> Q[\"Blocker: Stone Pillar spawned -> nav/physics obstacle bridge active\"]",
+                "    Q --> R[\"Selection: Spell Engineer Alpha -> unified manifestation loadout visible\"]",
+                "    R --> S[\"Summon: Spell Beacon spawned with shared spawn contract\"]",
+                "    S --> T[\"Zone: Gravity Well ticks on Target Dummy D\"]",
+                "    T --> U[\"Arena: Cataclysm Ring spawns 10 box blocker segments\"]",
+                "    U --> V[\"Beam: Guided Laser hits Dummy D, retargets to Dummy E, Stop removes manifestation\"]"
             });
         }
 
@@ -902,6 +1063,26 @@ namespace Ludots.Tests.GAS.Production
             return found;
         }
 
+        private static IReadOnlyList<Entity> FindEntitiesByName(World world, string entityName)
+        {
+            var matches = new List<Entity>();
+            var query = new QueryDescription().WithAll<Name>();
+            world.Query(in query, (Entity entity, ref Name name) =>
+            {
+                if (string.Equals(name.Value, entityName, StringComparison.Ordinal))
+                {
+                    matches.Add(entity);
+                }
+            });
+
+            return matches;
+        }
+
+        private static int CountEntitiesByName(World world, string entityName)
+        {
+            return FindEntitiesByName(world, entityName).Count;
+        }
+
         private static bool TryFindEntityByName(World world, string entityName, out Entity found)
         {
             Entity candidate = Entity.Null;
@@ -948,6 +1129,28 @@ namespace Ludots.Tests.GAS.Production
             return attributes.GetCurrent(healthId);
         }
 
+        private static float ReadFacingRadians(World world, string name)
+        {
+            Entity entity = FindEntityByName(world, name);
+            Assert.That(world.TryGet(entity, out FacingDirection facing), Is.True, $"{name} should expose FacingDirection.");
+            return facing.AngleRad;
+        }
+
+        private static float NormalizeRadians(float angle)
+        {
+            while (angle > MathF.PI)
+            {
+                angle -= MathF.Tau;
+            }
+
+            while (angle < -MathF.PI)
+            {
+                angle += MathF.Tau;
+            }
+
+            return angle;
+        }
+
         private static bool EntityExists(World world, string entityName)
         {
             return TryFindEntityByName(world, entityName, out _);
@@ -966,34 +1169,56 @@ namespace Ludots.Tests.GAS.Production
         private static void AssertManifestationOwnership(World world, string entityName, string parentName)
         {
             Entity entity = FindEntityByName(world, entityName);
-            Entity parent = FindEntityByName(world, parentName);
+            AssertManifestationOwnership(world, entity, parentName);
+        }
 
-            Assert.That(world.TryGet(entity, out PlayerOwner owner), Is.True, $"{entityName} should inherit PlayerOwner.");
-            Assert.That(owner.PlayerId, Is.EqualTo(1), $"{entityName} should inherit local player ownership.");
-            Assert.That(world.TryGet(entity, out Team team), Is.True, $"{entityName} should inherit Team.");
-            Assert.That(team.Id, Is.EqualTo(1), $"{entityName} should inherit the caster team.");
-            Assert.That(world.TryGet(entity, out ChildOf child), Is.True, $"{entityName} should link back to the caster.");
+        private static void AssertManifestationOwnership(World world, Entity entity, string parentName)
+        {
+            Entity parent = FindEntityByName(world, parentName);
+            string entityLabel = world.TryGet(entity, out Name name) ? name.Value : $"entity:{entity.Id}";
+
+            Assert.That(world.TryGet(entity, out PlayerOwner owner), Is.True, $"{entityLabel} should inherit PlayerOwner.");
+            Assert.That(owner.PlayerId, Is.EqualTo(1), $"{entityLabel} should inherit local player ownership.");
+            Assert.That(world.TryGet(entity, out Team team), Is.True, $"{entityLabel} should inherit Team.");
+            Assert.That(team.Id, Is.EqualTo(1), $"{entityLabel} should inherit the caster team.");
+            Assert.That(world.TryGet(entity, out ChildOf child), Is.True, $"{entityLabel} should link back to the caster.");
             Assert.That(child.Parent, Is.EqualTo(parent));
-            Assert.That(world.TryGet(entity, out MapEntity map), Is.True, $"{entityName} should stay scoped to the sandbox map.");
+            Assert.That(world.TryGet(entity, out MapEntity map), Is.True, $"{entityLabel} should stay scoped to the sandbox map.");
             Assert.That(map.MapId.Value, Is.EqualTo(MapId));
-            Assert.That(world.Has<SelectionSelectableTag>(entity), Is.True, $"{entityName} should stay formally selectable.");
+            Assert.That(world.Has<SelectionSelectableTag>(entity), Is.True, $"{entityLabel} should stay formally selectable.");
         }
 
         private static void AssertBlockerManifestationBridge(World world, string entityName)
         {
             Entity entity = FindEntityByName(world, entityName);
+            AssertManifestationBridge(world, entity, entityName, ManifestationObstacleShape2D.Circle, ColliderType2D.Circle, NavObstacleShape2D.Circle);
+        }
 
-            Assert.That(world.TryGet(entity, out ManifestationObstacleIntent2D intent), Is.True, $"{entityName} should author blocker intent.");
+        private static void AssertBarrierSegmentManifestationBridge(World world, Entity entity, string entityLabel)
+        {
+            AssertManifestationBridge(world, entity, entityLabel, ManifestationObstacleShape2D.Box, ColliderType2D.Box, NavObstacleShape2D.Box);
+        }
+
+        private static void AssertManifestationBridge(
+            World world,
+            Entity entity,
+            string entityLabel,
+            ManifestationObstacleShape2D expectedIntentShape,
+            ColliderType2D expectedColliderType,
+            NavObstacleShape2D expectedNavShape)
+        {
+            Assert.That(world.TryGet(entity, out ManifestationObstacleIntent2D intent), Is.True, $"{entityLabel} should author blocker intent.");
+            Assert.That(intent.Shape, Is.EqualTo(expectedIntentShape));
             Assert.That(intent.SinkPhysicsCollider, Is.EqualTo(1));
             Assert.That(intent.SinkNavigationObstacle, Is.EqualTo(1));
-            Assert.That(world.TryGet(entity, out Collider2D collider), Is.True, $"{entityName} should bridge into physics collider.");
-            Assert.That(collider.Type, Is.EqualTo(ColliderType2D.Circle));
-            Assert.That(world.TryGet(entity, out NavObstacle2D obstacle), Is.True, $"{entityName} should bridge into navigation obstacle.");
-            Assert.That(obstacle.Shape, Is.EqualTo(NavObstacleShape2D.Circle));
-            Assert.That(world.Has<ManifestationObstacleBridge2DState>(entity), Is.True, $"{entityName} should retain manifestation bridge state.");
-            Assert.That(world.Has<NavKinematics2D>(entity), Is.True, $"{entityName} should provide navigation obstacle kinematics.");
-            Assert.That(world.Has<Mass2D>(entity), Is.True, $"{entityName} should become a static physics body.");
-            Assert.That(world.Has<Position2D>(entity), Is.True, $"{entityName} should project into physics position space.");
+            Assert.That(world.TryGet(entity, out Collider2D collider), Is.True, $"{entityLabel} should bridge into physics collider.");
+            Assert.That(collider.Type, Is.EqualTo(expectedColliderType));
+            Assert.That(world.TryGet(entity, out NavObstacle2D obstacle), Is.True, $"{entityLabel} should bridge into navigation obstacle.");
+            Assert.That(obstacle.Shape, Is.EqualTo(expectedNavShape));
+            Assert.That(world.Has<ManifestationObstacleBridge2DState>(entity), Is.True, $"{entityLabel} should retain manifestation bridge state.");
+            Assert.That(world.Has<NavKinematics2D>(entity), Is.True, $"{entityLabel} should provide navigation obstacle kinematics.");
+            Assert.That(world.Has<Mass2D>(entity), Is.True, $"{entityLabel} should become a static physics body.");
+            Assert.That(world.Has<Position2D>(entity), Is.True, $"{entityLabel} should project into physics position space.");
         }
 
         private static string BuildRuneFieldPeriodicDiagnostics(World world)

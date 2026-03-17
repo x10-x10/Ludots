@@ -231,6 +231,10 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Hammer.ToTheSkies", "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_cast");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Transform.Cannon", "champion_skill_sandbox.cue.jayce_transform_cannon");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Transform.Hammer", "champion_skill_sandbox.cue.jayce_transform_hammer");
+            RegisterAbilityCue(performers, "Ability.Champion.SpellEngineer.SpellBeacon", "champion_skill_sandbox.cue.spell_engineer_spell_beacon_cast");
+            RegisterAbilityCue(performers, "Ability.Champion.SpellEngineer.GravityWell", "champion_skill_sandbox.cue.spell_engineer_gravity_well_cast");
+            RegisterAbilityCue(performers, "Ability.Champion.SpellEngineer.CataclysmRing", "champion_skill_sandbox.cue.spell_engineer_cataclysm_ring_cast");
+            RegisterAbilityCue(performers, "Ability.Champion.SpellEngineer.GuidedLaser", "champion_skill_sandbox.cue.spell_engineer_guided_laser_cast");
 
             RegisterEffectCue(performers, "Effect.Champion.Ezreal.EssenceFluxHit", "champion_skill_sandbox.cue.ezreal_essence_flux_hit");
             RegisterEffectCue(performers, "Effect.Champion.Ezreal.MysticShotHit", "champion_skill_sandbox.cue.ezreal_mystic_shot_hit");
@@ -243,6 +247,8 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.LightningFieldHit", "champion_skill_sandbox.cue.jayce_hammer_lightning_field_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.ThunderingBlowHit", "champion_skill_sandbox.cue.jayce_hammer_thundering_blow_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.ToTheSkiesHit", "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_hit");
+            RegisterEffectCue(performers, "Effect.Champion.SpellEngineer.GravityWellHit", "champion_skill_sandbox.cue.spell_engineer_gravity_well_hit");
+            RegisterEffectCue(performers, "Effect.Champion.SpellEngineer.GuidedLaserHit", "champion_skill_sandbox.cue.spell_engineer_guided_laser_hit");
 
             _cueIdsInitialized = true;
         }

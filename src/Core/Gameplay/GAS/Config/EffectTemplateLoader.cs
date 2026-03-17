@@ -373,14 +373,50 @@ namespace Ludots.Core.Gameplay.GAS.Config
 
             return new UnitCreationDescriptor
             {
+                PlacementPattern = ParseUnitCreationPlacementPattern(cfg.PlacementPattern),
+                FacingPattern = ParseUnitCreationFacingPattern(cfg.FacingPattern),
                 UnitTypeId = unitTypeId,
                 TemplateId = hasTemplateId ? cfg.TemplateId : string.Empty,
                 UseTemplateSpawn = hasTemplateId,
                 Count = cfg.Count,
                 OffsetRadius = cfg.OffsetRadius,
+                PlacementRadiusCm = cfg.PlacementRadiusCm,
+                PlacementStartAngleDeg = cfg.PlacementStartAngleDeg,
                 OnSpawnEffectTemplateId = onSpawnId,
                 CopySourcePlayerOwner = cfg.CopySourcePlayerOwner,
                 LinkSourceAsParent = cfg.LinkSourceAsParent,
+            };
+        }
+
+        private static UnitCreationPlacementPattern ParseUnitCreationPlacementPattern(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return UnitCreationPlacementPattern.Scatter;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "scatter" => UnitCreationPlacementPattern.Scatter,
+                "circle" => UnitCreationPlacementPattern.Circle,
+                _ => throw new InvalidOperationException($"Unsupported unitCreation.placementPattern '{raw}'.")
+            };
+        }
+
+        private static UnitCreationFacingPattern ParseUnitCreationFacingPattern(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return UnitCreationFacingPattern.PreserveTemplate;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "preservetemplate" => UnitCreationFacingPattern.PreserveTemplate,
+                "radialoutward" => UnitCreationFacingPattern.RadialOutward,
+                "tangentclockwise" => UnitCreationFacingPattern.TangentClockwise,
+                "tangentcounterclockwise" => UnitCreationFacingPattern.TangentCounterClockwise,
+                _ => throw new InvalidOperationException($"Unsupported unitCreation.facingPattern '{raw}'.")
             };
         }
 

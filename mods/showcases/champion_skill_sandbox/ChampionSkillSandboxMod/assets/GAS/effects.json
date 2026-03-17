@@ -369,5 +369,132 @@
     "modifiers": [
       { "attribute": "Health", "op": "Add", "value": -19.0 }
     ]
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.SpellBeacon",
+    "tags": ["Effect.Champion.Manifestation", "Effect.Champion.Summon"],
+    "presetType": "CreateUnit",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "unitCreation": {
+      "templateId": "champion_skill_sandbox_spell_beacon",
+      "count": 1,
+      "copySourcePlayerOwner": true,
+      "linkSourceAsParent": true
+    }
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.GravityWell",
+    "tags": ["Effect.Champion.Manifestation", "Effect.Champion.Zone"],
+    "presetType": "CreateUnit",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "unitCreation": {
+      "templateId": "champion_skill_sandbox_gravity_well",
+      "count": 1,
+      "onSpawnEffect": "Effect.Champion.SpellEngineer.GravityWellPersistent",
+      "copySourcePlayerOwner": true,
+      "linkSourceAsParent": true
+    }
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.GravityWellPersistent",
+    "tags": ["Effect.Champion.Zone"],
+    "presetType": "PeriodicSearch",
+    "lifetime": "After",
+    "participatesInResponse": false,
+    "duration": {
+      "durationTicks": 135,
+      "periodTicks": 15
+    },
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Circle",
+      "radius": 240
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 12
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Champion.SpellEngineer.GravityWellHit"
+    }
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.GravityWellHit",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -8.0 }
+    ]
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.CataclysmRing",
+    "tags": ["Effect.Champion.Manifestation", "Effect.Champion.Blocker"],
+    "presetType": "CreateUnit",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "unitCreation": {
+      "templateId": "champion_skill_sandbox_barrier_segment",
+      "count": 10,
+      "placementPattern": "Circle",
+      "facingPattern": "TangentCounterClockwise",
+      "placementRadiusCm": 280,
+      "placementStartAngleDeg": 18,
+      "copySourcePlayerOwner": true,
+      "linkSourceAsParent": true
+    }
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.GuidedLaser",
+    "tags": ["Effect.Champion.Manifestation", "Effect.Champion.Beam"],
+    "presetType": "CreateUnit",
+    "lifetime": "Instant",
+    "participatesInResponse": false,
+    "unitCreation": {
+      "templateId": "champion_skill_sandbox_guided_laser",
+      "count": 1,
+      "onSpawnEffect": "Effect.Champion.SpellEngineer.GuidedLaserPersistent",
+      "copySourcePlayerOwner": true,
+      "linkSourceAsParent": true
+    }
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.GuidedLaserPersistent",
+    "tags": ["Effect.Champion.Beam"],
+    "presetType": "PeriodicSearch",
+    "lifetime": "After",
+    "participatesInResponse": false,
+    "duration": {
+      "durationTicks": 1800,
+      "periodTicks": 4
+    },
+    "targetQuery": {
+      "kind": "BuiltinSpatial",
+      "shape": "Line",
+      "length": 900,
+      "halfWidth": 70
+    },
+    "targetFilter": {
+      "relationFilter": "Hostile",
+      "excludeSource": true,
+      "maxTargets": 16
+    },
+    "targetDispatch": {
+      "payloadEffect": "Effect.Champion.SpellEngineer.GuidedLaserHit"
+    }
+  },
+  {
+    "id": "Effect.Champion.SpellEngineer.GuidedLaserHit",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -5.0 }
+    ]
   }
 ]

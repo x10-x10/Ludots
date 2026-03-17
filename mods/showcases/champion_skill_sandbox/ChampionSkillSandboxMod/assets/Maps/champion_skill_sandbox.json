@@ -67,6 +67,14 @@
       }
     },
     {
+      "Template": "champion_skill_sandbox_spell_engineer",
+      "Overrides": {
+        "Name": { "Value": "Spell Engineer Alpha" },
+        "PlayerOwner": { "PlayerId": 1 },
+        "WorldPositionCm": { "Value": { "X": 2140, "Y": 1600 } }
+      }
+    },
+    {
       "Template": "champion_skill_sandbox_enemy_dummy",
       "Overrides": {
         "Name": { "Value": "Target Dummy A" },
@@ -99,6 +107,27 @@
       "Overrides": {
         "Name": { "Value": "Target Brute B" },
         "WorldPositionCm": { "Value": { "X": 2280, "Y": 1120 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_dummy",
+      "Overrides": {
+        "Name": { "Value": "Target Dummy D" },
+        "WorldPositionCm": { "Value": { "X": 2580, "Y": 1600 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_dummy",
+      "Overrides": {
+        "Name": { "Value": "Target Dummy E" },
+        "WorldPositionCm": { "Value": { "X": 2460, "Y": 1780 } }
+      }
+    },
+    {
+      "Template": "champion_skill_sandbox_enemy_dummy",
+      "Overrides": {
+        "Name": { "Value": "Target Dummy F" },
+        "WorldPositionCm": { "Value": { "X": 2460, "Y": 1420 } }
       }
     }
   ]

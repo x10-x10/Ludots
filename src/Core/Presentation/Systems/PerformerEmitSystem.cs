@@ -322,6 +322,8 @@ namespace Ludots.Core.Presentation.Systems
                     return EvaluateGraphFloat(vr.SourceId, owner);
                 case ValueSourceKind.EntityColor:
                     return ResolveEntityColorChannel(owner, vr.SourceId);
+                case ValueSourceKind.FacingDegrees:
+                    return ResolveFacingDegrees(owner);
                 default:
                     return 0f;
             }
@@ -339,6 +341,16 @@ namespace Ludots.Core.Presentation.Systems
                 3 => c.W,
                 _ => 1f,
             };
+        }
+
+        private float ResolveFacingDegrees(Entity owner)
+        {
+            if (!World.IsAlive(owner) || !World.Has<Ludots.Core.Components.FacingDirection>(owner))
+            {
+                return 0f;
+            }
+
+            return World.Get<Ludots.Core.Components.FacingDirection>(owner).AngleRad * (180f / MathF.PI);
         }
 
         private float ResolveAttributeRatio(Entity owner, int attributeId)

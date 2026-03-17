@@ -83,6 +83,7 @@ namespace CoreInputMod.Triggers
             engine.RegisterSystem(gasSelection, SystemGroup.InputCollection);
 
             engine.RegisterSystem(new GasInputResponseSystem(engine.World, engine.GlobalContext), SystemGroup.InputCollection);
+            engine.RegisterSystem(new AbilityExecAimSyncSystem(engine.World, new InputInteractionContextAccessor(engine.World, engine.GlobalContext)), SystemGroup.InputCollection);
             engine.RegisterPresentationSystem(new SkillBarOverlaySystem(engine.World, engine.GlobalContext));
             engine.RegisterPresentationSystem(new SelectionBoxOverlaySystem(engine.World, engine.GlobalContext));
             engine.RegisterPresentationSystem(new AbilityAimOverlayPresentationSystem(engine.World, engine.GlobalContext));

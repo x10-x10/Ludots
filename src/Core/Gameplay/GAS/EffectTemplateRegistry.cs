@@ -163,6 +163,8 @@ namespace Ludots.Core.Gameplay.GAS
     /// </summary>
     public struct UnitCreationDescriptor
     {
+        public UnitCreationPlacementPattern PlacementPattern;
+        public UnitCreationFacingPattern FacingPattern;
         /// <summary>Unit type identifier (resolved from string at load time).</summary>
         public int UnitTypeId;
         /// <summary>Template identifier for template-backed runtime manifestation spawns.</summary>
@@ -179,6 +181,24 @@ namespace Ludots.Core.Gameplay.GAS
         public bool CopySourcePlayerOwner;
         /// <summary>Whether the source entity should become the parent relation of the spawned unit.</summary>
         public bool LinkSourceAsParent;
+        /// <summary>Fixed formation radius in centimeters for non-scatter patterns.</summary>
+        public int PlacementRadiusCm;
+        /// <summary>Starting angle for circular formation patterns in degrees.</summary>
+        public int PlacementStartAngleDeg;
+    }
+
+    public enum UnitCreationPlacementPattern : byte
+    {
+        Scatter = 0,
+        Circle = 1,
+    }
+
+    public enum UnitCreationFacingPattern : byte
+    {
+        PreserveTemplate = 0,
+        RadialOutward = 1,
+        TangentClockwise = 2,
+        TangentCounterClockwise = 3,
     }
 
     /// <summary>

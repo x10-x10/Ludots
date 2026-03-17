@@ -74,6 +74,7 @@ namespace Ludots.Core.Gameplay.Spawning
             }
 
             World.Add(entity, new Name { Value = "Unit:" + typeName });
+            TryApplyFacing(in request, entity);
             TryApplySourceTeam(in request, entity);
             TryApplySourcePlayerOwner(in request, entity);
             TryApplyMapOwnership(in request, entity);
@@ -92,6 +93,7 @@ namespace Ludots.Core.Gameplay.Spawning
             var entity = _builder.UseTemplate(request.TemplateId).Build();
 
             ApplyWorldPosition(entity, request.WorldPositionCm);
+            TryApplyFacing(in request, entity);
             TryApplySourceTeam(in request, entity);
             TryApplySourcePlayerOwner(in request, entity);
             TryApplyMapOwnership(in request, entity);
@@ -113,6 +115,7 @@ namespace Ludots.Core.Gameplay.Spawning
                 ApplyWorldPosition(entity, request.WorldPositionCm);
             }
 
+            TryApplyFacing(in request, entity);
             TryApplySourceTeam(in request, entity);
             TryApplySourcePlayerOwner(in request, entity);
             TryApplyMapOwnership(in request, entity);
@@ -213,6 +216,24 @@ namespace Ludots.Core.Gameplay.Spawning
             else
             {
                 World.Add(entity, owner);
+            }
+        }
+
+        private void TryApplyFacing(in RuntimeEntitySpawnRequest request, Entity entity)
+        {
+            if (request.HasFacing == 0)
+            {
+                return;
+            }
+
+            var facing = new FacingDirection { AngleRad = request.FacingAngleRad };
+            if (World.Has<FacingDirection>(entity))
+            {
+                World.Set(entity, facing);
+            }
+            else
+            {
+                World.Add(entity, facing);
             }
         }
 

@@ -177,10 +177,14 @@ namespace Ludots.Core.Gameplay.GAS.Config
     /// <summary>Unit creation component configuration.</summary>
     public sealed class UnitCreationConfig
     {
+        public string PlacementPattern { get; set; }
+        public string FacingPattern { get; set; }
         public string UnitType { get; set; }
         public string TemplateId { get; set; }
         public int Count { get; set; } = 1;
         public int OffsetRadius { get; set; }
+        public int PlacementRadiusCm { get; set; }
+        public int PlacementStartAngleDeg { get; set; }
         public string OnSpawnEffect { get; set; }
         public bool CopySourcePlayerOwner { get; set; }
         public bool LinkSourceAsParent { get; set; }

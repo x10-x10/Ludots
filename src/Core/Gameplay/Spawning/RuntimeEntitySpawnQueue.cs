@@ -20,6 +20,8 @@ namespace Ludots.Core.Gameplay.Spawning
         public Entity TargetContext;
         public Fix64Vec2 WorldPositionCm;
         public byte HasWorldPosition;
+        public float FacingAngleRad;
+        public byte HasFacing;
         public int UnitTypeId;
         public string TemplateId;
         public int OnSpawnEffectTemplateId;

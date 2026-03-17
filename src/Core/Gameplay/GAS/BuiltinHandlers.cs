@@ -246,13 +246,24 @@ namespace Ludots.Core.Gameplay.GAS
 
             for (int i = 0; i < unit.Count; i++)
             {
+                ComputeUnitCreationPlacement(
+                    in unit,
+                    context.Source,
+                    unit.UnitTypeId,
+                    i,
+                    out Fix64Vec2 offsetCm,
+                    out float facingAngleRad,
+                    out bool hasFacing);
+
                 var request = new RuntimeEntitySpawnRequest
                 {
                     Kind = unit.UseTemplateSpawn ? RuntimeEntitySpawnKind.Template : RuntimeEntitySpawnKind.UnitType,
                     Source = context.Source,
                     TargetContext = context.TargetContext,
-                    WorldPositionCm = origin + ComputeScatterOffsetCm(context.Source, unit.UnitTypeId, i, unit.OffsetRadius),
+                    WorldPositionCm = origin + offsetCm,
                     HasWorldPosition = 1,
+                    FacingAngleRad = facingAngleRad,
+                    HasFacing = (byte)(hasFacing ? 1 : 0),
                     UnitTypeId = unit.UnitTypeId,
                     TemplateId = unit.TemplateId,
                     OnSpawnEffectTemplateId = unit.OnSpawnEffectTemplateId,
@@ -415,6 +426,56 @@ namespace Ludots.Core.Gameplay.GAS
                     radius * Fix64Math.Cos(angleRad),
                     radius * Fix64Math.Sin(angleRad));
             }
+        }
+
+        private static void ComputeUnitCreationPlacement(
+            in UnitCreationDescriptor unit,
+            Entity source,
+            int unitTypeId,
+            int index,
+            out Fix64Vec2 offsetCm,
+            out float facingAngleRad,
+            out bool hasFacing)
+        {
+            switch (unit.PlacementPattern)
+            {
+                case UnitCreationPlacementPattern.Circle:
+                    ComputeCirclePlacement(in unit, index, out offsetCm, out facingAngleRad, out hasFacing);
+                    return;
+                default:
+                    offsetCm = ComputeScatterOffsetCm(source, unitTypeId, index, unit.OffsetRadius);
+                    facingAngleRad = 0f;
+                    hasFacing = false;
+                    return;
+            }
+        }
+
+        private static void ComputeCirclePlacement(
+            in UnitCreationDescriptor unit,
+            int index,
+            out Fix64Vec2 offsetCm,
+            out float facingAngleRad,
+            out bool hasFacing)
+        {
+            int count = unit.Count <= 0 ? 1 : unit.Count;
+            Fix64 radius = Fix64.FromInt(unit.PlacementRadiusCm > 0 ? unit.PlacementRadiusCm : unit.OffsetRadius);
+            Fix64 angleStep = Fix64.FromInt(360) / Fix64.FromInt(count);
+            Fix64 angleDeg = Fix64.FromInt(unit.PlacementStartAngleDeg) + angleStep * Fix64.FromInt(index);
+            Fix64 angleRad = angleDeg * Fix64.Deg2Rad;
+
+            offsetCm = new Fix64Vec2(
+                radius * Fix64Math.Cos(angleRad),
+                radius * Fix64Math.Sin(angleRad));
+
+            hasFacing = unit.FacingPattern != UnitCreationFacingPattern.PreserveTemplate;
+            Fix64 quarterTurn = Fix64.Pi / Fix64.FromInt(2);
+            facingAngleRad = unit.FacingPattern switch
+            {
+                UnitCreationFacingPattern.RadialOutward => angleRad.ToFloat(),
+                UnitCreationFacingPattern.TangentClockwise => (angleRad - quarterTurn).ToFloat(),
+                UnitCreationFacingPattern.TangentCounterClockwise => (angleRad + quarterTurn).ToFloat(),
+                _ => 0f
+            };
         }
     }
 

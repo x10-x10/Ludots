@@ -130,3 +130,38 @@ wall、pillar、arena blocker、temporary terrain 等不再需要新的 gameplay
 * `artifacts/acceptance/champion-skill-sandbox/battle-report.md`
 * `artifacts/acceptance/champion-skill-sandbox/trace.jsonl`
 * `artifacts/acceptance/champion-skill-sandbox/path.mmd`
+
+## 8 2026-03 Runtime extensions for unified manifestations
+
+Recent MOBA showcase work extended the same spawn contract instead of adding a
+second projectile or beam runtime:
+
+* `CreateUnit` now supports `placementPattern` / `facingPattern` so circle
+  formations such as Jarvan-style arenas can be authored as one effect config.
+  The current reusable patterns cover circle placement plus radial / tangent
+  facing.
+* `ManifestationMotion2D` keeps spawned manifestations attached to the parent
+  entity or parent execution aim, including optional `forwardOffsetCm`. This is
+  the lower-layer primitive used by steerable lasers and other attached line
+  manifestations.
+* `DestroyWhenParentExecutionEnds` ties temporary manifestations to the parent
+  `AbilityExecInstance` lifetime. This is how channel beams, temporary arena
+  walls, and other execution-scoped manifestations clean themselves up without
+  bespoke gameplay stacks.
+* `AbilityExecAimSync` keeps the active execution target/facing in sync with the
+  authoritative input context while an execution is still alive. This gives the
+  runtime a continuous aim feed for channels without reading render-frame input
+  directly inside gameplay systems.
+
+Design boundary:
+
+* Core authoring still describes intent only: summon, zone, blocker, beam, or
+  other manifestation behavior is expressed via components, tags, effect
+  presets, and performer bindings.
+* Physics / navigation remain the sink owners for blocker materialization. Wall,
+  pillar, and arena segments still flow through `ManifestationObstacleIntent2D`
+  and backend-specific bridge systems.
+* Spatial backend differences stay outside GAS authoring. Continuous-space
+  support currently ships with `Ludots.Physics2D`; future `Hex` / `Grid`
+  backends should add their own sink systems instead of branching in effect
+  handlers or config.

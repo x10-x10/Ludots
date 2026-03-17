@@ -52,9 +52,12 @@ namespace Ludots.Core.Config
             Register<BlackboardSpatialBuffer>("BlackboardSpatialBuffer");
             Register<BlackboardEntityBuffer>("BlackboardEntityBuffer");
             Register<BlackboardIntBuffer>("BlackboardIntBuffer");
+            Register("AbilityExecAimSync", SetAbilityExecAimSync);
             Register<VisualTransform>("VisualTransform");
             Register("ManifestationObstacleIntent2D", SetManifestationObstacleIntent2D);
             Register("ManifestationObstaclePolygon2D", SetManifestationObstaclePolygon2D);
+            Register("ManifestationMotion2D", SetManifestationMotion2D);
+            Register("DestroyWhenParentExecutionEnds", SetDestroyWhenParentExecutionEnds);
         }
 
         public static void Register<T>(string name)
@@ -377,6 +380,41 @@ namespace Ludots.Core.Config
             entity.Add(polygon);
         }
 
+        private static void SetAbilityExecAimSync(Entity entity, JsonNode data)
+        {
+            if (data is not JsonObject obj)
+            {
+                throw new InvalidOperationException("AbilityExecAimSync requires an object payload.");
+            }
+
+            entity.Add(new AbilityExecAimSync
+            {
+                AbilitySlot = ReadIntProperty(obj, "abilitySlot", "AbilitySlot"),
+                SyncFacing = ParseBooleanByte(obj["syncFacing"] ?? obj["SyncFacing"], defaultValue: 0),
+            });
+        }
+
+        private static void SetManifestationMotion2D(Entity entity, JsonNode data)
+        {
+            if (data is not JsonObject obj)
+            {
+                throw new InvalidOperationException("ManifestationMotion2D requires an object payload.");
+            }
+
+            entity.Add(new ManifestationMotion2D
+            {
+                FollowParentPosition = ParseBooleanByte(obj["followParentPosition"] ?? obj["FollowParentPosition"], defaultValue: 1),
+                FacingSource = ParseManifestationFacingSource(obj["facingSource"]?.GetValue<string>() ?? obj["FacingSource"]?.GetValue<string>()),
+                SweepDegreesPerSecond = ReadFloatProperty(obj, "sweepDegreesPerSecond", "SweepDegreesPerSecond"),
+                ForwardOffsetCm = ReadIntProperty(obj, "forwardOffsetCm", "ForwardOffsetCm"),
+            });
+        }
+
+        private static void SetDestroyWhenParentExecutionEnds(Entity entity, JsonNode data)
+        {
+            entity.Add(new DestroyWhenParentExecutionEnds());
+        }
+
         private static ManifestationObstacleShape2D ParseManifestationObstacleShape(string? raw)
         {
             if (string.IsNullOrWhiteSpace(raw))
@@ -390,6 +428,22 @@ namespace Ludots.Core.Config
                 "box" => ManifestationObstacleShape2D.Box,
                 "polygon" => ManifestationObstacleShape2D.Polygon,
                 _ => throw new InvalidOperationException($"Unsupported ManifestationObstacleIntent2D shape '{raw}'.")
+            };
+        }
+
+        private static ManifestationFacingSource2D ParseManifestationFacingSource(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return ManifestationFacingSource2D.None;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "none" => ManifestationFacingSource2D.None,
+                "sweepvelocity" => ManifestationFacingSource2D.SweepVelocity,
+                "parentexecutiontarget" => ManifestationFacingSource2D.ParentExecutionTarget,
+                _ => throw new InvalidOperationException($"Unsupported ManifestationMotion2D facingSource '{raw}'.")
             };
         }
 
@@ -427,6 +481,19 @@ namespace Ludots.Core.Config
         private static int ReadIntProperty(JsonObject obj, params string[] names)
         {
             return TryReadIntProperty(obj, out int value, names) ? value : 0;
+        }
+
+        private static float ReadFloatProperty(JsonObject obj, params string[] names)
+        {
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (obj.TryGetPropertyValue(names[i], out var node) && node != null)
+                {
+                    return node.GetValue<float>();
+                }
+            }
+
+            return 0f;
         }
 
         private static bool TryReadPointProperty(JsonObject obj, out WorldCmInt2 point, params string[] names)
