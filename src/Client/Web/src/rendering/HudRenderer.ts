@@ -1,8 +1,9 @@
-import type { ScreenHudItem, ScreenOverlayItem, DebugLine, DebugCircle, DebugBox } from '../core/FrameDecoder';
+import type { ScreenHudItem, ScreenOverlayItem, DebugLine, DebugCircle, DebugBox, PresentationTextPacket } from '../core/FrameDecoder';
 
 export class HudRenderer {
   private readonly _canvas: HTMLCanvasElement;
   private readonly _ctx: CanvasRenderingContext2D;
+  private readonly _floatBits = new DataView(new ArrayBuffer(4));
 
   constructor(canvas: HTMLCanvasElement) {
     this._canvas = canvas;
@@ -21,8 +22,8 @@ export class HudRenderer {
   drawScreenHud(items: ScreenHudItem[]): void {
     const ctx = this._ctx;
     for (const item of items) {
-      const HUD_BAR = 0;
-      const HUD_TEXT = 1;
+      const HUD_BAR = 1;
+      const HUD_TEXT = 2;
 
       if (item.kind === HUD_BAR) {
         const x = Math.round(item.sx);
@@ -40,10 +41,7 @@ export class HudRenderer {
         const fontSize = item.fontSize <= 0 ? 16 : item.fontSize;
         ctx.font = `${fontSize}px monospace`;
         ctx.fillStyle = this.rgba(item.c0r, item.c0g, item.c0b, item.c0a);
-        let text = '';
-        if (item.id1 === 1) text = `${Math.round(item.v0)}/${Math.round(item.v1)}`;
-        else if (item.id1 === 2) text = `${Math.round(item.v0)}`;
-        else text = `${item.v0.toFixed(1)}`;
+        const text = this.resolveHudText(item);
         ctx.fillText(text, item.sx, item.sy + fontSize);
       }
     }
@@ -103,8 +101,9 @@ export class HudRenderer {
         const fontSize = item.fontSize <= 0 ? 16 : item.fontSize;
         ctx.font = `${fontSize}px monospace`;
         ctx.fillStyle = this.rgba(item.cr, item.cg, item.cb, item.ca);
-        if (item.text) {
-          ctx.fillText(item.text, item.x, item.y + fontSize);
+        const text = this.resolveOverlayText(item);
+        if (text) {
+          ctx.fillText(text, item.x, item.y + fontSize);
         }
       } else if (item.kind === OVERLAY_RECT) {
         if (item.width <= 0 || item.height <= 0) continue;
@@ -124,5 +123,122 @@ export class HudRenderer {
 
   private rgbaBytes(r: number, g: number, b: number, a: number): string {
     return `rgba(${r},${g},${b},${(a / 255).toFixed(2)})`;
+  }
+
+  private resolveHudText(item: ScreenHudItem): string {
+    if (item.textPacket && item.textTemplate) {
+      const text = this.formatTextPacket(item.textPacket, item.textTemplate);
+      if (text) {
+        return text;
+      }
+    }
+
+    if (item.id0 !== 0 && item.text) {
+      return item.text;
+    }
+
+    switch (item.id1) {
+      case 1:
+        return `${Math.round(item.v0)}/${Math.round(item.v1)}`;
+      case 2:
+        return `${Math.round(item.v0)}`;
+      case 3:
+        return `${item.v0}`;
+      default:
+        return `${item.v0.toFixed(1)}`;
+    }
+  }
+
+  private resolveOverlayText(item: ScreenOverlayItem): string {
+    if (item.textPacket && item.textTemplate) {
+      const text = this.formatTextPacket(item.textPacket, item.textTemplate);
+      if (text) {
+        return text;
+      }
+    }
+
+    return item.text;
+  }
+
+  private formatTextPacket(packet: PresentationTextPacket, template: string): string {
+    if (packet.tokenId <= 0 || !template) {
+      return '';
+    }
+
+    let text = '';
+    for (let i = 0; i < template.length; i++) {
+      const ch = template[i];
+      if (ch === '{') {
+        if (i + 1 < template.length && template[i + 1] === '{') {
+          text += '{';
+          i++;
+          continue;
+        }
+
+        const closeIndex = template.indexOf('}', i + 1);
+        if (closeIndex < 0) {
+          text += '{';
+          continue;
+        }
+
+        const placeholder = template.substring(i + 1, closeIndex);
+        const argIndex = Number.parseInt(placeholder, 10);
+        if (Number.isNaN(argIndex)) {
+          text += `{${placeholder}}`;
+          i = closeIndex;
+          continue;
+        }
+
+        text += this.formatTextArg(packet, argIndex);
+        i = closeIndex;
+        continue;
+      }
+
+      if (ch === '}') {
+        if (i + 1 < template.length && template[i + 1] === '}') {
+          text += '}';
+          i++;
+          continue;
+        }
+      }
+
+      text += ch;
+    }
+
+    return text;
+  }
+
+  private formatTextArg(packet: PresentationTextPacket, argIndex: number): string {
+    if (argIndex < 0 || argIndex >= packet.argCount || argIndex >= packet.args.length) {
+      return '';
+    }
+
+    const arg = packet.args[argIndex];
+    switch (arg.type) {
+      case 1:
+        return `${arg.raw32}`;
+      case 2: {
+        const value = this.int32BitsToFloat32(arg.raw32);
+        switch (arg.format) {
+          case 1:
+            return `${Math.trunc(value)}`;
+          case 2:
+            return value.toFixed(0);
+          case 3:
+            return value.toFixed(1);
+          case 4:
+            return value.toFixed(2);
+          default:
+            return value.toFixed(3).replace(/\.?0+$/, '');
+        }
+      }
+      default:
+        return '';
+    }
+  }
+
+  private int32BitsToFloat32(raw32: number): number {
+    this._floatBits.setInt32(0, raw32, true);
+    return this._floatBits.getFloat32(0, true);
   }
 }

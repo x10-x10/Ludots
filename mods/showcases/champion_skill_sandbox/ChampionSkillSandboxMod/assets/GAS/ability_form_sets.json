@@ -1,0 +1,17 @@
+[
+  {
+    "id": "champion_skill_sandbox_jayce_forms",
+    "routes": [
+      {
+        "requiredAll": ["State.Champion.Jayce.Hammer"],
+        "priority": 100,
+        "slotOverrides": [
+          { "slotIndex": 0, "abilityId": "Ability.Champion.Jayce.Hammer.ToTheSkies" },
+          { "slotIndex": 1, "abilityId": "Ability.Champion.Jayce.Hammer.LightningField" },
+          { "slotIndex": 2, "abilityId": "Ability.Champion.Jayce.Hammer.ThunderingBlow" },
+          { "slotIndex": 3, "abilityId": "Ability.Champion.Jayce.Transform.Cannon" }
+        ]
+      }
+    ]
+  }
+]

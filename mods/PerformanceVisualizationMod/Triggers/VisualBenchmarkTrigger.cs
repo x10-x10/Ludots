@@ -12,11 +12,8 @@ using Ludots.Core.Presentation;
 using Ludots.Core.Presentation.Components;
 using Ludots.Core.Mathematics;
 using System.Numerics;
-using System.Runtime.CompilerServices; // Added for Unsafe
-
-using PerformanceVisualizationMod.Systems;
 using Ludots.Core.Gameplay;
-using Ludots.Core.Input.Runtime;
+using Ludots.Core.Gameplay.Camera;
 
 namespace PerformanceVisualizationMod.Triggers
 {
@@ -36,19 +33,27 @@ namespace PerformanceVisualizationMod.Triggers
             
             var world = context.GetWorld();
             if (world == null) return Task.CompletedTask;
+            var stableIds = context.Get(CoreServiceKeys.PresentationStableIdAllocator);
+            if (stableIds == null)
+                throw new InvalidOperationException("Visual benchmark requires PresentationStableIdAllocator for renderable visuals.");
 
-            // Register Camera Controller
+            var engine = context.GetEngine();
             var gameSession = context.Get(CoreServiceKeys.GameSession);
-            var inputHandler = context.Get(CoreServiceKeys.InputHandler);
 
-            if (gameSession != null && inputHandler != null)
+            if (engine != null && gameSession != null)
             {
-                _modContext.Log("[VisualBenchmark] Registering Camera Controller...");
-                var controller = new BenchmarkCameraController(inputHandler);
-                gameSession.Camera.SetController(controller);
-                // Correctly use Vector2
-                gameSession.Camera.State.TargetCm = new Vector2(50000, 50000);
-                gameSession.Camera.State.DistanceCm = 80000f;
+                _modContext.Log("[VisualBenchmark] Requesting benchmark virtual camera...");
+                engine.SetService(CoreServiceKeys.VirtualCameraRequest, new VirtualCameraRequest
+                {
+                    Id = "TopDown"
+                });
+                engine.SetService(CoreServiceKeys.CameraPoseRequest, new CameraPoseRequest
+                {
+                    VirtualCameraId = "TopDown",
+                    TargetCm = new Vector2(50000, 50000),
+                    DistanceCm = 80000f,
+                    Pitch = 60f
+                });
             }
 
             // 1. Setup GAS Registry
@@ -80,7 +85,8 @@ namespace PerformanceVisualizationMod.Triggers
                 typeof(Position),
                 typeof(WorldPositionCm),
                 typeof(VisualTransform), // Core will sync this
-                typeof(VisualModel),     // Core will use this for culling/rendering
+                typeof(PresentationStableId),
+                typeof(VisualRuntimeState), // Core will use this for culling/rendering
                 typeof(CullState),       // Core updates this
                 typeof(AttributeBuffer),
                 typeof(ActiveEffectContainer),
@@ -98,9 +104,15 @@ namespace PerformanceVisualizationMod.Triggers
                 int yCm = rng.Next(0, 100000);
                 world.Set(e, new WorldPositionCm { Value = Ludots.Core.Mathematics.FixedPoint.Fix64Vec2.FromInt(xCm, yCm) });
                 world.Set(e, new Position { GridPos = new IntVector2(xCm / 100, yCm / 100) });
+                world.Set(e, new PresentationStableId { Value = stableIds.Allocate() });
                 
                 // Visual Model (Primitive ID 1 = Cube/Sphere)
-                world.Set(e, new VisualModel { MeshId = 1, MaterialId = 1, BaseScale = 1.0f });
+                world.Set(e, VisualRuntimeState.Create(
+                    meshAssetId: 1,
+                    materialId: 1,
+                    baseScale: 1.0f,
+                    renderPath: VisualRenderPath.HierarchicalInstancedStaticMesh,
+                    mobility: VisualMobility.Static));
                 world.Set(e, VisualTransform.Default); // Init
 
                 // GAS State

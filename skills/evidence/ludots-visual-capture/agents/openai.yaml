@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Ludots Visual Capture"
+  short_description: "Capture screenshots and recordings with manifests"
+  default_prompt: "Use $ludots-visual-capture to produce deterministic screenshots or recordings and emit a linked evidence manifest."

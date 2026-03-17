@@ -3,9 +3,19 @@
   "Tags": [
     "nav_playground"
   ],
+  "Boards": [
+    {
+      "Name": "default",
+      "SpatialType": "Grid",
+      "WidthInTiles": 4,
+      "HeightInTiles": 4,
+      "GridCellSizeCm": 100
+    }
+  ],
   "DefaultCamera": {
-    "PresetId": "Default",
-    "DistanceCm": 18000
+    "VirtualCameraId": "Navigation2D.Playground.Camera.Command",
+    "TargetXCm": 0,
+    "TargetYCm": 0
   },
   "Entities": []
 }

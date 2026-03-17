@@ -3,6 +3,7 @@ using Arch.Core;
 using Arch.System;
 using Ludots.Core.Components;
 using Ludots.Core.Engine;
+using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Mathematics.FixedPoint;
 
 namespace Ludots.Core.Gameplay.GAS.Systems
@@ -45,6 +46,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
                 Fix64Vec2 current = pos.Value;
                 Fix64Vec2 next;
+                bool reachedImpact = false;
 
                 if (World.IsAlive(ps.Target) && World.Has<WorldPositionCm>(ps.Target))
                 {
@@ -55,12 +57,27 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     if (dist <= stepCm || dist <= Fix64.OneValue)
                     {
                         pos.Value = targetPos;
-                        PublishImpact(ref ps);
-                        _toDestroy.Add(e);
-                        return;
+                        reachedImpact = true;
+                        next = targetPos;
                     }
-
-                    next = current + delta.Normalized() * stepCm;
+                    else
+                    {
+                        next = current + delta.Normalized() * stepCm;
+                    }
+                }
+                else if (ps.HasTargetPoint != 0)
+                {
+                    var delta = ps.TargetPointCm - current;
+                    Fix64 dist = delta.Length();
+                    if (dist <= stepCm || dist <= Fix64.OneValue)
+                    {
+                        next = ps.TargetPointCm;
+                        reachedImpact = true;
+                    }
+                    else
+                    {
+                        next = current + delta.Normalized() * stepCm;
+                    }
                 }
                 else
                 {
@@ -70,7 +87,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 ps.TraveledCm += stepCm;
                 pos.Value = next;
 
-                if (ps.TraveledCm >= Fix64.FromInt(ps.Range))
+                if (reachedImpact || ps.TraveledCm >= Fix64.FromInt(ps.Range))
                 {
                     PublishImpact(ref ps);
                     _toDestroy.Add(e);
@@ -86,17 +103,44 @@ namespace Ludots.Core.Gameplay.GAS.Systems
 
         private void PublishImpact(ref ProjectileState ps)
         {
-            if (ps.ImpactEffectTemplateId > 0 && World.IsAlive(ps.Target))
+            if (ps.ImpactEffectTemplateId <= 0)
             {
-                _effectRequests.Publish(new EffectRequest
-                {
-                    RootId = 0,
-                    Source = ps.Source,
-                    Target = ps.Target,
-                    TargetContext = default,
-                    TemplateId = ps.ImpactEffectTemplateId
-                });
+                return;
             }
+
+            var request = new EffectRequest
+            {
+                RootId = 0,
+                Source = ps.Source,
+                Target = World.IsAlive(ps.Target) ? ps.Target : Entity.Null,
+                TargetContext = default,
+                TemplateId = ps.ImpactEffectTemplateId,
+            };
+
+            var callerParams = new EffectConfigParams();
+            bool hasCallerParams = false;
+
+            if (ps.HasLaunchOrigin != 0)
+            {
+                hasCallerParams |= callerParams.TryAddFloat(EffectParamKeys.TargetOriginX, ps.LaunchOriginCm.X.ToFloat());
+                hasCallerParams |= callerParams.TryAddFloat(EffectParamKeys.TargetOriginY, ps.LaunchOriginCm.Y.ToFloat());
+            }
+
+            if (ps.HasTargetPoint != 0)
+            {
+                hasCallerParams |= callerParams.TryAddFloat(EffectParamKeys.TargetPosX, ps.TargetPointCm.X.ToFloat());
+                hasCallerParams |= callerParams.TryAddFloat(EffectParamKeys.TargetPosY, ps.TargetPointCm.Y.ToFloat());
+            }
+            else if (World.IsAlive(ps.Target) && World.Has<WorldPositionCm>(ps.Target))
+            {
+                var targetPos = World.Get<WorldPositionCm>(ps.Target).Value;
+                hasCallerParams |= callerParams.TryAddFloat(EffectParamKeys.TargetPosX, targetPos.X.ToFloat());
+                hasCallerParams |= callerParams.TryAddFloat(EffectParamKeys.TargetPosY, targetPos.Y.ToFloat());
+            }
+
+            request.CallerParams = callerParams;
+            request.HasCallerParams = hasCallerParams;
+            _effectRequests.Publish(request);
         }
     }
 }

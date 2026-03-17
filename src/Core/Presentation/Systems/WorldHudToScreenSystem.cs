@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Arch.Core;
 using Arch.System;
 using Ludots.Core.Presentation.Camera;
@@ -18,6 +19,7 @@ namespace Ludots.Core.Presentation.Systems
         private readonly IScreenProjector _projector;
         private readonly IViewController _view;
         private readonly ScreenHudBatchBuffer _screenHud;
+        private readonly PresentationTimingDiagnostics? _timingDiagnostics;
 
         private const int MaxBarDim = 512;
         private const int Margin = 200;
@@ -28,7 +30,8 @@ namespace Ludots.Core.Presentation.Systems
             WorldHudStringTable? strings,
             IScreenProjector projector,
             IViewController view,
-            ScreenHudBatchBuffer screenHud)
+            ScreenHudBatchBuffer screenHud,
+            PresentationTimingDiagnostics? timingDiagnostics = null)
             : base(world)
         {
             _worldHud = worldHud ?? throw new System.ArgumentNullException(nameof(worldHud));
@@ -36,10 +39,12 @@ namespace Ludots.Core.Presentation.Systems
             _projector = projector ?? throw new System.ArgumentNullException(nameof(projector));
             _view = view ?? throw new System.ArgumentNullException(nameof(view));
             _screenHud = screenHud ?? throw new System.ArgumentNullException(nameof(screenHud));
+            _timingDiagnostics = timingDiagnostics;
         }
 
         public override void Update(in float dt)
         {
+            long start = Stopwatch.GetTimestamp();
             _screenHud.Clear();
 
             var res = _view.Resolution;
@@ -55,8 +60,8 @@ namespace Ludots.Core.Presentation.Systems
                     float.IsInfinity(screen.X) || float.IsInfinity(screen.Y))
                     continue;
 
-                float x = screen.X - item.Width * 0.5f;
-                float y = screen.Y;
+                float x = MathF.Round(screen.X - item.Width * 0.5f);
+                float y = MathF.Round(screen.Y);
 
                 int ix = (int)x;
                 int iy = (int)y;
@@ -69,24 +74,49 @@ namespace Ludots.Core.Presentation.Systems
                     if (ix + iw < -Margin || iy + ih < -Margin ||
                         ix > screenWidth + Margin || iy > screenHeight + Margin)
                         continue;
+
+                    _screenHud.TryAddBar(new ScreenHudBarItem
+                    {
+                        StableId = item.StableId,
+                        DirtySerial = item.DirtySerial,
+                        ScreenX = x,
+                        ScreenY = y,
+                        Color0 = item.Color0,
+                        Color1 = item.Color1,
+                        Width = item.Width,
+                        Height = item.Height,
+                        Value0 = item.Value0,
+                    });
+                    continue;
                 }
 
-                _screenHud.TryAdd(new ScreenHudItem
+                if (item.Kind == WorldHudItemKind.Text)
                 {
-                    Kind = item.Kind,
-                    ScreenX = x,
-                    ScreenY = y,
-                    Color0 = item.Color0,
-                    Color1 = item.Color1,
-                    Width = item.Width,
-                    Height = item.Height,
-                    Value0 = item.Value0,
-                    Value1 = item.Value1,
-                    Id0 = item.Id0,
-                    Id1 = item.Id1,
-                    FontSize = item.FontSize,
-                });
+                    int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
+                    if (ix + fontSize < -Margin || iy + fontSize < -Margin ||
+                        ix > screenWidth + Margin || iy > screenHeight + Margin)
+                    {
+                        continue;
+                    }
+
+                    _screenHud.TryAddText(new ScreenHudTextItem
+                    {
+                        StableId = item.StableId,
+                        DirtySerial = item.DirtySerial,
+                        ScreenX = x,
+                        ScreenY = y,
+                        Color0 = item.Color0,
+                        Value0 = item.Value0,
+                        Value1 = item.Value1,
+                        Id0 = item.Id0,
+                        Id1 = item.Id1,
+                        FontSize = item.FontSize,
+                        Text = item.Text,
+                    });
+                }
             }
+
+            _timingDiagnostics?.ObserveWorldHudProjection((Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency);
         }
     }
 }

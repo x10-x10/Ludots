@@ -28,6 +28,16 @@ namespace Ludots.Core.Presentation.Assets
             };
         }
 
+        public static MeshAssetDescriptor Billboard(int id, params string[] sourceUris)
+        {
+            return new MeshAssetDescriptor
+            {
+                Id = id,
+                Type = MeshAssetType.Billboard,
+                SourceUris = sourceUris,
+            };
+        }
+
         public static MeshAssetDescriptor Prefab(int id, params PrefabPart[] parts)
         {
             return new MeshAssetDescriptor

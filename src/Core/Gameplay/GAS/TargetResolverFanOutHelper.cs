@@ -61,6 +61,18 @@ namespace Ludots.Core.Gameplay.GAS
             ISpatialQueryService spatialQueries,
             Entity[] buffer)
         {
+            EffectConfigParams mergedParams = default;
+            return ResolveTargets(world, in ctx, in query, in mergedParams, spatialQueries, buffer);
+        }
+
+        public static int ResolveTargets(
+            World world,
+            in EffectContext ctx,
+            in TargetQueryDescriptor query,
+            in EffectConfigParams mergedParams,
+            ISpatialQueryService spatialQueries,
+            Entity[] buffer)
+        {
             if (query.Kind == TargetResolverKind.GraphProgram)
             {
                 // Graph-based resolution will be handled by OnResolve Phase Graph.
@@ -76,13 +88,11 @@ namespace Ludots.Core.Gameplay.GAS
                 spatial.Shape == SpatialShape.Line ||
                 spatial.Shape == SpatialShape.Rectangle;
 
-            if (preferSourceCenter && world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source))
+            if (preferSourceCenter && TryResolveQueryOrigin(world, in ctx, in mergedParams, out center))
             {
-                center = world.Get<WorldPositionCm>(ctx.Source).Value.ToWorldCmInt2();
             }
-            else if (!preferSourceCenter && world.IsAlive(ctx.Target) && world.Has<WorldPositionCm>(ctx.Target))
+            else if (!preferSourceCenter && TryResolveTargetPoint(world, in ctx, in mergedParams, out center))
             {
-                center = world.Get<WorldPositionCm>(ctx.Target).Value.ToWorldCmInt2();
             }
             else if (world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source))
             {
@@ -93,7 +103,7 @@ namespace Ludots.Core.Gameplay.GAS
                 return 0;
             }
 
-            int directionDeg = ComputeDirection(world, in ctx);
+            int directionDeg = ComputeDirection(world, in ctx, in mergedParams);
             Span<Entity> buf = buffer;
             SpatialQueryResult result;
 
@@ -140,6 +150,23 @@ namespace Ludots.Core.Gameplay.GAS
             List<FanOutCommand> commands,
             ref int dropped)
         {
+            EffectConfigParams mergedParams = default;
+            return ValidateAndCollect(world, in ctx, in query, in filter, in dispatch, in mergedParams, buffer, candidateCount, budget, commands, ref dropped);
+        }
+
+        public static int ValidateAndCollect(
+            World world,
+            in EffectContext ctx,
+            in TargetQueryDescriptor query,
+            in TargetFilterDescriptor filter,
+            in TargetDispatchDescriptor dispatch,
+            in EffectConfigParams mergedParams,
+            Entity[] buffer,
+            int candidateCount,
+            RootBudgetTable budget,
+            List<FanOutCommand> commands,
+            ref int dropped)
+        {
             ref readonly var spatial = ref query.Spatial;
             WorldCmInt2 center = default;
             bool hasCenter = false;
@@ -147,9 +174,8 @@ namespace Ludots.Core.Gameplay.GAS
             // Precompute center for Ring inner-radius check
             if (spatial.Shape == SpatialShape.Ring && spatial.InnerRadiusCm > 0)
             {
-                if (world.IsAlive(ctx.Target) && world.Has<WorldPositionCm>(ctx.Target))
+                if (TryResolveTargetPoint(world, in ctx, in mergedParams, out center))
                 {
-                    center = world.Get<WorldPositionCm>(ctx.Target).Value.ToWorldCmInt2();
                     hasCenter = true;
                 }
                 else if (world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source))
@@ -284,13 +310,17 @@ namespace Ludots.Core.Gameplay.GAS
 
         private static int ComputeDirection(World world, in EffectContext ctx)
         {
-            if (world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source) &&
-                world.IsAlive(ctx.Target) && world.Has<WorldPositionCm>(ctx.Target))
+            EffectConfigParams mergedParams = default;
+            return ComputeDirection(world, in ctx, in mergedParams);
+        }
+
+        private static int ComputeDirection(World world, in EffectContext ctx, in EffectConfigParams mergedParams)
+        {
+            if (TryResolveQueryOrigin(world, in ctx, in mergedParams, out var sourcePos) &&
+                TryResolveTargetPoint(world, in ctx, in mergedParams, out var targetPos))
             {
-                var srcPos = world.Get<WorldPositionCm>(ctx.Source).Value.ToWorldCmInt2();
-                var tgtPos = world.Get<WorldPositionCm>(ctx.Target).Value.ToWorldCmInt2();
-                int dx = tgtPos.X - srcPos.X;
-                int dy = tgtPos.Y - srcPos.Y;
+                int dx = targetPos.X - sourcePos.X;
+                int dy = targetPos.Y - sourcePos.Y;
                 if (dx != 0 || dy != 0)
                 {
                     var rad = Fix64Math.Atan2Fast(Fix64.FromInt(dy), Fix64.FromInt(dx));
@@ -300,6 +330,106 @@ namespace Ludots.Core.Gameplay.GAS
                 }
             }
             return 0;
+        }
+
+        private static bool TryResolveQueryOrigin(World world, in EffectContext ctx, out WorldCmInt2 point)
+        {
+            EffectConfigParams mergedParams = default;
+            return TryResolveQueryOrigin(world, in ctx, in mergedParams, out point);
+        }
+
+        private static bool TryResolveQueryOrigin(World world, in EffectContext ctx, in EffectConfigParams mergedParams, out WorldCmInt2 point)
+        {
+            if (TryGetPreservedTargetOrigin(in mergedParams, out point))
+            {
+                return true;
+            }
+
+            if (world.IsAlive(ctx.Source) &&
+                world.Has<AbilityExecInstance>(ctx.Source))
+            {
+                ref readonly var exec = ref world.Get<AbilityExecInstance>(ctx.Source);
+                if (exec.HasTargetOriginPos != 0)
+                {
+                    point = exec.TargetOriginPosCm.ToWorldCmInt2();
+                    return true;
+                }
+            }
+
+            if (world.IsAlive(ctx.Source) && world.Has<WorldPositionCm>(ctx.Source))
+            {
+                point = world.Get<WorldPositionCm>(ctx.Source).Value.ToWorldCmInt2();
+                return true;
+            }
+
+            point = default;
+            return false;
+        }
+
+        private static bool TryResolveTargetPoint(World world, in EffectContext ctx, out WorldCmInt2 point)
+        {
+            EffectConfigParams mergedParams = default;
+            return TryResolveTargetPoint(world, in ctx, in mergedParams, out point);
+        }
+
+        private static bool TryResolveTargetPoint(World world, in EffectContext ctx, in EffectConfigParams mergedParams, out WorldCmInt2 point)
+        {
+            if (TryGetPreservedTargetPoint(in mergedParams, out point))
+            {
+                return true;
+            }
+
+            if (world.IsAlive(ctx.Target) && world.Has<WorldPositionCm>(ctx.Target))
+            {
+                point = world.Get<WorldPositionCm>(ctx.Target).Value.ToWorldCmInt2();
+                return true;
+            }
+
+            if (world.IsAlive(ctx.TargetContext) && world.Has<WorldPositionCm>(ctx.TargetContext))
+            {
+                point = world.Get<WorldPositionCm>(ctx.TargetContext).Value.ToWorldCmInt2();
+                return true;
+            }
+
+            if (world.IsAlive(ctx.Source) &&
+                world.Has<AbilityExecInstance>(ctx.Source))
+            {
+                ref readonly var exec = ref world.Get<AbilityExecInstance>(ctx.Source);
+                if (exec.HasTargetPos != 0)
+                {
+                    point = exec.TargetPosCm.ToWorldCmInt2();
+                    return true;
+                }
+            }
+
+            point = default;
+            return false;
+        }
+
+        private static bool TryGetPreservedTargetOrigin(in EffectConfigParams mergedParams, out WorldCmInt2 point)
+        {
+            if (mergedParams.TryGetFloat(EffectParamKeys.TargetOriginX, out float x) &&
+                mergedParams.TryGetFloat(EffectParamKeys.TargetOriginY, out float y))
+            {
+                point = new WorldCmInt2((int)x, (int)y);
+                return true;
+            }
+
+            point = default;
+            return false;
+        }
+
+        private static bool TryGetPreservedTargetPoint(in EffectConfigParams mergedParams, out WorldCmInt2 point)
+        {
+            if (mergedParams.TryGetFloat(EffectParamKeys.TargetPosX, out float x) &&
+                mergedParams.TryGetFloat(EffectParamKeys.TargetPosY, out float y))
+            {
+                point = new WorldCmInt2((int)x, (int)y);
+                return true;
+            }
+
+            point = default;
+            return false;
         }
     }
 }

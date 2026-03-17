@@ -1,22 +1,31 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
+using Arch.Core;
 using Ludots.Adapter.Raylib.Services;
 using Ludots.Client.Raylib.Rendering;
 using Ludots.Core.Components;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Engine;
+using Ludots.Core.Input.Runtime;
+using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Presentation.Assets;
+using Ludots.Core.Presentation.Components;
+using Ludots.Core.Presentation.Config;
 using Ludots.Core.Presentation.DebugDraw;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
 using Ludots.Platform.Abstractions;
+using Ludots.Presentation.Skia;
 using Ludots.UI;
 using Ludots.UI.Input;
+using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 using Raylib_cs;
 using Rl = Raylib_cs.Raylib;
 using SkiaSharp;
@@ -33,6 +42,8 @@ namespace Ludots.Adapter.Raylib
             var engine = setup.Engine;
             var config = setup.Config;
             var uiRoot = setup.UiRoot;
+            var skiaRenderer = setup.Renderer;
+            var presentationTiming = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
 
             int screenWidth = config.WindowWidth <= 0 ? 1280 : config.WindowWidth;
             int screenHeight = config.WindowHeight <= 0 ? 720 : config.WindowHeight;
@@ -58,7 +69,14 @@ namespace Ludots.Adapter.Raylib
                 Rl.SetExitKey(0);
                 Rl.SetTargetFPS(targetFps);
 
-                using var uiRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
+                using var compositeRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
+                using var underlayLayer = new SkiaRasterLayer();
+                using var uiLayer = new SkiaRasterLayer();
+                using var overlayLayer = new SkiaRasterLayer();
+                using var overlaySkiaRenderer = new SkiaOverlayRenderer();
+                underlayLayer.Resize(screenWidth, screenHeight);
+                uiLayer.Resize(screenWidth, screenHeight);
+                overlayLayer.Resize(screenWidth, screenHeight);
                 uiRoot.Resize(screenWidth, screenHeight);
 
                 var initialCamera = new Camera3D
@@ -71,17 +89,19 @@ namespace Ludots.Adapter.Raylib
                 };
 
                 var cameraAdapter = new RaylibCameraAdapter(initialCamera);
-                var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter);
+                var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter, presentationTiming);
 
                 var viewController = new RaylibViewController(cameraAdapter);
                 engine.GlobalContext[CoreServiceKeys.ViewController.Name] = viewController;
 
                 var screenProjector = new CoreScreenProjector(engine.GameSession.Camera, viewController);
+                var screenRayProvider = new CoreScreenRayProvider(engine.GameSession.Camera, viewController);
                 screenProjector.BindPresenter(cameraPresenter);
+                screenRayProvider.BindPresenter(cameraPresenter);
                 engine.GlobalContext[CoreServiceKeys.ScreenProjector.Name] = screenProjector;
-                engine.GlobalContext[CoreServiceKeys.ScreenRayProvider.Name] = new RaylibScreenRayProvider(cameraAdapter);
+                engine.GlobalContext[CoreServiceKeys.ScreenRayProvider.Name] = screenRayProvider;
 
-                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController);
+                var cullingSystem = new CameraCullingSystem(engine.World, engine.GameSession.Camera, engine.SpatialQueries, viewController, presentationTiming);
                 engine.RegisterPresentationSystem(cullingSystem);
                 engine.GlobalContext[CoreServiceKeys.CameraCullingDebugState.Name] = cullingSystem.DebugState;
 
@@ -89,14 +109,22 @@ namespace Ludots.Adapter.Raylib
                 engine.GlobalContext[CoreServiceKeys.RenderCameraDebugState.Name] = renderCameraDebug;
 
                 engine.RegisterPresentationSystem(new CullingVisualizationPresentationSystem(engine.GlobalContext));
+                var presentationFrameSetup = engine.GetService(CoreServiceKeys.PresentationFrameSetup);
 
-                WorldHudToScreenSystem hudProjection = null;
+                WorldHudToScreenSystem? hudProjection = null;
+                PresentationOverlaySceneBuilder? overlaySceneBuilder = null;
+                PresentationOverlayScene? overlayScene = null;
+                ScreenOverlayBuffer? screenOverlayBuffer = null;
                 if (engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudBuffer.Name, out var whObj) && whObj is WorldHudBatchBuffer worldHud &&
                     engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationScreenHudBuffer.Name, out var shObj) && shObj is ScreenHudBatchBuffer screenHud)
                 {
-                    engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudStrings.Name, out var strObj);
-                    var worldHudStrings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
-                    hudProjection = new WorldHudToScreenSystem(engine.World, worldHud, worldHudStrings, screenProjector, viewController, screenHud);
+                    WorldHudStringTable? worldHudStrings = engine.GetService(CoreServiceKeys.PresentationWorldHudStrings);
+                    PresentationTextCatalog? textCatalog = engine.GetService(CoreServiceKeys.PresentationTextCatalog);
+                    PresentationTextLocaleSelection? localeSelection = engine.GetService(CoreServiceKeys.PresentationTextLocaleSelection);
+                    screenOverlayBuffer = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
+                    hudProjection = new WorldHudToScreenSystem(engine.World, worldHud, worldHudStrings, screenProjector, viewController, screenHud, presentationTiming);
+                    overlaySceneBuilder = new PresentationOverlaySceneBuilder(screenHud, worldHudStrings, textCatalog, localeSelection, screenOverlayBuffer);
+                    overlayScene = new PresentationOverlayScene(screenHud.Capacity + ScreenOverlayBuffer.MaxItems);
                 }
 
                 ValidateRequiredContextBeforeLoop(engine);
@@ -104,15 +132,38 @@ namespace Ludots.Adapter.Raylib
                 engine.Start();
                 if (string.IsNullOrWhiteSpace(config.StartupMapId))
                 {
-                    throw new InvalidOperationException("Invalid game.json: 'StartupMapId' cannot be empty.");
+                    throw new InvalidOperationException("Invalid launcher bootstrap: 'StartupMapId' cannot be empty.");
                 }
                 engine.LoadMap(config.StartupMapId);
 
                 var debugDrawRenderer = new RaylibDebugDrawRenderer { PlaneY = 0.35f };
-                using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Immediate, engine.VFS);
+                using var primitiveRenderer = new RaylibPrimitiveRenderer(RaylibPrimitiveRenderMode.Instanced, engine.VFS);
 
                 int lastW = screenWidth;
                 int lastH = screenHeight;
+                bool underlayHadContent = false;
+                bool overlayHadContent = false;
+                bool uiHadContent = false;
+                bool compositeHadContent = false;
+                int underlayLayerVersion = -1;
+                int topOverlayLayerVersion = -1;
+                var underlayPacer = new PresentationOverlayLanePacer(PresentationOverlayLayer.UnderUi);
+                string? screenshotPath = Environment.GetEnvironmentVariable("LUDOTS_TAKE_SCREENSHOT_PATH");
+                string? diagnosticPath = Environment.GetEnvironmentVariable("LUDOTS_RAYLIB_DIAGNOSTIC_PATH");
+                string? screenshotTargetPath = string.IsNullOrWhiteSpace(screenshotPath)
+                    ? null
+                    : Path.GetFullPath(screenshotPath);
+                string? screenshotFileName = string.IsNullOrWhiteSpace(screenshotTargetPath)
+                    ? null
+                    : Path.GetFileName(screenshotTargetPath);
+                string? screenshotWorkingPath = string.IsNullOrWhiteSpace(screenshotFileName)
+                    ? null
+                    : Path.Combine(Environment.CurrentDirectory, screenshotFileName);
+                bool screenshotPending = !string.IsNullOrWhiteSpace(screenshotFileName);
+                int screenshotFrame = int.TryParse(Environment.GetEnvironmentVariable("LUDOTS_TAKE_SCREENSHOT_FRAME"), out int parsedScreenshotFrame)
+                    ? Math.Max(1, parsedScreenshotFrame)
+                    : 60;
+                int frameIndex = 0;
 
                 while (!Rl.WindowShouldClose())
                 {
@@ -124,7 +175,10 @@ namespace Ludots.Adapter.Raylib
                         {
                             lastW = w;
                             lastH = h;
-                            uiRenderer.Resize(w, h);
+                            compositeRenderer.Resize(w, h);
+                            underlayLayer.Resize(w, h);
+                            uiLayer.Resize(w, h);
+                            overlayLayer.Resize(w, h);
                             uiRoot.Resize(w, h);
                         }
 
@@ -135,30 +189,72 @@ namespace Ludots.Adapter.Raylib
                         bool drawDebugDraw = renderDebug.DrawDebugDraw;
                         bool drawSkiaUi = renderDebug.DrawSkiaUi;
 
-                        bool uiCaptured = drawSkiaUi && UpdateInput(uiRoot);
+                        double uiInputMs = 0d;
+                        bool uiCaptured = false;
+                        if (drawSkiaUi)
+                        {
+                            long uiInputStart = Stopwatch.GetTimestamp();
+                            uiCaptured = UpdateInput(uiRoot);
+                            uiInputMs = ElapsedMs(uiInputStart);
+                        }
+
+                        presentationTiming?.ObserveUiInput(uiInputMs);
                         engine.GlobalContext[CoreServiceKeys.UiCaptured.Name] = uiCaptured;
+
                         engine.Tick(dt);
 
-                        cameraPresenter.Update(engine.GameSession.Camera.State, dt, renderCameraDebug);
+                        float cameraAlpha = presentationFrameSetup?.GetInterpolationAlpha() ?? 1f;
+                        cameraPresenter.Update(engine.GameSession.Camera, cameraAlpha, renderCameraDebug);
                         hudProjection?.Update(dt);
+                        if (overlaySceneBuilder != null && overlayScene != null)
+                        {
+                            long overlayBuildStart = Stopwatch.GetTimestamp();
+                            overlaySceneBuilder.Build(overlayScene);
+                            presentationTiming?.ObserveScreenOverlayBuild(
+                                ElapsedMs(overlayBuildStart),
+                                overlayScene.DirtyLaneCount,
+                                overlayScene.Count);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveScreenOverlayBuild(0d, 0, 0);
+                        }
+
+                        string? activeMapId = engine.CurrentMapSession?.MapId.Value;
+                        bool uxPrototypeMapActive = string.Equals(activeMapId, "ux_prototype_battle", StringComparison.OrdinalIgnoreCase);
 
                         Rl.BeginDrawing();
-                        Rl.ClearBackground(new Raylib_cs.Color(0, 0, 0, 255));
+                        Rl.ClearBackground(uxPrototypeMapActive
+                            ? new Raylib_cs.Color(6, 10, 16, 255)
+                            : new Raylib_cs.Color(0, 0, 0, 255));
 
                         var activeCamera = cameraAdapter.Camera;
                         Rl.BeginMode3D(activeCamera);
 
+                        if (drawDebugDraw && !uxPrototypeMapActive)
+                        {
+                            DrawInfiniteGrid(activeCamera.target, 300, 1.0f, 10);
+
+                            var target = activeCamera.target;
+                            Rl.DrawLine3D(target, target + new Vector3(2.0f, 0, 0), Color.RED);
+                            Rl.DrawLine3D(target, target + new Vector3(0, 0, 2.0f), Color.BLUE);
+                            Rl.DrawLine3D(target, target + new Vector3(0, 2.0f, 0), Color.GREEN);
+                        }
+
                         // 锚定到 target，网格以观察点为中心；halfCount 越大边界越远
-                        DrawInfiniteGrid(activeCamera.target, 300, 1.0f, 10);
-
-                        var t = activeCamera.target;
-                        Rl.DrawLine3D(t, t + new Vector3(2.0f, 0, 0), Color.RED);
-                        Rl.DrawLine3D(t, t + new Vector3(0, 0, 2.0f), Color.BLUE);
-                        Rl.DrawLine3D(t, t + new Vector3(0, 2.0f, 0), Color.GREEN);
-
                         if (drawTerrain)
                         {
+                            long terrainStart = Stopwatch.GetTimestamp();
                             terrainRenderer.Render(engine.VertexMap, activeCamera);
+                            presentationTiming?.ObserveTerrain(
+                                ElapsedMs(terrainStart),
+                                terrainRenderer.ChunkBuildMsLastFrame,
+                                terrainRenderer.DrawnChunkCountLastFrame,
+                                terrainRenderer.BuiltChunkCountLastFrame);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveTerrain(0d, 0d, 0, 0);
                         }
 
                         if (drawPrimitives &&
@@ -172,7 +268,17 @@ namespace Ludots.Adapter.Raylib
                                 System.Diagnostics.Debug.WriteLine("[RaylibHostLoop] PrimitiveDrawBuffer is empty on first render frame — no Marker3D performers emitting?");
                                 _emptyBufferWarned = true;
                             }
-                            primitiveRenderer.Draw(draw, meshes, renderDebug.AcceptanceScaleMultiplier);
+                            long primitiveStart = Stopwatch.GetTimestamp();
+                            PrimitiveDrawBuffer? snapshot = engine.GetService(CoreServiceKeys.PresentationVisualSnapshotBuffer);
+                            primitiveRenderer.Draw(draw, activeCamera, snapshot, meshes, renderDebug.AcceptanceScaleMultiplier);
+                            presentationTiming?.ObservePrimitiveRender(
+                                ElapsedMs(primitiveStart),
+                                primitiveRenderer.LastInstancedInstances,
+                                primitiveRenderer.LastInstancedBatches);
+                        }
+                        else
+                        {
+                            presentationTiming?.ObservePrimitiveRender(0d, 0, 0);
                         }
 
                         // Draw ground overlays (range circles, cones, etc.)
@@ -191,23 +297,152 @@ namespace Ludots.Adapter.Raylib
 
                         Rl.EndMode3D();
 
-                        DrawScreenHud(engine);
+                        long overlayStart = Stopwatch.GetTimestamp();
+                        overlaySkiaRenderer.ResetFrameStats();
 
-                        if (drawSkiaUi && uiRoot.IsDirty)
+                        bool hasUnderlay = overlayScene != null && overlayScene.ContainsLayer(PresentationOverlayLayer.UnderUi);
+                        bool hasTopOverlay = overlayScene != null && overlayScene.ContainsLayer(PresentationOverlayLayer.TopMost);
+                        bool hasUiLayer = drawSkiaUi && uiRoot.Scene != null;
+
+                        int currentUnderlayVersion = overlayScene?.GetLayerVersion(PresentationOverlayLayer.UnderUi) ?? 0;
+                        int currentTopOverlayVersion = overlayScene?.GetLayerVersion(PresentationOverlayLayer.TopMost) ?? 0;
+                        bool refreshUnderlay = overlayScene != null && (hasUnderlay || underlayHadContent) &&
+                            (currentUnderlayVersion != underlayLayerVersion || hasUnderlay != underlayHadContent);
+                        bool underlayCanvasChanged = false;
+                        if (refreshUnderlay)
                         {
-                            uiRenderer.Canvas.Clear(SKColors.Transparent);
-                            uiRoot.Render(uiRenderer.Canvas);
-                            uiRenderer.UpdateTexture();
-                        }
-                        if (drawSkiaUi)
-                        {
-                            uiRenderer.Draw();
+                            PresentationOverlayLanePacer.LaneRefreshPlan underlayPlan = default;
+                            if (hasUnderlay)
+                            {
+                                underlayPlan = underlayPacer.BuildPlan(overlayScene!);
+                            }
+
+                            if (!hasUnderlay || underlayPlan.HasAnyRefresh)
+                            {
+                                underlayLayer.Clear();
+                                if (hasUnderlay)
+                                {
+                                    overlaySkiaRenderer.Render(overlayScene!, underlayLayer.Canvas,
+                                        PresentationOverlayLayer.UnderUi, underlayPlan);
+                                    underlayLayer.SetHasContent(true);
+                                }
+                                underlayCanvasChanged = true;
+                            }
+
+                            if (hasUnderlay)
+                                underlayPacer.MarkPresented(overlayScene!, underlayPlan);
+                            else
+                                underlayPacer.Reset();
+
+                            underlayHadContent = hasUnderlay;
+                            underlayLayerVersion = currentUnderlayVersion;
                         }
 
-                        var res = viewController.Resolution;
-                        DrawScreenOverlays(engine, (int)res.X, (int)res.Y);
+                        bool refreshUiLayer = hasUiLayer != uiHadContent || (drawSkiaUi && uiRoot.IsDirty);
+                        if (refreshUiLayer)
+                        {
+                            long uiRenderStart = Stopwatch.GetTimestamp();
+                            uiLayer.Clear();
+                            if (hasUiLayer)
+                            {
+                                skiaRenderer.SetCanvas(uiLayer.Canvas);
+                                uiRoot.Render();
+                                uiLayer.SetHasContent(true);
+                            }
+                            presentationTiming?.ObserveUiRender(ElapsedMs(uiRenderStart));
+                            uiHadContent = hasUiLayer;
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveUiRender(0d);
+                        }
+
+                        bool refreshTopOverlay = overlayScene != null && (hasTopOverlay || overlayHadContent) &&
+                            (currentTopOverlayVersion != topOverlayLayerVersion || hasTopOverlay != overlayHadContent);
+                        if (refreshTopOverlay)
+                        {
+                            overlayLayer.Clear();
+                            if (hasTopOverlay)
+                            {
+                                overlaySkiaRenderer.Render(overlayScene!, overlayLayer.Canvas, PresentationOverlayLayer.TopMost);
+                                overlayLayer.SetHasContent(true);
+                            }
+                            overlayHadContent = hasTopOverlay;
+                            topOverlayLayerVersion = currentTopOverlayVersion;
+                        }
+
+                        bool hasCompositeContent = hasUnderlay || hasUiLayer || hasTopOverlay;
+                        bool refreshComposite = underlayCanvasChanged || refreshUiLayer || refreshTopOverlay
+                            || hasCompositeContent != compositeHadContent;
+                        if (refreshComposite)
+                        {
+                            compositeRenderer.Canvas.Clear(SKColors.Transparent);
+                            if (hasUnderlay)
+                            {
+                                underlayLayer.DrawTo(compositeRenderer.Canvas);
+                            }
+
+                            if (hasUiLayer)
+                            {
+                                uiLayer.DrawTo(compositeRenderer.Canvas);
+                            }
+
+                            if (hasTopOverlay)
+                            {
+                                overlayLayer.DrawTo(compositeRenderer.Canvas);
+                            }
+
+                            long uiUploadStart = Stopwatch.GetTimestamp();
+                            compositeRenderer.UpdateTexture();
+                            presentationTiming?.ObserveUiUpload(hasCompositeContent ? ElapsedMs(uiUploadStart) : 0d);
+                            compositeHadContent = hasCompositeContent;
+                        }
+                        else
+                        {
+                            presentationTiming?.ObserveUiUpload(0d);
+                        }
+
+                        if (hasCompositeContent || compositeHadContent)
+                        {
+                            compositeRenderer.Draw();
+                        }
+
+                        presentationTiming?.ObserveCompositeSkip(!refreshComposite);
+                        screenOverlayBuffer?.Clear();
+                        presentationTiming?.ObserveScreenOverlayDraw(
+                            ElapsedMs(overlayStart),
+                            overlaySkiaRenderer.RebuiltLaneCountLastFrame,
+                            overlaySkiaRenderer.CachedTextLayoutCount);
 
                         Rl.EndDrawing();
+
+                        frameIndex++;
+                        if (screenshotPending && frameIndex >= screenshotFrame)
+                        {
+                            string fullScreenshotPath = screenshotTargetPath!;
+                            string? screenshotDirectory = Path.GetDirectoryName(fullScreenshotPath);
+                            if (!string.IsNullOrWhiteSpace(screenshotDirectory))
+                            {
+                                Directory.CreateDirectory(screenshotDirectory);
+                            }
+
+                            AppendRaylibDiagnostic(
+                                diagnosticPath,
+                                $"screenshot frame={frameIndex} cameraPos=({activeCamera.position.X:F2},{activeCamera.position.Y:F2},{activeCamera.position.Z:F2}) cameraTarget=({activeCamera.target.X:F2},{activeCamera.target.Y:F2},{activeCamera.target.Z:F2})");
+                            AppendRaylibDiagnostic(diagnosticPath, BuildInputSelectionDiagnostic(engine));
+
+                            Rl.TakeScreenshot(screenshotFileName!);
+                            if (!string.IsNullOrWhiteSpace(screenshotWorkingPath) &&
+                                !string.Equals(screenshotWorkingPath, fullScreenshotPath, StringComparison.OrdinalIgnoreCase) &&
+                                File.Exists(screenshotWorkingPath))
+                            {
+                                File.Copy(screenshotWorkingPath, fullScreenshotPath, overwrite: true);
+                                File.Delete(screenshotWorkingPath);
+                            }
+
+                            screenshotPending = false;
+                            Log.Info(in LogChannels.Engine, $"Captured runtime screenshot: {fullScreenshotPath}");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -222,6 +457,23 @@ namespace Ludots.Adapter.Raylib
                 terrainRenderer.Dispose();
                 engine.Stop();
             }
+        }
+
+        private static void AppendRaylibDiagnostic(string? diagnosticPath, string message)
+        {
+            if (string.IsNullOrWhiteSpace(diagnosticPath))
+            {
+                return;
+            }
+
+            string fullPath = Path.GetFullPath(diagnosticPath);
+            string? directory = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.AppendAllText(fullPath, $"[{DateTime.UtcNow:O}] {message}{Environment.NewLine}");
         }
 
         private static void ValidateRequiredContextBeforeLoop(GameEngine engine)
@@ -253,12 +505,18 @@ namespace Ludots.Adapter.Raylib
         private static bool UpdateInput(UIRoot uiRoot)
         {
             var mousePos = Rl.GetMousePosition();
+            UiNode? hitNode = uiRoot.Scene?.HitTest(mousePos.X, mousePos.Y);
+            bool hitInteractiveUi = IsInteractiveUiNode(hitNode);
 
-            uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Move, X = mousePos.X, Y = mousePos.Y });
+            if (_uiPointerCaptured || hitInteractiveUi)
+            {
+                uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Move, X = mousePos.X, Y = mousePos.Y });
+            }
 
             if (Rl.IsMouseButtonPressed(MouseButton.MOUSE_LEFT_BUTTON))
             {
-                if (uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Down, X = mousePos.X, Y = mousePos.Y }))
+                if (hitInteractiveUi &&
+                    uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Down, X = mousePos.X, Y = mousePos.Y }))
                 {
                     _uiPointerCaptured = true;
                 }
@@ -266,11 +524,187 @@ namespace Ludots.Adapter.Raylib
 
             if (Rl.IsMouseButtonReleased(MouseButton.MOUSE_LEFT_BUTTON))
             {
-                uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Up, X = mousePos.X, Y = mousePos.Y });
-                _uiPointerCaptured = false;
+                if (_uiPointerCaptured)
+                {
+                    uiRoot.HandleInput(new PointerEvent { DeviceType = InputDeviceType.Mouse, PointerId = 0, Action = PointerAction.Up, X = mousePos.X, Y = mousePos.Y });
+                    _uiPointerCaptured = false;
+                }
             }
 
             return _uiPointerCaptured;
+        }
+
+        private static bool IsInteractiveUiNode(UiNode? node)
+        {
+            for (UiNode? current = node; current != null; current = current.Parent)
+            {
+                if (current.ActionHandles.Count > 0)
+                {
+                    return true;
+                }
+
+                if (current.Style.Overflow == UiOverflow.Scroll)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string BuildInputSelectionDiagnostic(GameEngine engine)
+        {
+            string pointerSummary = "pointer=(n/a)";
+            string liveSelectSummary = "liveSelect=missing";
+            string liveCommandSummary = "liveCommand=missing";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.InputHandler.Name, out var inputObj) &&
+                inputObj is PlayerInputHandler input)
+            {
+                Vector2 pointer = input.ReadAction<Vector2>("PointerPos");
+                pointerSummary = $"pointer=({pointer.X:0.##},{pointer.Y:0.##})";
+                liveSelectSummary = BuildActionStateSummary(input, "Select", "liveSelect");
+                liveCommandSummary = BuildActionStateSummary(input, "Command", "liveCommand");
+            }
+
+            string authSelectSummary = "authSelect=missing";
+            string authCommandSummary = "authCommand=missing";
+            string authPointerSummary = "authPointer=(n/a)";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.AuthoritativeInput.Name, out var authoritativeInputObj) &&
+                authoritativeInputObj is IInputActionReader authoritativeInput)
+            {
+                Vector2 authoritativePointer = authoritativeInput.ReadAction<Vector2>("PointerPos");
+                authPointerSummary = $"authPointer=({authoritativePointer.X:0.##},{authoritativePointer.Y:0.##})";
+                authSelectSummary = BuildActionStateSummary(authoritativeInput, "Select", "authSelect");
+                authCommandSummary = BuildActionStateSummary(authoritativeInput, "Command", "authCommand");
+            }
+
+            string hoveredSummary = "hovered=(none)";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) &&
+                hoveredObj is Entity hovered &&
+                hovered != Entity.Null)
+            {
+                hoveredSummary = $"hovered={DescribeEntity(engine, hovered)}";
+            }
+
+            string selectedSummary = "selected=(none)";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var selectedObj) &&
+                selectedObj is Entity selected &&
+                selected != Entity.Null)
+            {
+                selectedSummary = $"selected={DescribeEntity(engine, selected)}";
+            }
+
+            bool uiCaptured = engine.GlobalContext.TryGetValue(CoreServiceKeys.UiCaptured.Name, out var uiCapturedObj) &&
+                uiCapturedObj is bool captured &&
+                captured;
+
+            string dragSummary = "drag=inactive";
+            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.LocalPlayerEntity.Name, out var localPlayerObj) &&
+                localPlayerObj is Entity localPlayer &&
+                engine.World.IsAlive(localPlayer) &&
+                engine.World.Has<SelectionDragState>(localPlayer))
+            {
+                ref SelectionDragState drag = ref engine.World.Get<SelectionDragState>(localPlayer);
+                dragSummary = drag.Active
+                    ? $"drag=active({drag.StartScreen.X:0.##},{drag.StartScreen.Y:0.##})->({drag.CurrentScreen.X:0.##},{drag.CurrentScreen.Y:0.##})"
+                    : "drag=idle";
+            }
+
+            string targetSummary = BuildSelectionTargetSummary(engine);
+            return $"windowFocused={Rl.IsWindowFocused()} {pointerSummary} {authPointerSummary} {liveSelectSummary} {authSelectSummary} {liveCommandSummary} {authCommandSummary} {hoveredSummary} {selectedSummary} uiCaptured={uiCaptured} {dragSummary} {targetSummary}";
+        }
+
+        private static string BuildActionStateSummary(IInputActionReader input, string actionId, string label)
+        {
+            return $"{label}[down={input.IsDown(actionId)},pressed={input.PressedThisFrame(actionId)},released={input.ReleasedThisFrame(actionId)}]";
+        }
+
+        private static string DescribeEntity(GameEngine engine, Entity entity)
+        {
+            if (!engine.World.IsAlive(entity))
+            {
+                return $"Entity#{entity.Id}(dead)";
+            }
+
+            if (engine.World.TryGet(entity, out Name name) && !string.IsNullOrWhiteSpace(name.Value))
+            {
+                return $"{name.Value}#{entity.Id}";
+            }
+
+            return $"Entity#{entity.Id}";
+        }
+
+        private static string BuildSelectionTargetSummary(GameEngine engine)
+        {
+            if (engine.GetService(CoreServiceKeys.ScreenProjector) is not IScreenProjector projector)
+            {
+                return "targets=(projector-missing)";
+            }
+
+            string[] names =
+            {
+                "Blue City",
+                "Blue Barracks",
+                "Blue Stable",
+                "Blue Workshop",
+                "Worker A",
+                "Soldier A",
+                "Catapult A"
+            };
+
+            var parts = new System.Collections.Generic.List<string>(names.Length);
+            int count = 0;
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (TryFindEntityByName(engine, names[i], out Entity entity))
+                {
+                    Vector2 screen;
+                    string source;
+                    if (engine.World.TryGet(entity, out VisualTransform transform))
+                    {
+                        screen = projector.WorldToScreen(transform.Position);
+                        source = "vt";
+                    }
+                    else if (engine.World.TryGet(entity, out WorldPositionCm position))
+                    {
+                        screen = projector.WorldToScreen(WorldUnits.WorldCmToVisualMeters(position.Value, yMeters: 0f));
+                        source = "world";
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    parts.Add($"{names[i]}@({screen.X:0},{screen.Y:0})[{source}]");
+                    count++;
+                }
+            }
+
+            return count == 0
+                ? "targets=(none)"
+                : $"targets={string.Join("; ", parts)}";
+        }
+
+        private static bool TryFindEntityByName(GameEngine engine, string entityName, out Entity entity)
+        {
+            Entity found = Entity.Null;
+            var query = new Arch.Core.QueryDescription().WithAll<Name>();
+            engine.World.Query(in query, (Entity candidate, ref Name name) =>
+            {
+                if (found == Entity.Null &&
+                    string.Equals(name.Value, entityName, StringComparison.OrdinalIgnoreCase))
+                {
+                    found = candidate;
+                }
+            });
+
+            entity = found;
+            return found != Entity.Null;
+        }
+
+        private static double ElapsedMs(long startTicks)
+        {
+            return (Stopwatch.GetTimestamp() - startTicks) * 1000.0 / Stopwatch.Frequency;
         }
 
         private static void DrawInfiniteGrid(Vector3 anchor, int halfCount, float spacing, int majorEvery)
@@ -307,69 +741,6 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
-        private static void DrawScreenHud(GameEngine engine)
-        {
-            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationScreenHudBuffer.Name, out var hudObj)) return;
-            engine.GlobalContext.TryGetValue(CoreServiceKeys.PresentationWorldHudStrings.Name, out var strObj);
-            if (hudObj is not ScreenHudBatchBuffer hud) return;
-            var strings = strObj as Ludots.Core.Presentation.Config.WorldHudStringTable;
-
-            var span = hud.GetSpan();
-            for (int i = 0; i < span.Length; i++)
-            {
-                ref readonly var item = ref span[i];
-                int ix = (int)item.ScreenX;
-                int iy = (int)item.ScreenY;
-                int iw = (int)item.Width;
-                int ih = (int)item.Height;
-
-                if (item.Kind == WorldHudItemKind.Bar)
-                {
-                    var bg = ToRaylibColor(item.Color0);
-                    var fg = ToRaylibColor(item.Color1);
-
-                    Rl.DrawRectangle(ix, iy, iw, ih, bg);
-                    int fw = (int)(iw * item.Value0);
-                    Rl.DrawRectangle(ix, iy, fw, ih, fg);
-                    Rl.DrawRectangleLines(ix, iy, iw, ih, new Color(0, 0, 0, 255));
-                    continue;
-                }
-
-                if (item.Kind == WorldHudItemKind.Text)
-                {
-                    int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
-                    var col = ToRaylibColor(item.Color0);
-
-                    string? text = null;
-                    if (item.Id0 != 0 && strings != null)
-                    {
-                        text = strings.TryGet(item.Id0);
-                    }
-                    else
-                    {
-                        var mode = (Ludots.Core.Presentation.Hud.WorldHudValueMode)item.Id1;
-                        if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.AttributeCurrentOverBase)
-                        {
-                            text = $"{(int)item.Value0}/{(int)item.Value1}";
-                        }
-                        else if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.AttributeCurrent)
-                        {
-                            text = $"{(int)item.Value0}";
-                        }
-                        else if (mode == Ludots.Core.Presentation.Hud.WorldHudValueMode.Constant)
-                        {
-                            text = $"{item.Value0}";
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(text))
-                    {
-                        Rl.DrawText(text, ix, iy, fontSize, col);
-                    }
-                }
-            }
-        }
-
         private static void DrawGroundOverlays(GroundOverlayBuffer overlays)
         {
             var span = overlays.GetSpan();
@@ -381,8 +752,11 @@ namespace Ludots.Adapter.Raylib
                     case GroundOverlayShape.Circle:
                         DrawGroundCircle(in item);
                         break;
+                    case GroundOverlayShape.Cone:
+                        DrawGroundCone(in item);
+                        break;
                     case GroundOverlayShape.Ring:
-                        DrawGroundCircle(in item); // ring uses same path for now
+                        DrawGroundRing(in item);
                         break;
                     case GroundOverlayShape.Line:
                         DrawGroundLine(in item);
@@ -431,54 +805,128 @@ namespace Ludots.Adapter.Raylib
             }
         }
 
-        private static void DrawGroundLine(in GroundOverlayItem item)
+        private static void DrawGroundRing(in GroundOverlayItem item)
         {
-            float dx = MathF.Cos(item.Rotation) * item.Length;
-            float dz = MathF.Sin(item.Rotation) * item.Length;
-            var a = item.Center;
-            var b = new Vector3(a.X + dx, a.Y, a.Z + dz);
-            Rl.DrawLine3D(a, b, ToRaylibColor(item.BorderColor));
-        }
+            const int segments = 48;
+            float innerRadius = Math.Clamp(item.InnerRadius, 0f, item.Radius);
+            float outerRadius = MathF.Max(item.Radius, innerRadius);
+            var center = item.Center;
 
-        private static Color ToRaylibColor(Vector4 c) => RaylibColorUtil.ToRaylibColor(in c);
-
-        private static void DrawScreenOverlays(GameEngine engine, int screenWidth, int screenHeight)
-        {
-            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.ScreenOverlayBuffer.Name, out var bufferObj)) return;
-            if (bufferObj is not ScreenOverlayBuffer buffer) return;
-
-            const int maxOverlayDim = 4096;
-
-            var span = buffer.GetSpan();
-            for (int i = 0; i < span.Length; i++)
+            if (item.FillColor.W > 0.01f && outerRadius > innerRadius)
             {
-                ref readonly var item = ref span[i];
-                switch (item.Kind)
+                var fillColor = ToRaylibColor(item.FillColor);
+                const int bands = 6;
+                for (int band = 0; band < bands; band++)
                 {
-                    case ScreenOverlayItemKind.Text:
-                    {
-                        string? text = buffer.GetString(item.StringId);
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            int fontSize = item.FontSize <= 0 ? 16 : item.FontSize;
-                            Rl.DrawText(text, item.X, item.Y, fontSize, ToRaylibColor(item.Color));
-                        }
-                        break;
-                    }
-                    case ScreenOverlayItemKind.Rect:
-                    {
-                        if (item.Width <= 0 || item.Height <= 0 || item.Width > maxOverlayDim || item.Height > maxOverlayDim) break;
-                        Rl.DrawRectangle(item.X, item.Y, item.Width, item.Height, ToRaylibColor(item.BackgroundColor));
-                        if (item.Color.W > 0.01f)
-                        {
-                            Rl.DrawRectangleLines(item.X, item.Y, item.Width, item.Height, ToRaylibColor(item.Color));
-                        }
-                        break;
-                    }
+                    float radius = innerRadius + (outerRadius - innerRadius) * (band + 0.5f) / bands;
+                    DrawGroundArcLoop(center, radius, 0f, MathF.PI * 2f, segments, fillColor);
                 }
             }
 
-            buffer.Clear();
+            if (item.BorderColor.W > 0.01f && item.BorderWidth > 0f)
+            {
+                var border = ToRaylibColor(item.BorderColor);
+                DrawGroundArcLoop(center, outerRadius, 0f, MathF.PI * 2f, segments, border);
+                if (innerRadius > 0.001f)
+                {
+                    DrawGroundArcLoop(center, innerRadius, 0f, MathF.PI * 2f, segments, border);
+                }
+            }
         }
+
+        private static void DrawGroundCone(in GroundOverlayItem item)
+        {
+            const int segments = 24;
+            float radius = MathF.Max(item.Radius, 0f);
+            float start = item.Rotation - item.Angle;
+            float end = item.Rotation + item.Angle;
+            var center = item.Center;
+
+            if (radius <= 0f)
+            {
+                return;
+            }
+
+            if (item.FillColor.W > 0.01f)
+            {
+                var fillColor = ToRaylibColor(item.FillColor);
+                const int bands = 6;
+                for (int band = 1; band <= bands; band++)
+                {
+                    float ringRadius = radius * band / bands;
+                    DrawGroundArcLoop(center, ringRadius, start, end, segments, fillColor);
+                }
+            }
+
+            if (item.BorderColor.W > 0.01f && item.BorderWidth > 0f)
+            {
+                var border = ToRaylibColor(item.BorderColor);
+                DrawGroundArcLoop(center, radius, start, end, segments, border);
+                var left = new Vector3(center.X + MathF.Cos(start) * radius, center.Y, center.Z + MathF.Sin(start) * radius);
+                var right = new Vector3(center.X + MathF.Cos(end) * radius, center.Y, center.Z + MathF.Sin(end) * radius);
+                Rl.DrawLine3D(center, left, border);
+                Rl.DrawLine3D(center, right, border);
+            }
+        }
+
+        private static void DrawGroundLine(in GroundOverlayItem item)
+        {
+            float length = item.Length > 0f ? item.Length : item.Radius;
+            if (length <= 0f)
+            {
+                return;
+            }
+
+            float dx = MathF.Cos(item.Rotation) * length;
+            float dz = MathF.Sin(item.Rotation) * length;
+            var a = item.Center;
+            var b = new Vector3(a.X + dx, a.Y, a.Z + dz);
+            float halfWidth = MathF.Max(0f, item.Width) * 0.5f;
+            var normal = new Vector3(-MathF.Sin(item.Rotation), 0f, MathF.Cos(item.Rotation));
+
+            if (item.FillColor.W > 0.01f)
+            {
+                var fill = ToRaylibColor(item.FillColor);
+                int stripes = halfWidth > 0.001f ? Math.Clamp((int)MathF.Ceiling(halfWidth / 0.12f), 1, 8) : 1;
+                for (int stripe = -stripes; stripe <= stripes; stripe++)
+                {
+                    float offset = stripes == 0 ? 0f : halfWidth * stripe / Math.Max(stripes, 1);
+                    var delta = normal * offset;
+                    Rl.DrawLine3D(a + delta, b + delta, fill);
+                }
+            }
+
+            if (item.BorderColor.W > 0.01f)
+            {
+                var border = ToRaylibColor(item.BorderColor);
+                Rl.DrawLine3D(a, b, border);
+                if (halfWidth > 0.001f)
+                {
+                    var delta = normal * halfWidth;
+                    Rl.DrawLine3D(a + delta, b + delta, border);
+                    Rl.DrawLine3D(a - delta, b - delta, border);
+                }
+            }
+        }
+
+        private static void DrawGroundArcLoop(Vector3 center, float radius, float startAngle, float endAngle, int segments, Color color)
+        {
+            if (segments <= 0 || radius <= 0f)
+            {
+                return;
+            }
+
+            float step = (endAngle - startAngle) / segments;
+            for (int s = 0; s < segments; s++)
+            {
+                float a0 = startAngle + s * step;
+                float a1 = startAngle + (s + 1) * step;
+                var p0 = new Vector3(center.X + MathF.Cos(a0) * radius, center.Y, center.Z + MathF.Sin(a0) * radius);
+                var p1 = new Vector3(center.X + MathF.Cos(a1) * radius, center.Y, center.Z + MathF.Sin(a1) * radius);
+                Rl.DrawLine3D(p0, p1, color);
+            }
+        }
+
+        private static Color ToRaylibColor(Vector4 c) => RaylibColorUtil.ToRaylibColor(in c);
     }
 }

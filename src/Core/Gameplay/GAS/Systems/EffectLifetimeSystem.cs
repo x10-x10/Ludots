@@ -1,9 +1,10 @@
-using Arch.Core;
+﻿using Arch.Core;
 using Arch.Core.Extensions;
 using Arch.Buffer;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.Teams;
+using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Components;
 using Ludots.Core.Spatial;
 using Ludots.Core.Mathematics;
@@ -42,17 +43,12 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             public int EffectTemplateId;
         }
 
-        // ── TargetResolver fan-out (period) ──
-        private struct PeriodFanOutEntry
-        {
-            public Entity EffectEntity;
-            public EffectContext Context;
-        }
-
-        private readonly List<PeriodFanOutEntry> _periodFanOutEntries = new(64);
+        // ?? TargetResolver fan-out (period) ??
         private readonly List<FanOutCommand> _fanOutCommands = new(256);
         private readonly Entity[] _resolverBuffer = new Entity[256];
+        private readonly BuiltinHandlerExecutionContext _builtinRuntime = new BuiltinHandlerExecutionContext();
         private int _fanOutDropped;
+
 
         private readonly List<CallbackCommand> _onPeriodCallbacks = new List<CallbackCommand>(64);
         private readonly List<CallbackCommand> _onExpireCallbacks = new List<CallbackCommand>(64);
@@ -77,7 +73,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly List<PhaseGraphEntry> _expirePhaseGraphs = new(64);
         private readonly List<PhaseGraphEntry> _removePhaseGraphs = new(64);
 
-        public EffectLifetimeSystem(World world, Ludots.Core.Engine.IClock clock, GasConditionRegistry conditions, EffectRequestQueue effectRequests = null, GasBudget budget = null, EffectTemplateRegistry templates = null, ISpatialQueryService spatialQueries = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null, TagOps tagOps = null) : base(world)
+        public EffectLifetimeSystem(World world, Ludots.Core.Engine.IClock clock, GasConditionRegistry conditions, EffectRequestQueue effectRequests = null, GasBudget budget = null, EffectTemplateRegistry templates = null, ISpatialQueryService spatialQueries = null, RuntimeEntitySpawnQueue spawnRequests = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null, TagOps tagOps = null) : base(world)
         {
             _effectRequests = effectRequests;
             _budget = budget;
@@ -89,6 +85,12 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _graphApiHost = graphApi;
             _graphApi = graphApi;
             _tagOps = tagOps ?? new TagOps();
+            _builtinRuntime.SpatialQueries = spatialQueries;
+            _builtinRuntime.FanOutBudget = _callbackCreateBudget;
+            _builtinRuntime.FanOutCommands = _fanOutCommands;
+            _builtinRuntime.ResolverBuffer = _resolverBuffer;
+            _builtinRuntime.SpawnRequests = spawnRequests;
+
         }
 
         public override void Update(in float dt)
@@ -100,7 +102,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _onPeriodCallbacks.Clear();
             _onExpireCallbacks.Clear();
             _onRemoveCallbacks.Clear();
-            _periodFanOutEntries.Clear();
             _fanOutCommands.Clear();
             _periodPhaseGraphs.Clear();
             _expirePhaseGraphs.Clear();
@@ -112,14 +113,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 Clock = _clock,
                 Conditions = _conditions,
                 OnPeriodCallbacks = _onPeriodCallbacks,
-                PeriodFanOutEntries = _periodFanOutEntries,
                 PeriodPhaseGraphs = _periodPhaseGraphs,
                 Budget = _callbackCreateBudget
             };
             World.InlineEntityQuery<LifetimeTickJob, GameplayEffect, EffectContext>(in _activeEffectsQuery, ref tickJob);
 
-            // Process period fan-out targets
-            ProcessPeriodFanOut();
 
             var cleanupJob = new LifetimeCleanupJob
             {
@@ -138,7 +136,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             World.InlineEntityQuery<LifetimeCleanupJob, GameplayEffect, EffectContext>(in _activeEffectsQuery, ref cleanupJob);
 
             // ── Execute Phase Graphs for period/expire/remove ──
-            ExecutePhaseGraphsForEntries(_periodPhaseGraphs, EffectPhaseId.OnPeriod);
+            ExecutePhaseGraphsForEntries(_periodPhaseGraphs, EffectPhaseId.OnPeriod, _builtinRuntime);
             ExecutePhaseGraphsForEntries(_expirePhaseGraphs, EffectPhaseId.OnExpire);
             ExecutePhaseGraphsForEntries(_removePhaseGraphs, EffectPhaseId.OnRemove);
 
@@ -171,7 +169,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             public Ludots.Core.Engine.IClock Clock;
             public GasConditionRegistry Conditions;
             public List<CallbackCommand> OnPeriodCallbacks;
-            public List<PeriodFanOutEntry> PeriodFanOutEntries;
             public List<PhaseGraphEntry> PeriodPhaseGraphs;
             public RootBudgetTable Budget;
             public int Dropped;
@@ -193,15 +190,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     {
                         // OnPeriod callbacks are handled via Phase Graph bindings.
 
-                        // Collect for TargetResolver period fan-out
-                        if (World.Has<EffectTemplateRef>(entity))
-                        {
-                            PeriodFanOutEntries.Add(new PeriodFanOutEntry
-                            {
-                                EffectEntity = entity,
-                                Context = context
-                            });
-                        }
 
                         // Collect for Phase Graph execution (OnPeriod)
                         if (World.Has<EffectTemplateRef>(entity))
@@ -303,30 +291,6 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
         }
 
-        // ── TargetResolver period fan-out (delegates to shared TargetResolverFanOutHelper) ──
-
-        private void ProcessPeriodFanOut()
-        {
-            if (_templates == null || _spatialQueries == null) return;
-
-            for (int i = 0; i < _periodFanOutEntries.Count; i++)
-            {
-                var entry = _periodFanOutEntries[i];
-                if (!World.IsAlive(entry.EffectEntity)) continue;
-
-                int tplId = World.Get<EffectTemplateRef>(entry.EffectEntity).TemplateId;
-                if (tplId <= 0 || !_templates.TryGetRef(tplId, out int tplIdx)) continue;
-                ref readonly var tplData = ref _templates.GetRef(tplIdx);
-                if (tplData.TargetQuery.Kind == TargetResolverKind.None) continue;
-
-                ref readonly var ctx = ref entry.Context;
-                TargetResolverFanOutHelper.CollectFanOutTargets(
-                    World, in ctx, in tplData.TargetQuery,
-                    in tplData.TargetFilter, in tplData.TargetDispatch,
-                    _spatialQueries, _callbackCreateBudget,
-                    _fanOutCommands, _resolverBuffer, ref _fanOutDropped);
-            }
-        }
 
         private void PublishCallbacks(List<CallbackCommand> callbacks)
         {
@@ -351,12 +315,13 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         /// Uses the effect's own template for behavior/config lookup.
         /// Also handles listener unregistration on OnExpire/OnRemove.
         /// </summary>
-        private void ExecutePhaseGraphsForEntries(List<PhaseGraphEntry> entries, EffectPhaseId phase)
+        private void ExecutePhaseGraphsForEntries(List<PhaseGraphEntry> entries, EffectPhaseId phase, BuiltinHandlerExecutionContext? builtinRuntime = null)
         {
             if (_phaseExecutor == null || _graphApi == null || _templates == null) return;
 
             for (int i = 0; i < entries.Count; i++)
             {
+                builtinRuntime?.ResetPerEffect();
                 var entry = entries[i];
                 if (entry.TemplateId <= 0) continue;
                 if (!_templates.TryGetRef(entry.TemplateId, out int tplIdx)) continue;
@@ -376,7 +341,15 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     in tpl.PhaseGraphBindings,
                     tpl.PresetType,
                     tpl.TagId,
-                    entry.TemplateId);
+                    entry.TemplateId,
+                    in mergedConfig,
+                    builtinRuntime);
+
+                if (builtinRuntime != null)
+                {
+                    _fanOutDropped += builtinRuntime.DroppedCount;
+                }
+
 
                 _graphApiHost?.ClearConfigContext();
 

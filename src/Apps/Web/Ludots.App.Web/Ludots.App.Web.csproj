@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <Import Project="..\..\..\Build\SkiaNativeRuntime.props" />
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -12,14 +13,8 @@
     <ProjectReference Include="..\..\..\Core\Ludots.Physics2D\Ludots.Physics2D.csproj" />
   </ItemGroup>
 
-  <Target Name="BuildModsRelease" BeforeTargets="Build">
-    <MSBuild Projects="..\..\..\..\mods\Navigation2DPlaygroundMod\Navigation2DPlaygroundMod.csproj;..\..\..\..\mods\CoreInputMod\CoreInputMod.csproj"
-             Targets="Restore;Build"
-             Properties="Configuration=Release" />
-  </Target>
-
   <ItemGroup>
-    <None Include="game.json">
+    <None Include="launcher.runtime.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="game.navigation2d.json">

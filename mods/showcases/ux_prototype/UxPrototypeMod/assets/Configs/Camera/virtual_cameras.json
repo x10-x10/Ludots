@@ -1,0 +1,26 @@
+[
+  {
+    "id": "Camera.Profile.UxPrototypeTactical",
+    "displayName": "UX Prototype Tactical",
+    "priority": 120,
+    "rigKind": "Orbit",
+    "distanceCm": 4600,
+    "pitch": 52,
+    "fovYDeg": 44,
+    "yaw": 180,
+    "minDistanceCm": 2800,
+    "maxDistanceCm": 9200,
+    "minPitchDeg": 42,
+    "maxPitchDeg": 66,
+    "panMode": "Keyboard",
+    "edgePanMarginPx": 10,
+    "edgePanSpeedCmPerSec": 7200,
+    "panCmPerSecond": 7200,
+    "enableGrabDrag": false,
+    "rotateMode": "None",
+    "enableZoom": true,
+    "zoomCmPerWheel": 900,
+    "followMode": "None",
+    "allowUserInput": true
+  }
+]

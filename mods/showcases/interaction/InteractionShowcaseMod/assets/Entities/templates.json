@@ -1,0 +1,211 @@
+[
+  {
+    "id": "interaction_arcweaver",
+    "components": {
+      "Name": { "Value": "Arcweaver" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "interaction.character.hero_showcase" },
+      "AttributeBuffer": { "base": { "Health": 160, "Shield": 20, "MoveSpeed": 360, "Armor": 4 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Interaction.Arcweaver.DuelBolt",
+          "Ability.Interaction.Arcweaver.BlinkStep",
+          "Ability.Interaction.Arcweaver.FireLance",
+          "Ability.Interaction.Arcweaver.NovaPulse",
+          "Ability.Interaction.Arcweaver.ArcDash",
+          "Ability.Interaction.Arcweaver.GuardToggle",
+          "Ability.Interaction.Arcweaver.ActionContext",
+          "Ability.Interaction.Arcweaver.RuneBurst"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "interaction_vanguard",
+    "components": {
+      "Name": { "Value": "Vanguard" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "interaction.character.hero_showcase" },
+      "AttributeBuffer": { "base": { "Health": 220, "Shield": 35, "MoveSpeed": 300, "Armor": 16 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Interaction.Vanguard.Challenge",
+          "Ability.Interaction.Vanguard.BannerLeap",
+          "Ability.Interaction.Vanguard.CleaveCone",
+          "Ability.Interaction.Vanguard.Shockwave",
+          "Ability.Interaction.Vanguard.ChargeDash",
+          "Ability.Interaction.Vanguard.IronWall",
+          "Ability.Interaction.Vanguard.ActionContext",
+          "Ability.Interaction.Vanguard.GroundSlam"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "interaction_arcweaver_forms_demo",
+    "components": {
+      "Name": { "Value": "ArcweaverFormsDemo" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "interaction.character.hero_showcase" },
+      "AttributeBuffer": { "base": { "Health": 160, "Shield": 20, "MoveSpeed": 360, "Armor": 4 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Interaction.Arcweaver.DuelBolt",
+          "Ability.Interaction.Arcweaver.BlinkStep",
+          "Ability.Interaction.Arcweaver.FireLance",
+          "Ability.Interaction.Arcweaver.NovaPulse"
+        ]
+      },
+      "AbilityFormSetRef": {
+        "formSetId": "interaction_arcweaver_forms_demo"
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "interaction_commander",
+    "components": {
+      "Name": { "Value": "Commander" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "interaction.character.hero_showcase" },
+      "AttributeBuffer": { "base": { "Health": 170, "Shield": 40, "MoveSpeed": 320, "Armor": 8 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Interaction.Commander.SupportBeam",
+          "Ability.Interaction.Commander.TacticalJump",
+          "Ability.Interaction.Commander.VolleyLine",
+          "Ability.Interaction.Commander.Overclock",
+          "Ability.Interaction.Commander.ThrustJump",
+          "Ability.Interaction.Commander.ShieldNet",
+          "Ability.Interaction.Commander.ActionContext",
+          "Ability.Interaction.Commander.OrbitalStrike"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "interaction_enemy_raider",
+    "components": {
+      "Name": { "Value": "EnemyRaider" },
+      "Team": { "Id": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 3.14159 },
+      "Presentation": { "visualTemplateId": "interaction.prop.dummy_showcase" },
+      "AttributeBuffer": { "base": { "Health": 140, "Shield": 0, "MoveSpeed": 290, "Armor": 4 } },
+      "GameplayTagContainer": {}
+    }
+  },
+  {
+    "id": "interaction_enemy_bruiser",
+    "components": {
+      "Name": { "Value": "EnemyBruiser" },
+      "Team": { "Id": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 3.14159 },
+      "Presentation": { "visualTemplateId": "interaction.prop.dummy_showcase" },
+      "AttributeBuffer": { "base": { "Health": 220, "Shield": 0, "MoveSpeed": 260, "Armor": 10 } },
+      "GameplayTagContainer": {}
+    }
+  },
+  {
+    "id": "interaction_stress_red_mage",
+    "components": {
+      "Name": { "Value": "StressRedMage" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "interaction.character.hero_showcase" },
+      "AttributeBuffer": { "base": { "Health": 9999, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Interaction.Stress.Fireball"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "interaction_stress_blue_mage",
+    "components": {
+      "Name": { "Value": "StressBlueMage" },
+      "Team": { "Id": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 3.14159 },
+      "Presentation": { "visualTemplateId": "interaction.character.hero_showcase" },
+      "AttributeBuffer": { "base": { "Health": 9999, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Interaction.Stress.Fireball"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "interaction_stress_anchor_red",
+    "components": {
+      "Name": { "Value": "StressRedAnchor" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "Presentation": { "visualTemplateId": "interaction.prop.dummy_showcase" },
+      "AttributeBuffer": { "base": { "Health": 500000, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "GameplayTagContainer": {}
+    }
+  },
+  {
+    "id": "interaction_stress_anchor_blue",
+    "components": {
+      "Name": { "Value": "StressBlueAnchor" },
+      "Team": { "Id": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "Presentation": { "visualTemplateId": "interaction.prop.dummy_showcase" },
+      "AttributeBuffer": { "base": { "Health": 500000, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "GameplayTagContainer": {}
+    }
+  }
+]

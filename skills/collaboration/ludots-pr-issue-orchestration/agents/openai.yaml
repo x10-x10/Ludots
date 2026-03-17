@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Ludots PR Issue Orchestration"
+  short_description: "Build evidence-backed PR and issue packets"
+  default_prompt: "Use $ludots-pr-issue-orchestration to assemble a reviewer-ready issue or PR packet from handoff, visual review, and CI artifacts."

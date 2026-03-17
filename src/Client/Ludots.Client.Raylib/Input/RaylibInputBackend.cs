@@ -39,6 +39,13 @@ namespace Ludots.Client.Raylib.Input
 
         public Vector2 GetMousePosition()
         {
+            if (!Raylib_cs.Raylib.IsWindowFocused())
+            {
+                // Report an invalid pointer position while the game window is unfocused
+                // so edge-pan and other viewport-bound interactions do not latch.
+                return new Vector2(-1f, -1f);
+            }
+
             return Raylib_cs.Raylib.GetMousePosition();
         }
 

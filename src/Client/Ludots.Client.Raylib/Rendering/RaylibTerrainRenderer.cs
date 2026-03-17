@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using Ludots.Core.Map.Hex;
@@ -35,8 +36,10 @@ namespace Ludots.Client.Raylib.Rendering
         private int _frameIndex;
 
         public int DrawnChunkCountLastFrame { get; private set; }
+        public int BuiltChunkCountLastFrame { get; private set; }
         public int TerrainVertexCountLastFrame { get; private set; }
         public int WaterVertexCountLastFrame { get; private set; }
+        public double ChunkBuildMsLastFrame { get; private set; }
         public int CachedChunkCount => _chunks.Count;
 
         public float VisibleRadius { get; set; } = 900f;
@@ -57,8 +60,10 @@ namespace Ludots.Client.Raylib.Rendering
 
             _frameIndex++;
             DrawnChunkCountLastFrame = 0;
+            BuiltChunkCountLastFrame = 0;
             TerrainVertexCountLastFrame = 0;
             WaterVertexCountLastFrame = 0;
+            ChunkBuildMsLastFrame = 0d;
             float cx = camera.target.X;
             float cz = camera.target.Z;
 
@@ -168,12 +173,15 @@ namespace Ludots.Client.Raylib.Rendering
                 }
             }
 
+            long buildStart = Stopwatch.GetTimestamp();
             _builder.BuildChunk(chunkX, chunkY, 0f, 0f, HeightScale, simplifiedCliffs, _meshData);
             ChunkGpu gpu = new ChunkGpu();
             gpu.SimplifiedCliffs = simplifiedCliffs;
             gpu.TerrainMesh = CreateMesh(_meshData.Terrain);
             gpu.WaterMesh = _meshData.Water.VertexCount > 0 ? CreateMesh(_meshData.Water) : default;
             gpu.LastUsedFrame = _frameIndex;
+            BuiltChunkCountLastFrame++;
+            ChunkBuildMsLastFrame += (Stopwatch.GetTimestamp() - buildStart) * 1000.0 / Stopwatch.Frequency;
             _chunks[key] = gpu;
             return ref _chunks.GetValueRefOrNullRef(key);
         }

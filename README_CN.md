@@ -1,4 +1,4 @@
-# Ludots
+﻿# Ludots
 
 **SuperFastECSGameplayFramework** - 基于 Arch ECS 构建的高性能、数据导向的游戏逻辑框架。
 
@@ -53,7 +53,7 @@ dotnet run --project .\src\Apps\Raylib\Ludots.App.Raylib\Ludots.App.Raylib.cspro
 
 *   `src/Core`: 引擎核心 (ECS, GAS, Physics, Math)。
 *   `src/Apps`: 应用程序入口 (Desktop/Raylib, Web)。
-*   `src/Mods`: 内置 Mod 和示例 (MobaDemo, RtsDemo)。
+*   `mods`: 内置 Mod 和示例 (MobaDemo, RtsDemo)。
 *   `src/Tools`: 开发者工具 (Editor, ModLauncher, NavBake)。
 *   `assets`: 游戏资源和配置。
 *   `docs`: 详细文档。
@@ -62,7 +62,10 @@ dotnet run --project .\src\Apps\Raylib\Ludots.App.Raylib\Ludots.App.Raylib.cspro
 
 详细文档位于 `docs/` 目录中。
 
-*   [架构指南](docs/arch-guide/README.md)
+*   [文档总览](docs/README.md)
+*   [开发规范](docs/conventions/README.md)
+*   [架构文档](docs/architecture/README.md)
+*   [参考资料](docs/reference/README.md)
 
 ## 🤝 贡献
 
@@ -89,3 +92,4 @@ dotnet run --project .\src\Apps\Raylib\Ludots.App.Raylib\Ludots.App.Raylib.cspro
 | **FixPointCS** | MIT | **数学库**。以源码形式集成在 `external/FixPointCS-master`。用于模拟一致性的确定性定点数数学库。 | [asik/FixPointCS](https://github.com/asik/FixPointCS) |
 
 *免责声明：所有商标和注册商标均为其各自所有者的财产。*
+

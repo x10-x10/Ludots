@@ -1,4 +1,5 @@
 using System.Numerics;
+using Ludots.Core.Presentation.Hud;
 
 namespace Ludots.Core.Presentation.Performers
 {
@@ -45,6 +46,12 @@ namespace Ludots.Core.Presentation.Performers
         /// </summary>
         public EntityScopeFilter EntityScope;
 
+        /// <summary>
+        /// When &gt; 0, only emit for entities whose <see cref="Components.VisualTemplateRef.TemplateId"/>
+        /// matches this value. Zero = no template filter (emit for all matching entities, the default).
+        /// </summary>
+        public int RequiredTemplateId;
+
         // ── Time-based modulation (instance-scoped only) ──
 
         /// <summary>
@@ -84,6 +91,15 @@ namespace Ludots.Core.Presentation.Performers
 
         /// <summary>Default font size for WorldText performers.</summary>
         public int DefaultFontSize = 16;
+
+        /// <summary>Stable text token ID for WorldText performers.</summary>
+        public int DefaultTextId;
+
+        /// <summary>
+        /// Transitional format hint for legacy adapters that still consume Id1/Value0/Value1.
+        /// The adapter-neutral runtime contract lives in <see cref="PresentationTextPacket"/>.
+        /// </summary>
+        public WorldHudValueMode LegacyWorldTextMode = WorldHudValueMode.None;
 
         // ── Binding index (built by PerformerDefinitionRegistry.Register) ──
 

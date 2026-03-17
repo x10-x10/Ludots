@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Arch.Core;
+using Ludots.Core.Gameplay.GAS.Config;
 using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
@@ -63,7 +65,7 @@ namespace Ludots.Tests.GAS
                     {
                         ActionId = "SkillQ",
                         Trigger = InputTriggerType.PressedThisFrame,
-                        OrderTagKey = "castAbility",
+                        OrderTypeKey = "castAbility",
                         IsSkillMapping = true,
                         RequireSelection = false,
                         SelectionType = OrderSelectionType.Entity
@@ -76,7 +78,7 @@ namespace Ludots.Tests.GAS
             var actor = world.Create();
             var target = world.Create();
             mapping.SetLocalPlayer(actor, 1);
-            mapping.SetTagKeyResolver(key => key == "castAbility" ? 1001 : 0);
+            mapping.SetOrderTypeKeyResolver(key => key == "castAbility" ? 1001 : 0);
             mapping.SetSelectedEntityProvider((out Entity e) => { e = target; return true; });
             mapping.SetHoveredEntityProvider((out Entity e) => { e = target; return true; });
 
@@ -116,6 +118,58 @@ namespace Ludots.Tests.GAS
             Assert.That(mapping.IsAiming, Is.False);
             Assert.That(orders.Count, Is.EqualTo(3));
             Assert.That(orders[2].Target, Is.EqualTo(target));
+
+            // PressReleaseAimCast: press -> pending, release -> enter aiming, Select confirms
+            mapping.SetInteractionMode(InteractionModeType.PressReleaseAimCast);
+            input.InjectButtonPress("SkillQ");
+            input.Update();
+            mapping.Update(0f);
+            Assert.That(mapping.IsAiming, Is.False);
+            Assert.That(orders.Count, Is.EqualTo(3));
+
+            input.Update();
+            mapping.Update(0f);
+            Assert.That(mapping.IsAiming, Is.True);
+            Assert.That(orders.Count, Is.EqualTo(3));
+
+            input.InjectButtonPress("Select");
+            input.Update();
+            mapping.Update(0f);
+            Assert.That(mapping.IsAiming, Is.False);
+            Assert.That(orders.Count, Is.EqualTo(4));
+            Assert.That(orders[3].Target, Is.EqualTo(target));
+        }
+
+        [Test]
+        public void AbilityExecLoader_CompileAbility_ParsesPresentationMetadata()
+        {
+            var obj = JsonNode.Parse(
+                """
+                {
+                  "presentation": {
+                    "displayName": "Mystic Shot",
+                    "iconGlyph": "Q",
+                    "accentColor": "#2AA7FF",
+                    "hintText": "Quick skill shot",
+                    "modeIconGlyphs": {
+                      "PressReleaseAimCast": "QA"
+                    },
+                    "modeHints": {
+                      "PressReleaseAimCast": "Release then confirm"
+                    }
+                  }
+                }
+                """) as JsonObject;
+
+            Assert.That(obj, Is.Not.Null);
+
+            var ability = AbilityExecLoader.CompileAbility(obj!, "ez.q", "test://abilities.json");
+            Assert.That(ability.HasPresentation, Is.True);
+            Assert.That(ability.Presentation, Is.Not.Null);
+            Assert.That(ability.Presentation!.ResolveDisplayName("fallback"), Is.EqualTo("Mystic Shot"));
+            Assert.That(ability.Presentation.ResolveIconGlyph(nameof(InteractionModeType.SmartCast), "?"), Is.EqualTo("Q"));
+            Assert.That(ability.Presentation.ResolveIconGlyph(nameof(InteractionModeType.PressReleaseAimCast), "?"), Is.EqualTo("QA"));
+            Assert.That(ability.Presentation.ResolveHintText(nameof(InteractionModeType.PressReleaseAimCast), "fallback"), Is.EqualTo("Release then confirm"));
         }
 
         private static InputConfigRoot CreateInputConfig()
@@ -159,3 +213,4 @@ namespace Ludots.Tests.GAS
         }
     }
 }
+

@@ -1,14 +1,12 @@
 using System;
 using Arch.Core;
 using Arch.System;
-using Ludots.Core.Components;
+using Ludots.Core.Config;
 using Ludots.Core.Engine;
 using Ludots.Core.Input.Runtime;
-using Ludots.Core.Mathematics.FixedPoint;
+using Ludots.Core.Navigation2D.Config;
 using Ludots.Core.Navigation2D.Components;
 using Ludots.Core.Navigation2D.Runtime;
-using Ludots.Core.Physics2D.Components;
-using Ludots.Core.Presentation.Components;
 using Ludots.Core.Scripting;
 using Navigation2DPlaygroundMod.Input;
 
@@ -16,15 +14,21 @@ namespace Navigation2DPlaygroundMod.Systems
 {
     public sealed class Navigation2DPlaygroundControlSystem : ISystem<float>
     {
-        private readonly GameEngine _engine;
-        private readonly World _world;
-        private PlayerInputHandler? _input;
-
-        private static readonly QueryDescription _scenarioQuery = new QueryDescription()
+        private static readonly QueryDescription ScenarioQuery = new QueryDescription()
             .WithAll<NavPlaygroundTeam>();
 
-        private static readonly QueryDescription _flowGoalQuery = new QueryDescription()
+        private static readonly QueryDescription FlowGoalQuery = new QueryDescription()
             .WithAll<NavFlowGoal2D>();
+
+        private static readonly QueryDescription DynamicAgentsQuery = new QueryDescription()
+            .WithAll<NavPlaygroundTeam>()
+            .WithNone<NavPlaygroundBlocker>();
+
+        private static readonly QueryDescription BlockerQuery = new QueryDescription()
+            .WithAll<NavPlaygroundBlocker>();
+
+        private readonly GameEngine _engine;
+        private readonly World _world;
 
         public Navigation2DPlaygroundControlSystem(GameEngine engine)
         {
@@ -42,72 +46,31 @@ namespace Navigation2DPlaygroundMod.Systems
 
         public void Update(in float deltaTime)
         {
-            if (!Navigation2DPlaygroundState.Enabled) return;
-            ResolveInput();
-            if (_input == null) return;
+            if (!Navigation2DPlaygroundState.Enabled)
+            {
+                return;
+            }
+
+            if (_engine.GetService(CoreServiceKeys.AuthoritativeInput) is not IInputActionReader input)
+            {
+                return;
+            }
 
             if (_engine.GlobalContext.TryGetValue(CoreServiceKeys.Navigation2DRuntime.Name, out var runtimeObj) &&
                 runtimeObj is Navigation2DRuntime navRuntime)
             {
-                HandlePressed(Navigation2DPlaygroundInputActions.ToggleFlowEnabled, () =>
-                {
-                    navRuntime.FlowEnabled = !navRuntime.FlowEnabled;
-                });
-                HandlePressed(Navigation2DPlaygroundInputActions.ToggleFlowDebug, () =>
-                {
-                    navRuntime.FlowDebugEnabled = !navRuntime.FlowDebugEnabled;
-                });
-                HandlePressed(Navigation2DPlaygroundInputActions.CycleFlowDebugMode, () =>
-                {
-                    navRuntime.FlowDebugMode = (navRuntime.FlowDebugMode + 1) % 3;
-                });
-                HandlePressed(Navigation2DPlaygroundInputActions.IncreaseFlowIterations, () =>
-                {
-                    navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick + 512, 0, 131072);
-                });
-                HandlePressed(Navigation2DPlaygroundInputActions.DecreaseFlowIterations, () =>
-                {
-                    navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick - 512, 0, 131072);
-                });
+                HandlePressed(input, Navigation2DPlaygroundInputActions.ToggleFlowEnabled, () => navRuntime.FlowEnabled = !navRuntime.FlowEnabled);
+                HandlePressed(input, Navigation2DPlaygroundInputActions.ToggleFlowDebug, () => navRuntime.FlowDebugEnabled = !navRuntime.FlowDebugEnabled);
+                HandlePressed(input, Navigation2DPlaygroundInputActions.CycleFlowDebugMode, () => navRuntime.FlowDebugMode = (navRuntime.FlowDebugMode + 1) % 3);
+                HandlePressed(input, Navigation2DPlaygroundInputActions.IncreaseFlowIterations, () => navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick + 512, 0, 131072));
+                HandlePressed(input, Navigation2DPlaygroundInputActions.DecreaseFlowIterations, () => navRuntime.FlowIterationsPerTick = Math.Clamp(navRuntime.FlowIterationsPerTick - 512, 0, 131072));
             }
 
-            HandlePressed(Navigation2DPlaygroundInputActions.IncreaseAgentsPerTeam, () =>
-            {
-                AdjustAgentsPerTeam(500);
-            });
-            HandlePressed(Navigation2DPlaygroundInputActions.DecreaseAgentsPerTeam, () =>
-            {
-                AdjustAgentsPerTeam(-500);
-            });
-            HandlePressed(Navigation2DPlaygroundInputActions.ResetScenario, RespawnScenario);
-        }
-
-        private void ResolveInput()
-        {
-            if (_input != null) return;
-            if (_engine.GlobalContext.TryGetValue(CoreServiceKeys.InputHandler.Name, out var inputObj) &&
-                inputObj is PlayerInputHandler handler)
-            {
-                _input = handler;
-            }
-        }
-
-        private void HandlePressed(string actionId, Action onPressed)
-        {
-            if (_input!.PressedThisFrame(actionId))
-            {
-                onPressed();
-            }
-        }
-
-        private void AdjustAgentsPerTeam(int delta)
-        {
-            int next = Navigation2DPlaygroundState.AgentsPerTeam + delta;
-            if (next < 0) next = 0;
-            if (next > 25000) next = 25000;
-            if (next == Navigation2DPlaygroundState.AgentsPerTeam) return;
-            Navigation2DPlaygroundState.AgentsPerTeam = next;
-            RespawnScenario();
+            HandlePressed(input, Navigation2DPlaygroundInputActions.IncreaseAgentsPerTeam, () => AdjustAgentsPerTeam(_engine, GetPlaygroundConfig(_engine).AgentsPerTeamStep));
+            HandlePressed(input, Navigation2DPlaygroundInputActions.DecreaseAgentsPerTeam, () => AdjustAgentsPerTeam(_engine, -GetPlaygroundConfig(_engine).AgentsPerTeamStep));
+            HandlePressed(input, Navigation2DPlaygroundInputActions.PreviousScenario, () => PreviousScenario(_engine));
+            HandlePressed(input, Navigation2DPlaygroundInputActions.NextScenario, () => NextScenario(_engine));
+            HandlePressed(input, Navigation2DPlaygroundInputActions.ResetScenario, () => RespawnScenario(_engine));
         }
 
         public void AfterUpdate(in float t)
@@ -118,101 +81,166 @@ namespace Navigation2DPlaygroundMod.Systems
         {
         }
 
-        private void RespawnScenario()
+        public static void PublishScenarioServices(
+            GameEngine engine,
+            Navigation2DPlaygroundConfig playgroundConfig,
+            Navigation2DPlaygroundSpawnSummary summary,
+            int agentsPerTeam,
+            int scenarioIndex)
         {
-            _world.Destroy(in _scenarioQuery);
-            _world.Destroy(in _flowGoalQuery);
-
-            SpawnScenario(_world, Navigation2DPlaygroundState.AgentsPerTeam);
-            PublishCounts();
+            engine.SetService(Navigation2DPlaygroundKeys.AgentsPerTeam, agentsPerTeam);
+            engine.SetService(Navigation2DPlaygroundKeys.LiveAgentsTotal, summary.DynamicAgents);
+            engine.SetService(Navigation2DPlaygroundKeys.BlockerCount, summary.BlockerCount);
+            engine.SetService(Navigation2DPlaygroundKeys.ScenarioIndex, scenarioIndex);
+            engine.SetService(Navigation2DPlaygroundKeys.ScenarioCount, playgroundConfig.Scenarios.Count);
+            engine.SetService(Navigation2DPlaygroundKeys.ScenarioTeamCount, summary.TeamCount);
+            engine.SetService(Navigation2DPlaygroundKeys.ScenarioId, summary.ScenarioId);
+            engine.SetService(Navigation2DPlaygroundKeys.ScenarioName, summary.ScenarioName);
+            engine.SetService(Navigation2DPlaygroundKeys.SpawnBatch, Navigation2DPlaygroundState.SpawnBatch);
+            engine.SetService(Navigation2DPlaygroundKeys.FlowDebugLines, 0);
         }
 
-        public static void SpawnScenario(World world, int agentsPerTeam)
+        public static Navigation2DPlaygroundConfig GetPlaygroundConfig(GameEngine engine)
         {
-            int xLeft = -9000;
-            int xRight = 9000;
+            GameConfig? gameConfig = engine.GetService(CoreServiceKeys.GameConfig);
+            return Navigation2DPlaygroundScenarioSpawner.GetPlaygroundConfig(gameConfig);
+        }
 
-            world.Create(new NavFlowGoal2D
+        public static bool HasScenarioEntities(World world)
+        {
+            return world.CountEntities(in ScenarioQuery) > 0;
+        }
+
+        public static void EnsureScenarioLoaded(GameEngine engine)
+        {
+            if (HasScenarioEntities(engine.World))
             {
-                FlowId = 0,
-                GoalCm = Fix64Vec2.FromInt(xRight, 0),
-                RadiusCm = Fix64.FromInt(0)
-            });
+                UpdateLiveCounts(engine);
+                return;
+            }
 
-            world.Create(new NavFlowGoal2D
+            RespawnScenario(engine);
+        }
+
+        public static void AdjustAgentsPerTeam(GameEngine engine, int delta)
+        {
+            var playgroundConfig = GetPlaygroundConfig(engine);
+            var scenario = Navigation2DPlaygroundScenarioSpawner.GetScenario(playgroundConfig, Navigation2DPlaygroundState.CurrentScenarioIndex);
+            int maxAgentsPerTeam = GetMaxAgentsPerTeam(engine, scenario.TeamCount);
+            int next = Navigation2DPlaygroundState.AgentsPerTeam + delta;
+            if (next < 0)
             {
-                FlowId = 1,
-                GoalCm = Fix64Vec2.FromInt(xLeft, 0),
-                RadiusCm = Fix64.FromInt(0)
-            });
+                next = 0;
+            }
 
-            var kin = new NavKinematics2D
+            if (next > maxAgentsPerTeam)
             {
-                MaxSpeedCmPerSec = Fix64.FromInt(800),
-                MaxAccelCmPerSec2 = Fix64.FromInt(6000),
-                RadiusCm = Fix64.FromInt(40),
-                NeighborDistCm = Fix64.FromInt(400),
-                TimeHorizonSec = Fix64.FromInt(2),
-                MaxNeighbors = 16
-            };
+                next = maxAgentsPerTeam;
+            }
 
-            int spacing = 120;
-            int cols = agentsPerTeam <= 0 ? 0 : (int)Math.Ceiling(Math.Sqrt(agentsPerTeam));
-            int rows = cols <= 0 ? 0 : (int)Math.Ceiling(agentsPerTeam / (double)cols);
-            int yStart = -(rows - 1) * spacing / 2;
-
-            int spawned = 0;
-            for (int r = 0; r < rows && spawned < agentsPerTeam; r++)
+            if (next == Navigation2DPlaygroundState.AgentsPerTeam)
             {
-                int y = yStart + r * spacing;
-                for (int c = 0; c < cols && spawned < agentsPerTeam; c++)
-                {
-                    int x0 = xLeft - c * spacing;
-                    int x1 = xRight + c * spacing;
+                return;
+            }
 
-                    world.Create(
-                        new NavAgent2D(),
-                        new NavFlowBinding2D { SurfaceId = 0, FlowId = 0 },
-                        new NavGoal2D { Kind = NavGoalKind2D.Point, TargetCm = Fix64Vec2.FromInt(xRight, y), RadiusCm = Fix64.Zero },
-                        kin,
-                        new Position2D { Value = Fix64Vec2.FromInt(x0, y) },
-                        Velocity2D.Zero,
-                        Mass2D.FromFloat(1f, 1f),
-                        new WorldPositionCm { Value = Fix64Vec2.FromInt(x0, y) },
-                        new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(x0, y) },
-                        VisualTransform.Default,
-                        new NavPlaygroundTeam { Id = 0 }
-                    );
+            Navigation2DPlaygroundState.AgentsPerTeam = next;
+            RespawnScenario(engine);
+        }
 
-                    world.Create(
-                        new NavAgent2D(),
-                        new NavFlowBinding2D { SurfaceId = 0, FlowId = 1 },
-                        new NavGoal2D { Kind = NavGoalKind2D.Point, TargetCm = Fix64Vec2.FromInt(xLeft, y), RadiusCm = Fix64.Zero },
-                        kin,
-                        new Position2D { Value = Fix64Vec2.FromInt(x1, y) },
-                        Velocity2D.Zero,
-                        Mass2D.FromFloat(1f, 1f),
-                        new WorldPositionCm { Value = Fix64Vec2.FromInt(x1, y) },
-                        new PreviousWorldPositionCm { Value = Fix64Vec2.FromInt(x1, y) },
-                        VisualTransform.Default,
-                        new NavPlaygroundTeam { Id = 1 }
-                    );
+        public static void PreviousScenario(GameEngine engine)
+        {
+            var playgroundConfig = GetPlaygroundConfig(engine);
+            Navigation2DPlaygroundState.CurrentScenarioIndex = Navigation2DPlaygroundScenarioSpawner.ClampScenarioIndex(
+                playgroundConfig,
+                Navigation2DPlaygroundState.CurrentScenarioIndex - 1);
+            ClampAgentsPerTeamForCurrentScenario(engine, playgroundConfig);
+            RespawnScenario(engine);
+        }
 
-                    spawned++;
-                }
+        public static void NextScenario(GameEngine engine)
+        {
+            var playgroundConfig = GetPlaygroundConfig(engine);
+            Navigation2DPlaygroundState.CurrentScenarioIndex = Navigation2DPlaygroundScenarioSpawner.ClampScenarioIndex(
+                playgroundConfig,
+                Navigation2DPlaygroundState.CurrentScenarioIndex + 1);
+            ClampAgentsPerTeamForCurrentScenario(engine, playgroundConfig);
+            RespawnScenario(engine);
+        }
+
+        public static void RespawnScenario(GameEngine engine)
+        {
+            World world = engine.World;
+            world.Destroy(in ScenarioQuery);
+            world.Destroy(in FlowGoalQuery);
+
+            var playgroundConfig = GetPlaygroundConfig(engine);
+            Navigation2DPlaygroundState.CurrentScenarioIndex = Navigation2DPlaygroundScenarioSpawner.ClampScenarioIndex(
+                playgroundConfig,
+                Navigation2DPlaygroundState.CurrentScenarioIndex);
+            ClampAgentsPerTeamForCurrentScenario(engine, playgroundConfig);
+            Navigation2DPlaygroundState.SpawnBatch = ClampSpawnBatch(playgroundConfig, Navigation2DPlaygroundState.SpawnBatch);
+
+            var scenario = Navigation2DPlaygroundScenarioSpawner.GetScenario(playgroundConfig, Navigation2DPlaygroundState.CurrentScenarioIndex);
+            var summary = Navigation2DPlaygroundScenarioSpawner.SpawnScenario(world, scenario, Navigation2DPlaygroundState.AgentsPerTeam);
+            PublishScenarioServices(
+                engine,
+                playgroundConfig,
+                summary,
+                Navigation2DPlaygroundState.AgentsPerTeam,
+                Navigation2DPlaygroundState.CurrentScenarioIndex);
+        }
+
+        public static void UpdateLiveCounts(GameEngine engine)
+        {
+            int liveAgents = engine.World.CountEntities(in DynamicAgentsQuery);
+            int blockers = engine.World.CountEntities(in BlockerQuery);
+            engine.SetService(Navigation2DPlaygroundKeys.LiveAgentsTotal, liveAgents);
+            engine.SetService(Navigation2DPlaygroundKeys.BlockerCount, blockers);
+            engine.SetService(Navigation2DPlaygroundKeys.SpawnBatch, Navigation2DPlaygroundState.SpawnBatch);
+        }
+
+        public static int ClampSpawnBatch(Navigation2DPlaygroundConfig playgroundConfig, int spawnBatch)
+        {
+            int max = Math.Max(1, playgroundConfig.DefaultAgentsPerTeam);
+            if (spawnBatch < 1)
+            {
+                return Math.Min(max, Math.Max(1, playgroundConfig.DefaultSpawnBatch));
+            }
+
+            return Math.Min(max, spawnBatch);
+        }
+
+        public static void AdjustSpawnBatch(GameEngine engine, int delta)
+        {
+            var playgroundConfig = GetPlaygroundConfig(engine);
+            int next = Navigation2DPlaygroundState.SpawnBatch + delta;
+            Navigation2DPlaygroundState.SpawnBatch = ClampSpawnBatch(playgroundConfig, next);
+            engine.SetService(Navigation2DPlaygroundKeys.SpawnBatch, Navigation2DPlaygroundState.SpawnBatch);
+        }
+
+        private static void ClampAgentsPerTeamForCurrentScenario(GameEngine engine, Navigation2DPlaygroundConfig playgroundConfig)
+        {
+            var scenario = Navigation2DPlaygroundScenarioSpawner.GetScenario(playgroundConfig, Navigation2DPlaygroundState.CurrentScenarioIndex);
+            int maxAgentsPerTeam = GetMaxAgentsPerTeam(engine, scenario.TeamCount);
+            if (Navigation2DPlaygroundState.AgentsPerTeam > maxAgentsPerTeam)
+            {
+                Navigation2DPlaygroundState.AgentsPerTeam = maxAgentsPerTeam;
             }
         }
 
-        private void PublishCounts()
+        private static int GetMaxAgentsPerTeam(GameEngine engine, int teamCount)
         {
-            int total = 0;
-            foreach (ref var chunk in _world.Query(in _scenarioQuery))
-            {
-                total += chunk.Count;
-            }
+            GameConfig? gameConfig = engine.GetService(CoreServiceKeys.GameConfig);
+            int maxAgents = (gameConfig?.Navigation2D ?? new Navigation2DConfig()).CloneValidated().MaxAgents;
+            return Math.Max(0, maxAgents / Math.Max(1, teamCount));
+        }
 
-            _engine.SetService(Navigation2DPlaygroundKeys.AgentsPerTeam, Navigation2DPlaygroundState.AgentsPerTeam);
-            _engine.SetService(Navigation2DPlaygroundKeys.LiveAgentsTotal, total);
+        private static void HandlePressed(IInputActionReader input, string actionId, Action onPressed)
+        {
+            if (input.PressedThisFrame(actionId))
+            {
+                onPressed();
+            }
         }
     }
 }

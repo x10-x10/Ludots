@@ -114,7 +114,6 @@ namespace Ludots.Core.Presentation.Systems
             public void Update(ref WorldPositionCm current, ref PreviousWorldPositionCm previous, 
                                ref VisualTransform visual, ref CullState cull)
             {
-                if (!cull.IsVisible) return;
                 visual.Position = InterpolateToVisual(in previous.Value, in current.Value, Alpha);
             }
         }
@@ -140,7 +139,6 @@ namespace Ludots.Core.Presentation.Systems
             public void Update(ref WorldPositionCm current, ref PreviousWorldPositionCm previous, 
                                ref VisualTransform visual, ref FacingDirection facing, ref CullState cull)
             {
-                if (!cull.IsVisible) return;
                 visual.Position = InterpolateToVisual(in previous.Value, in current.Value, Alpha);
                 visual.Rotation = FacingToYRotation(facing.AngleRad);
             }

@@ -1,9 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Arch.Core;
+using CoreInputMod.Systems;
+using CoreInputMod.ViewMode;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.GAS.Input;
+using Ludots.Core.Input.Interaction;
+using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
 using Ludots.Core.Modding;
 using Ludots.Core.Presentation.Systems;
@@ -14,7 +18,7 @@ namespace CoreInputMod.Triggers
     /// <summary>
     /// Registers generic input systems on game start: EntityClickSelect, GasSelectionResponse, GasInputResponse.
     /// Does not include order sources (move/attack/etc) — those are game-mode specific (MobaDemoMod, RtsDemoMod, etc).
-    /// For camera, add Universal3CCameraMod.
+    /// For camera, compose CameraProfilesMod / CameraBootstrapMod / VirtualCameraShotsMod as needed.
     /// Mods can add callbacks via GlobalContext["CoreInputMod.EntitySelectionCallbacks"] and
     /// ["CoreInputMod.SelectionTriggeredCallbacks"] to customize visual feedback.
     /// </summary>
@@ -40,28 +44,55 @@ namespace CoreInputMod.Triggers
                 return Task.CompletedTask;
             engine.GlobalContext[InstalledKey] = true;
 
-            var selectionCallbacks = new List<Action<WorldCmInt2, Arch.Core.Entity>>();
+            var selectionCallbacks = new List<Action<WorldCmInt2, Entity>>();
             var triggeredCallbacks = new List<Action<SelectionRequest, WorldCmInt2>>();
             engine.GlobalContext[EntitySelectionCallbacksKey] = selectionCallbacks;
             engine.GlobalContext[SelectionTriggeredCallbacksKey] = triggeredCallbacks;
 
-            var clickSelect = new EntityClickSelectSystem(engine.World, engine.GlobalContext, engine.SpatialQueries);
+            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.InteractionActionBindings.Name, out var bindingsObj)
+                || bindingsObj is not InteractionActionBindings)
+            {
+                engine.GlobalContext[CoreServiceKeys.InteractionActionBindings.Name] = new InteractionActionBindings();
+            }
+
+            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.SelectionRuleRegistry.Name, out var rulesObj)
+                || rulesObj is not SelectionRuleRegistry)
+            {
+                engine.GlobalContext[CoreServiceKeys.SelectionRuleRegistry.Name] = SelectionRuleRegistry.CreateWithDefaults();
+            }
+
+            var selectionRules = (SelectionRuleRegistry)engine.GlobalContext[CoreServiceKeys.SelectionRuleRegistry.Name];
+            var selectionRuntime = engine.GetService(CoreServiceKeys.SelectionRuntime)
+                ?? throw new InvalidOperationException("SelectionRuntime must be registered before CoreInputMod installs.");
+
+            engine.RegisterSystem(new SelectionMaintenanceSystem(engine.World, selectionRuntime), SystemGroup.InputCollection);
+
+            var clickSelect = new EntityClickSelectSystem(engine.World, engine.GlobalContext, selectionRuntime);
             clickSelect.OnEntitySelected = (worldCm, entity) =>
             {
                 foreach (var cb in selectionCallbacks) cb(worldCm, entity);
             };
-            engine.RegisterPresentationSystem(clickSelect);
+            engine.RegisterSystem(clickSelect, SystemGroup.InputCollection);
+            engine.RegisterSystem(new SelectionBridgeProjectionSystem(engine.World, engine.GlobalContext, selectionRuntime), SystemGroup.InputCollection);
 
-            var gasSelection = new GasSelectionResponseSystem(engine.World, engine.GlobalContext, engine.SpatialQueries);
+            var gasSelection = new GasSelectionResponseSystem(engine.World, engine.GlobalContext, engine.SpatialQueries, selectionRules);
             gasSelection.OnSelectionTriggered = (req, worldCm) =>
             {
                 foreach (var cb in triggeredCallbacks) cb(req, worldCm);
             };
-            engine.RegisterPresentationSystem(gasSelection);
+            engine.RegisterSystem(gasSelection, SystemGroup.InputCollection);
 
-            engine.RegisterPresentationSystem(new GasInputResponseSystem(engine.World, engine.GlobalContext));
+            engine.RegisterSystem(new GasInputResponseSystem(engine.World, engine.GlobalContext), SystemGroup.InputCollection);
+            engine.RegisterPresentationSystem(new SkillBarOverlaySystem(engine.World, engine.GlobalContext));
+            engine.RegisterPresentationSystem(new SelectionBoxOverlaySystem(engine.World, engine.GlobalContext));
+            engine.RegisterPresentationSystem(new AbilityAimOverlayPresentationSystem(engine.World, engine.GlobalContext));
+            engine.RegisterSystem(new TabTargetCycleSystem(engine.World, engine.GlobalContext), SystemGroup.InputCollection);
 
-            _ctx.Log("[CoreInputMod] EntityClickSelect, GasSelectionResponse, GasInputResponse registered");
+            var vmManager = new ViewModeManager(engine.World, engine.GlobalContext, engine.GameSession.Camera);
+            engine.GlobalContext[ViewModeManager.GlobalKey] = vmManager;
+            engine.RegisterSystem(new ViewModeSwitchSystem(engine.GlobalContext), SystemGroup.InputCollection);
+
+            _ctx.Log("[CoreInputMod] EntityClickSelect, GasSelectionResponse, GasInputResponse, SkillBar, SelectionBox, AbilityAimOverlay, TabTarget, ViewMode registered");
             return Task.CompletedTask;
         }
     }

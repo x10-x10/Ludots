@@ -606,11 +606,7 @@ namespace Ludots.Tests.GAS.Production
         {
             string repoRoot = FindRepoRoot();
             string assetsRoot = Path.Combine(repoRoot, "assets");
-            string modsRoot = Path.Combine(repoRoot, "mods");
-
-            var modPaths = new List<string>(mods.Length);
-            for (int i = 0; i < mods.Length; i++)
-                modPaths.Add(Path.Combine(modsRoot, mods[i]));
+            var modPaths = RepoModPaths.ResolveExplicit(repoRoot, mods);
 
             var engine = new GameEngine();
             try
@@ -619,7 +615,8 @@ namespace Ludots.Tests.GAS.Production
                 InstallDummyInput(engine);
                 engine.Start();
                 engine.LoadMap(mapId);
-                engine.GlobalContext.Remove(CoreServiceKeys.CameraControllerRequest.Name);
+                engine.GlobalContext.Remove(CoreServiceKeys.CameraPoseRequest.Name);
+                engine.GlobalContext.Remove(CoreServiceKeys.VirtualCameraRequest.Name);
 
                 // Warm up
                 Tick(engine, 5);
@@ -641,10 +638,10 @@ namespace Ludots.Tests.GAS.Production
         private static void CastAbility(GameEngine engine, Entity actor, Entity target, int slot)
         {
             var orderQueue = engine.GetService(CoreServiceKeys.OrderQueue);
-            int castAbilityTagId = engine.MergedConfig.Constants.OrderTags["castAbility"];
+            int castAbilityOrderTypeId = engine.MergedConfig.Constants.OrderTypeIds["castAbility"];
             orderQueue.TryEnqueue(new Order
             {
-                OrderTagId = castAbilityTagId,
+                OrderTypeId = castAbilityOrderTypeId,
                 Actor = actor,
                 Target = target,
                 Args = new OrderArgs { I0 = slot }
