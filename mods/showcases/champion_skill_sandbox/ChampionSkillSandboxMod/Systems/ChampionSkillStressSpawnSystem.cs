@@ -15,16 +15,17 @@ namespace ChampionSkillSandboxMod.Systems
 {
     internal sealed class ChampionSkillStressSpawnSystem : ISystem<float>
     {
-        private const int FormationColumns = 6;
-        private const int RowSpacingCm = 115;
-        private const int ColumnSpacingCm = 120;
+        private const int FormationDepthColumns = 2;
+        private const int FormationRowSpacingCm = 132;
+        private const int FormationDepthSpacingCm = 112;
+        private const int FormationDepthStaggerCm = 52;
         private const int TeamALeftX = 760;
         private const int TeamBRightX = 3640;
         private const int TeamCenterY = 1320;
         private const int WarriorOffsetCm = 0;
-        private const int FireMageOffsetCm = 280;
-        private const int LaserMageOffsetCm = 520;
-        private const int PriestOffsetCm = 760;
+        private const int FireMageOffsetCm = 340;
+        private const int LaserMageOffsetCm = 680;
+        private const int PriestOffsetCm = 1020;
 
         private static readonly QueryDescription StressUnitQuery = new QueryDescription()
             .WithAll<Name, Team, MapEntity, AbilityStateBuffer>();
@@ -200,7 +201,7 @@ namespace ChampionSkillSandboxMod.Systems
                 {
                     Kind = RuntimeEntitySpawnKind.Template,
                     TemplateId = templateId,
-                    WorldPositionCm = ComputeSpawnPosition(teamA, role, i),
+                    WorldPositionCm = ComputeSpawnPosition(teamA, role, i, desiredCount),
                     MapId = mapId,
                 };
 
@@ -225,11 +226,14 @@ namespace ChampionSkillSandboxMod.Systems
             }
         }
 
-        private static Fix64Vec2 ComputeSpawnPosition(bool teamA, StressRole role, int index)
+        private static Fix64Vec2 ComputeSpawnPosition(bool teamA, StressRole role, int index, int desiredCount)
         {
-            int row = index / FormationColumns;
-            int column = index % FormationColumns;
-            int y = TeamCenterY + ((row - 3) * RowSpacingCm) + ((column & 1) == 0 ? 0 : 48);
+            int row = index / FormationDepthColumns;
+            int depth = index % FormationDepthColumns;
+            int totalRows = Math.Max(1, (desiredCount + FormationDepthColumns - 1) / FormationDepthColumns);
+            int centeredRowOffsetCm = (row * FormationRowSpacingCm) - (((totalRows - 1) * FormationRowSpacingCm) / 2);
+            int staggerCm = ((depth & 1) == 0 ? -FormationDepthStaggerCm : FormationDepthStaggerCm) / 2;
+            int y = TeamCenterY + centeredRowOffsetCm + staggerCm;
             int xBase = teamA ? TeamALeftX : TeamBRightX;
             int roleOffset = role switch
             {
@@ -240,7 +244,7 @@ namespace ChampionSkillSandboxMod.Systems
             };
 
             int direction = teamA ? 1 : -1;
-            int x = xBase + direction * (roleOffset + (column * ColumnSpacingCm));
+            int x = xBase + direction * (roleOffset + (depth * FormationDepthSpacingCm));
             return Fix64Vec2.FromInt(x, y);
         }
 

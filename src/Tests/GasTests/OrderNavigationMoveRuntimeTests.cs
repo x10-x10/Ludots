@@ -38,12 +38,20 @@ namespace Ludots.Tests.GAS
 
             Assert.That(world.Has<NavAgent2D>(actor), Is.True);
             Assert.That(world.Has<Position2D>(actor), Is.True);
+            Assert.That(world.Has<PreviousWorldPositionCm>(actor), Is.True);
+            Assert.That(world.Has<PreviousPosition2D>(actor), Is.True);
             Assert.That(world.Has<Velocity2D>(actor), Is.True);
             Assert.That(world.Has<Mass2D>(actor), Is.True);
             Assert.That(world.Has<NavKinematics2D>(actor), Is.True);
 
             var position = world.Get<Position2D>(actor);
             Assert.That(position.Value, Is.EqualTo(Fix64Vec2.FromInt(120, 340)));
+
+            var previousPosition = world.Get<PreviousPosition2D>(actor);
+            Assert.That(previousPosition.Value, Is.EqualTo(Fix64Vec2.FromInt(120, 340)));
+
+            var previousWorldPosition = world.Get<PreviousWorldPositionCm>(actor);
+            Assert.That(previousWorldPosition.Value, Is.EqualTo(Fix64Vec2.FromInt(120, 340)));
 
             var kinematics = world.Get<NavKinematics2D>(actor);
             Assert.That(kinematics.MaxSpeedCmPerSec.ToFloat(), Is.EqualTo(355f).Within(0.01f));

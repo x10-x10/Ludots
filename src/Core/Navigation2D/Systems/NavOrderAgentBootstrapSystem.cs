@@ -64,30 +64,60 @@ namespace Ludots.Core.Navigation2D.Systems
                     }
 
                     Fix64Vec2 worldCm = worldPositions[index].Value;
+                    EnsurePreviousWorldPosition(entity, worldCm);
                     EnsurePosition(entity, worldCm);
-                    EnsureDynamics(entity);
+                    EnsureDynamics(entity, worldCm);
                     EnsureAgent(entity);
                     EnsureKinematics(entity);
                 }
             }
         }
 
-        private void EnsurePosition(Entity entity, Fix64Vec2 worldCm)
+        private void EnsurePreviousWorldPosition(Entity entity, Fix64Vec2 worldCm)
         {
-            if (!World.Has<Position2D>(entity))
+            if (!World.Has<PreviousWorldPositionCm>(entity))
             {
-                World.Add(entity, new Position2D { Value = worldCm });
-                return;
-            }
-
-            ref var position = ref World.Get<Position2D>(entity);
-            if (position.Value != worldCm)
-            {
-                position.Value = worldCm;
+                World.Add(entity, new PreviousWorldPositionCm { Value = worldCm });
             }
         }
 
-        private void EnsureDynamics(Entity entity)
+        private void EnsurePosition(Entity entity, Fix64Vec2 worldCm)
+        {
+            bool snappedToWorld = false;
+            if (!World.Has<Position2D>(entity))
+            {
+                World.Add(entity, new Position2D { Value = worldCm });
+                snappedToWorld = true;
+            }
+            else
+            {
+                ref var position = ref World.Get<Position2D>(entity);
+                if (position.Value != worldCm)
+                {
+                    position.Value = worldCm;
+                    snappedToWorld = true;
+                }
+            }
+
+            if (!snappedToWorld)
+            {
+                return;
+            }
+
+            if (World.Has<PreviousPosition2D>(entity))
+            {
+                ref var previousPosition = ref World.Get<PreviousPosition2D>(entity);
+                previousPosition.Value = worldCm;
+            }
+
+            if (World.Has<PreviousWorldPositionCm>(entity))
+            {
+                ref var previousWorldPosition = ref World.Get<PreviousWorldPositionCm>(entity);
+                previousWorldPosition.Value = worldCm;
+            }
+        }
+
+        private void EnsureDynamics(Entity entity, Fix64Vec2 worldCm)
         {
             if (!World.Has<Velocity2D>(entity))
             {
@@ -98,6 +128,12 @@ namespace Ludots.Core.Navigation2D.Systems
             {
                 World.Add(entity, Mass2D.FromFloat(1f, 1f));
             }
+
+            if (!World.Has<PreviousPosition2D>(entity))
+            {
+                World.Add(entity, new PreviousPosition2D { Value = worldCm });
+            }
+
         }
 
         private void EnsureAgent(Entity entity)

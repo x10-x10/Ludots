@@ -143,8 +143,37 @@ namespace Ludots.Tests.GAS.Production
 
             Assert.That(engine.World.Has<NavAgent2D>(warrior), Is.True);
             Assert.That(engine.World.Has<Position2D>(warrior), Is.True);
+            Assert.That(engine.World.Has<PreviousWorldPositionCm>(warrior), Is.True);
+            Assert.That(engine.World.Has<PreviousPosition2D>(warrior), Is.True);
             Assert.That(engine.World.Has<Velocity2D>(warrior), Is.True);
             Assert.That(engine.World.Has<Mass2D>(warrior), Is.True);
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_StressMap_SpawnsCombatTeamsWithoutInitialOverlap()
+        {
+            using var engine = CreateEngine();
+            LoadMap(engine, StressMapId, frames: 8);
+
+            TickUntil(engine, () =>
+            {
+                StressCounts counts = ReadStressCounts(engine.World);
+                return counts.TeamA >= 48 && counts.TeamB >= 48;
+            }, maxFrames: 240);
+
+            float teamAClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 1);
+            float teamBClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 2);
+
+            Assert.That(teamAClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team A should not spawn overlapped, observed clearance={teamAClearanceCm:0.##}cm.");
+            Assert.That(teamBClearanceCm, Is.GreaterThanOrEqualTo(0f), $"Team B should not spawn overlapped, observed clearance={teamBClearanceCm:0.##}cm.");
+
+            Tick(engine, 120);
+
+            float teamACombatClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 1);
+            float teamBCombatClearanceCm = ComputeMinimumStressTeamClearance(engine.World, StressMapId, teamId: 2);
+
+            Assert.That(teamACombatClearanceCm, Is.GreaterThanOrEqualTo(-4f), $"Team A crowd clearance regressed during approach, observed clearance={teamACombatClearanceCm:0.##}cm.");
+            Assert.That(teamBCombatClearanceCm, Is.GreaterThanOrEqualTo(-4f), $"Team B crowd clearance regressed during approach, observed clearance={teamBCombatClearanceCm:0.##}cm.");
         }
 
         [Test]
@@ -702,6 +731,42 @@ namespace Ludots.Tests.GAS.Production
                 teamBPriests);
         }
 
+        private static float ComputeMinimumStressTeamClearance(World world, string mapId, int teamId)
+        {
+            var units = new List<StressBodySample>(128);
+            var query = new QueryDescription().WithAll<Team, MapEntity, AbilityStateBuffer, WorldPositionCm, Collider2D>();
+            world.Query(in query, (Entity _, ref Team team, ref MapEntity mapEntity, ref AbilityStateBuffer __, ref WorldPositionCm position, ref Collider2D collider) =>
+            {
+                if (team.Id != teamId ||
+                    !string.Equals(mapEntity.MapId.Value, mapId, StringComparison.OrdinalIgnoreCase) ||
+                    collider.Type != ColliderType2D.Circle ||
+                    !ShapeDataStorage2D.TryGetCircle(collider.ShapeDataIndex, out var circle))
+                {
+                    return;
+                }
+
+                units.Add(new StressBodySample(position.Value.ToVector2(), circle.Radius.ToFloat()));
+            });
+
+            float minimumClearanceCm = float.MaxValue;
+            for (int i = 0; i < units.Count; i++)
+            {
+                StressBodySample a = units[i];
+                for (int j = i + 1; j < units.Count; j++)
+                {
+                    StressBodySample b = units[j];
+                    float distanceCm = Vector2.Distance(a.PositionCm, b.PositionCm);
+                    float clearanceCm = distanceCm - (a.RadiusCm + b.RadiusCm);
+                    if (clearanceCm < minimumClearanceCm)
+                    {
+                        minimumClearanceCm = clearanceCm;
+                    }
+                }
+            }
+
+            return minimumClearanceCm == float.MaxValue ? float.PositiveInfinity : minimumClearanceCm;
+        }
+
         private static void AssertProjectileEffect(
             EffectTemplateRegistry effects,
             ProjectilePresentationBindingRegistry projectileBindings,
@@ -812,6 +877,8 @@ namespace Ludots.Tests.GAS.Production
             int TeamBFireMages,
             int TeamBLaserMages,
             int TeamBPriests);
+
+        private readonly record struct StressBodySample(Vector2 PositionCm, float RadiusCm);
 
         private sealed class NullInputBackend : IInputBackend
         {
