@@ -27,6 +27,8 @@ using Ludots.Core.Map.Hex;
 using Ludots.Core.Modding;
 using Ludots.Core.Navigation.NavMesh;
 using Ludots.Core.Navigation.NavMesh.Config;
+using Ludots.Core.Navigation.Pathing;
+using Ludots.Core.Navigation.Pathing.Config;
 using Ludots.Core.Navigation2D.Runtime;
 using Ludots.Core.Presentation;
 using Ludots.Core.Presentation.Assets;
@@ -189,6 +191,9 @@ namespace Ludots.Core.Scripting
         public static readonly ServiceKey<NavMeshBakeConfig> NavMeshBakeConfig = new("NavMeshBakeConfig");
         public static readonly ServiceKey<NavMeshProfileRegistry> NavMeshProfiles = new("NavMeshProfiles");
         public static readonly ServiceKey<NavQueryServiceRegistry> NavQueryServices = new("NavQueryServices");
+        public static readonly ServiceKey<PathingConfig> PathingConfig = new("PathingConfig");
+        public static readonly ServiceKey<PathStore> PathStore = new("PathStore");
+        public static readonly ServiceKey<IPathService> PathService = new("PathService");
 
         // --- Entity Selection (presentation-layer) ---
         public static readonly ServiceKey<Entity> LocalPlayerEntity = new("LocalPlayerEntity");
