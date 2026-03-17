@@ -46,6 +46,9 @@ namespace Ludots.Tests.GAS.Production
         private const string ResetCameraToolbarButtonId = "ChampionSkillSandbox.Camera.Reset";
         private const string StressTeamAIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamA.Increase";
         private const string StressTeamBIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamB.Increase";
+        private const string StressHudBarToggleToolbarButtonId = "ChampionSkillSandbox.Stress.HudBar.Toggle";
+        private const string StressHudTextToggleToolbarButtonId = "ChampionSkillSandbox.Stress.HudText.Toggle";
+        private const string StressCombatTextToggleToolbarButtonId = "ChampionSkillSandbox.Stress.CombatText.Toggle";
         private static readonly string[] SandboxMods =
         {
             "LudotsCoreMod",
@@ -357,11 +360,14 @@ namespace Ludots.Tests.GAS.Production
 
             var buttons = new EntityCommandPanelToolbarButtonView[16];
             int buttonCount = toolbar.CopyButtons(buttons);
-            Assert.That(buttonCount, Is.EqualTo(11));
+            Assert.That(buttonCount, Is.EqualTo(14));
             Assert.That(buttons[7].ButtonId, Is.EqualTo("ChampionSkillSandbox.Stress.TeamA.Decrease"));
             Assert.That(buttons[8].ButtonId, Is.EqualTo(StressTeamAIncreaseToolbarButtonId));
             Assert.That(buttons[9].ButtonId, Is.EqualTo("ChampionSkillSandbox.Stress.TeamB.Decrease"));
             Assert.That(buttons[10].ButtonId, Is.EqualTo(StressTeamBIncreaseToolbarButtonId));
+            Assert.That(buttons[11].ButtonId, Is.EqualTo(StressHudBarToggleToolbarButtonId));
+            Assert.That(buttons[12].ButtonId, Is.EqualTo(StressHudTextToggleToolbarButtonId));
+            Assert.That(buttons[13].ButtonId, Is.EqualTo(StressCombatTextToggleToolbarButtonId));
 
             TickUntil(engine, () =>
             {

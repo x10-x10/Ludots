@@ -17,6 +17,7 @@ using Ludots.Core.Presentation.Assets;
 using Ludots.Core.Presentation.Performers;
 using Ludots.Core.Presentation.Rendering;
 using Ludots.Core.Presentation.Systems;
+using Ludots.Core.Scripting;
 using NUnit.Framework;
 
 namespace Ludots.Tests.Presentation
@@ -326,6 +327,8 @@ namespace Ludots.Tests.Presentation
         private WorldHudBatchBuffer _hud;
         private GroundOverlayBuffer _overlays;
         private PerformerEmitSystem _system;
+        private System.Collections.Generic.Dictionary<string, object> _globals;
+        private RenderDebugState _renderDebug;
 
         [SetUp]
         public void Setup()
@@ -338,8 +341,10 @@ namespace Ludots.Tests.Presentation
             _overlays = new GroundOverlayBuffer();
             var programs = new GraphProgramRegistry();
             var api = new GasGraphRuntimeApi(_world, null, null, null);
-            var globals = new System.Collections.Generic.Dictionary<string, object>();
-            _system = new PerformerEmitSystem(_world, _instances, _defs, _overlays, _primitives, _hud, programs, api, globals);
+            _globals = new System.Collections.Generic.Dictionary<string, object>();
+            _renderDebug = new RenderDebugState();
+            _globals[CoreServiceKeys.RenderDebugState.Name] = _renderDebug;
+            _system = new PerformerEmitSystem(_world, _instances, _defs, _overlays, _primitives, _hud, programs, api, _globals);
         }
 
         [TearDown]
@@ -509,6 +514,38 @@ namespace Ludots.Tests.Presentation
 
             var span = _hud.GetSpan();
             Assert.That(span.Length, Is.EqualTo(1)); // only visible entity
+        }
+
+        [Test]
+        public void EntityScoped_WellKnownWorldBar_IsSuppressed_WhenRenderDebugDisablesHudBars()
+        {
+            _world.Create(new VisualTransform { Position = Vector3.Zero }, new AttributeBuffer());
+            _defs.Register(WellKnownPerformerKeys.EntityHealthBar, new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.WorldBar,
+                EntityScope = EntityScopeFilter.AllWithAttributes,
+            });
+            _renderDebug.DrawWorldHudBars = false;
+
+            _system.Update(0.016f);
+
+            Assert.That(_hud.GetSpan().Length, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void EntityScoped_WellKnownWorldText_IsSuppressed_WhenRenderDebugDisablesHudText()
+        {
+            _world.Create(new VisualTransform { Position = Vector3.Zero }, new AttributeBuffer());
+            _defs.Register(WellKnownPerformerKeys.EntityWorldText, new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.WorldText,
+                EntityScope = EntityScopeFilter.AllWithAttributes,
+            });
+            _renderDebug.DrawWorldHudText = false;
+
+            _system.Update(0.016f);
+
+            Assert.That(_hud.GetSpan().Length, Is.EqualTo(0));
         }
     }
 

@@ -2,6 +2,8 @@ using System;
 using Arch.Core;
 using CoreInputMod.ViewMode;
 using Ludots.Core.Engine;
+using Ludots.Core.Presentation.Hud;
+using Ludots.Core.Scripting;
 using Ludots.Core.UI.EntityCommandPanels;
 
 namespace ChampionSkillSandboxMod.Runtime
@@ -33,11 +35,15 @@ namespace ChampionSkillSandboxMod.Runtime
                 {
                     ChampionSkillStressControlState? control = ResolveStressControl();
                     ChampionSkillStressTelemetry? telemetry = ResolveStressTelemetry();
+                    RenderDebugState? renderDebug = ResolveRenderDebugState();
                     revision ^= (uint)(control?.DesiredTeamA ?? 0);
                     revision ^= (uint)((control?.DesiredTeamB ?? 0) << 5);
                     revision ^= (uint)((telemetry?.LiveTeamA ?? 0) << 10);
                     revision ^= (uint)((telemetry?.LiveTeamB ?? 0) << 15);
                     revision ^= (uint)((telemetry?.ProjectileCount ?? 0) << 20);
+                    revision ^= (renderDebug?.DrawWorldHudBars ?? true) ? 1u << 25 : 0u;
+                    revision ^= (renderDebug?.DrawWorldHudText ?? true) ? 1u << 26 : 0u;
+                    revision ^= (renderDebug?.DrawCombatText ?? true) ? 1u << 27 : 0u;
                 }
 
                 return revision;
@@ -59,7 +65,8 @@ namespace ChampionSkillSandboxMod.Runtime
 
                 ChampionSkillStressControlState? control = ResolveStressControl();
                 ChampionSkillStressTelemetry? telemetry = ResolveStressTelemetry();
-                return $"A {telemetry?.LiveTeamA ?? 0}/{control?.DesiredTeamA ?? 0} | B {telemetry?.LiveTeamB ?? 0}/{control?.DesiredTeamB ?? 0} | Proj {telemetry?.ProjectileCount ?? 0} peak {telemetry?.PeakProjectileCount ?? 0}";
+                RenderDebugState? renderDebug = ResolveRenderDebugState();
+                return $"A {telemetry?.LiveTeamA ?? 0}/{control?.DesiredTeamA ?? 0} | B {telemetry?.LiveTeamB ?? 0}/{control?.DesiredTeamB ?? 0} | Proj {telemetry?.ProjectileCount ?? 0} peak {telemetry?.PeakProjectileCount ?? 0} | HUD {(renderDebug?.DrawWorldHudBars ?? true ? "B" : "-")}{(renderDebug?.DrawWorldHudText ?? true ? "T" : "-")}{(renderDebug?.DrawCombatText ?? true ? "F" : "-")}";
             }
         }
 
@@ -78,7 +85,8 @@ namespace ChampionSkillSandboxMod.Runtime
             bool isStressMap = ChampionSkillSandboxIds.IsStressMap(_engine?.CurrentMapSession?.MapId.Value);
             string? activeModeId = ResolveViewModeManager()?.ActiveMode?.Id;
             string activeFollowModeId = ResolveActiveCameraFollowMode();
-            var buttons = new EntityCommandPanelToolbarButtonView[isStressMap ? 11 : 7];
+            RenderDebugState? renderDebug = ResolveRenderDebugState();
+            var buttons = new EntityCommandPanelToolbarButtonView[isStressMap ? 14 : 7];
             buttons[0] = new EntityCommandPanelToolbarButtonView(
                 ChampionSkillSandboxIds.SmartCastModeId,
                 "Quick",
@@ -136,6 +144,21 @@ namespace ChampionSkillSandboxMod.Runtime
                     "B+",
                     false,
                     "#67D4FF");
+                buttons[11] = new EntityCommandPanelToolbarButtonView(
+                    ChampionSkillSandboxIds.StressHudBarToggleToolbarButtonId,
+                    "Bar",
+                    renderDebug?.DrawWorldHudBars ?? true,
+                    "#E2D7A6");
+                buttons[12] = new EntityCommandPanelToolbarButtonView(
+                    ChampionSkillSandboxIds.StressHudTextToggleToolbarButtonId,
+                    "Text",
+                    renderDebug?.DrawWorldHudText ?? true,
+                    "#F2E3B3");
+                buttons[13] = new EntityCommandPanelToolbarButtonView(
+                    ChampionSkillSandboxIds.StressCombatTextToggleToolbarButtonId,
+                    "Float",
+                    renderDebug?.DrawCombatText ?? true,
+                    "#FFCF86");
             }
 
             int count = Math.Min(destination.Length, buttons.Length);
@@ -171,6 +194,7 @@ namespace ChampionSkillSandboxMod.Runtime
             }
 
             ChampionSkillStressControlState? control = ResolveStressControl();
+            RenderDebugState? renderDebug = ResolveRenderDebugState();
             if (control != null)
             {
                 if (string.Equals(buttonId, ChampionSkillSandboxIds.StressTeamADecreaseToolbarButtonId, StringComparison.OrdinalIgnoreCase))
@@ -194,6 +218,36 @@ namespace ChampionSkillSandboxMod.Runtime
                 if (string.Equals(buttonId, ChampionSkillSandboxIds.StressTeamBIncreaseToolbarButtonId, StringComparison.OrdinalIgnoreCase))
                 {
                     control.AdjustTeamB(ChampionSkillStressControlState.Step);
+                    return;
+                }
+
+                if (string.Equals(buttonId, ChampionSkillSandboxIds.StressHudBarToggleToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (renderDebug != null)
+                    {
+                        renderDebug.DrawWorldHudBars = !renderDebug.DrawWorldHudBars;
+                    }
+
+                    return;
+                }
+
+                if (string.Equals(buttonId, ChampionSkillSandboxIds.StressHudTextToggleToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (renderDebug != null)
+                    {
+                        renderDebug.DrawWorldHudText = !renderDebug.DrawWorldHudText;
+                    }
+
+                    return;
+                }
+
+                if (string.Equals(buttonId, ChampionSkillSandboxIds.StressCombatTextToggleToolbarButtonId, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (renderDebug != null)
+                    {
+                        renderDebug.DrawCombatText = !renderDebug.DrawCombatText;
+                    }
+
                     return;
                 }
             }
@@ -238,6 +292,11 @@ namespace ChampionSkillSandboxMod.Runtime
                    value is ChampionSkillStressTelemetry telemetry
                 ? telemetry
                 : null;
+        }
+
+        private RenderDebugState? ResolveRenderDebugState()
+        {
+            return _engine?.GetService(CoreServiceKeys.RenderDebugState);
         }
     }
 }

@@ -46,6 +46,13 @@ namespace ChampionSkillSandboxMod.Runtime
             GasPresentationEventBuffer? gasEvents = engine.GetService(CoreServiceKeys.GasPresentationEventBuffer);
             WorldHudBatchBuffer? worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer);
             PresentationCommandBuffer? commands = engine.GetService(CoreServiceKeys.PresentationCommandBuffer);
+            RenderDebugState? renderDebug = engine.GetService(CoreServiceKeys.RenderDebugState);
+            if (ChampionSkillSandboxIds.IsStressMap(engine.CurrentMapSession?.MapId.Value) &&
+                renderDebug is { DrawCombatText: false })
+            {
+                _combatTextCount = 0;
+            }
+
             TickCombatText(dt);
             EmitCombatTextEntries(engine.World, worldHud);
 
@@ -65,7 +72,7 @@ namespace ChampionSkillSandboxMod.Runtime
                         TryQueueCue(engine.World, commands, evt.Actor, ResolveCastCue(evt.AbilityId));
                         break;
                     case GasPresentationEventKind.EffectApplied:
-                        EmitEffectAppliedFeedback(engine.World, worldHud, commands, in evt);
+                        EmitEffectAppliedFeedback(engine.World, worldHud, commands, renderDebug?.DrawCombatText != false, in evt);
                         break;
                 }
             }
@@ -75,6 +82,7 @@ namespace ChampionSkillSandboxMod.Runtime
             World world,
             WorldHudBatchBuffer? worldHud,
             PresentationCommandBuffer commands,
+            bool allowCombatText,
             in GasPresentationEvent evt)
         {
             if (evt.Delta == 0f)
@@ -89,7 +97,10 @@ namespace ChampionSkillSandboxMod.Runtime
             }
 
             bool isDamage = evt.Delta < 0f;
-            QueueCombatText(worldHud, anchor, evt.Delta, isDamage ? DamageTextColor : HealTextColor);
+            if (allowCombatText)
+            {
+                QueueCombatText(worldHud, anchor, evt.Delta, isDamage ? DamageTextColor : HealTextColor);
+            }
             TryQueueCue(world, commands, anchor, ResolveHitCue(evt.EffectTemplateId));
         }
 
