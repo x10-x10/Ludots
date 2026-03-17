@@ -11,6 +11,10 @@ using Ludots.Core.Presentation.Systems;
 using Ludots.Core.Scripting;
 using Ludots.Core.Systems;
 using Ludots.Platform.Abstractions;
+using Ludots.UI;
+using Ludots.UI.HtmlEngine.Markup;
+using Ludots.UI.Runtime;
+using Ludots.UI.Skia;
 
 namespace Ludots.Adapter.UE5
 {
@@ -61,6 +65,12 @@ namespace Ludots.Adapter.UE5
         /// </summary>
         public RenderCameraDebugState RenderCameraDebug { get; }
 
+        /// <summary>Ludots UI 根节点（管理面板 Scene Tree，供每帧 Render 调用）。</summary>
+        public UIRoot? UiRoot { get; }
+
+        /// <summary>Skia UI 渲染器（通过 SetCanvas 绑定目标画布后由 UIRoot.Render 使用）。</summary>
+        public SkiaUiRenderer? UiRenderer { get; }
+
         internal UE5HostSetup(
             GameEngine               engine,
             GameConfig               config,
@@ -68,7 +78,9 @@ namespace Ludots.Adapter.UE5
             UE5CameraAdapter         cameraAdapter,
             CameraPresenter          cameraPresenter,
             WorldHudToScreenSystem?  hudProjection,
-            RenderCameraDebugState   renderCameraDebug)
+            RenderCameraDebugState   renderCameraDebug,
+            UIRoot?                  uiRoot     = null,
+            SkiaUiRenderer?          uiRenderer = null)
         {
             Engine            = engine;
             Config            = config;
@@ -77,6 +89,8 @@ namespace Ludots.Adapter.UE5
             CameraPresenter   = cameraPresenter;
             HudProjection     = hudProjection;
             RenderCameraDebug = renderCameraDebug;
+            UiRoot            = uiRoot;
+            UiRenderer        = uiRenderer;
         }
     }
 
@@ -190,8 +204,15 @@ namespace Ludots.Adapter.UE5
 
             // ── 4. 注入 UE5 适配器 ───────────────────────────────────────
 
-            // UI 系统（捕获引擎 HTML/CSS 渲染调用，供 UE5 WebUI widget 消费）
-            engine.SetService(CoreServiceKeys.UISystem, (Ludots.Core.UI.IUiSystem)new UE5UiSystem());
+            // UI 系统（对标 RaylibHostComposer：SkiaUiRenderer + UIRoot + MarkupUiSystem）
+            var uiRenderer = new SkiaUiRenderer();
+            IUiTextMeasurer textMeasurer = new SkiaTextMeasurer();
+            IUiImageSizeProvider imageSizeProvider = new SkiaImageSizeProvider();
+            var uiRoot = new UIRoot(uiRenderer);
+            engine.SetService(CoreServiceKeys.UIRoot, (object)uiRoot);
+            engine.SetService(CoreServiceKeys.UiTextMeasurer, (object)textMeasurer);
+            engine.SetService(CoreServiceKeys.UiImageSizeProvider, (object)imageSizeProvider);
+            engine.SetService(CoreServiceKeys.UISystem, (Ludots.Core.UI.IUiSystem)new MarkupUiSystem(uiRoot, textMeasurer, imageSizeProvider));
 
             // 输入后端（UE5 PlayerController → Ludots InputHandler）
             IInputBackend inputBackend = new UE5InputBackend(sharedState);
@@ -271,7 +292,9 @@ namespace Ludots.Adapter.UE5
                 cameraAdapter,
                 cameraPresenter,
                 hudProjection,
-                renderCameraDebug);
+                renderCameraDebug,
+                uiRoot,
+                uiRenderer);
         }
 
         // ── 启动前校验 ────────────────────────────────────────────────────
