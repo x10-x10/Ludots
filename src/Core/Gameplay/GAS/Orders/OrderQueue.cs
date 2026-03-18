@@ -40,17 +40,27 @@ namespace Ludots.Core.Gameplay.GAS.Orders
 
         public bool TryEnqueue(in Order order)
         {
-            if (_count >= _items.Length) return false;
             var value = order;
-            if (value.OrderId == 0)
-            {
-                value.OrderId = _nextOrderId++;
-            }
+            return TryEnqueueAssigned(ref value);
+        }
 
-            _items[_tail] = value;
+        public bool TryEnqueueAssigned(ref Order order)
+        {
+            if (_count >= _items.Length) return false;
+            EnsureOrderId(ref order);
+
+            _items[_tail] = order;
             _tail = (_tail + 1) % _items.Length;
             _count++;
             return true;
+        }
+
+        public void EnsureOrderId(ref Order order)
+        {
+            if (order.OrderId == 0)
+            {
+                order.OrderId = _nextOrderId++;
+            }
         }
 
         public bool TryDequeue(out Order order)

@@ -466,6 +466,66 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
+        public void InputOrderMapping_PositionMoveCommand_WithGroupFormation_AssignsOffsetTargetsAcrossAmbientSelection()
+        {
+            var input = new PlayerInputHandler(new NullInputBackend(), CreateInputConfig());
+            var cfg = new InputOrderMappingConfig
+            {
+                InteractionMode = InteractionModeType.TargetFirst,
+                GroupMoveFormation = new GroupMoveFormationSettings
+                {
+                    Mode = GroupMoveFormationMode.Grid,
+                    SpacingCm = 120
+                },
+                Mappings = new List<InputOrderMapping>
+                {
+                    new()
+                    {
+                        ActionId = "Command",
+                        Trigger = InputTriggerType.PressedThisFrame,
+                        OrderTypeKey = "moveTo",
+                        RequireSelection = true,
+                        SelectionType = OrderSelectionType.Position,
+                        IsSkillMapping = false,
+                    },
+                },
+            };
+
+            using var world = World.Create();
+            var local = world.Create();
+            var first = world.Create();
+            var second = world.Create();
+            var mapping = new InputOrderMappingSystem(input, cfg);
+            mapping.SetLocalPlayer(local, 1);
+            mapping.SetOrderTypeKeyResolver(key => key == "moveTo" ? 1002 : 0);
+            mapping.SetGroundPositionProvider((out Vector3 worldCm) =>
+            {
+                worldCm = new Vector3(320f, 0f, 640f);
+                return true;
+            });
+            mapping.SetSelectedEntitiesProvider((ref OrderEntitySelection entities) =>
+            {
+                entities = default;
+                entities.Add(first);
+                entities.Add(second);
+                return true;
+            });
+
+            var orders = new List<Order>();
+            mapping.SetOrderSubmitHandler((in Order order) => orders.Add(order));
+
+            input.InjectButtonPress("Command");
+            input.Update();
+            mapping.Update(0f);
+
+            That(orders.Count, Is.EqualTo(2));
+            That(orders[0].Actor, Is.EqualTo(first));
+            That(orders[1].Actor, Is.EqualTo(second));
+            That(orders[0].Args.Spatial.WorldCm, Is.EqualTo(new Vector3(260f, 0f, 640f)));
+            That(orders[1].Args.Spatial.WorldCm, Is.EqualTo(new Vector3(380f, 0f, 640f)));
+        }
+
+        [Test]
         public void InputOrderMapping_StopCommand_FansOutAcrossAmbientSelection()
         {
             var input = new PlayerInputHandler(new NullInputBackend(), CreateInputConfig());

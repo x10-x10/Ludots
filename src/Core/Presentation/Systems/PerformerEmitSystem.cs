@@ -45,6 +45,8 @@ namespace Ludots.Core.Presentation.Systems
         private readonly IGraphRuntimeApi _graphApi;
         private readonly Dictionary<string, object> _globals;
         private readonly EntityColorResolver _entityColorResolver;
+        private int _entityHealthBarDefinitionId = int.MinValue;
+        private int _entityWorldTextDefinitionId = int.MinValue;
 
         // Entity-scoped queries
         private readonly QueryDescription _attrNoCullQuery = new QueryDescription()
@@ -132,6 +134,7 @@ namespace Ludots.Core.Presentation.Systems
             {
                 if (!_definitions.TryGet(ids[di], out var def)) continue;
                 if (def.EntityScope == EntityScopeFilter.None) continue;
+                if (ShouldSkipEntityScopedDefinition(ids[di], def)) continue;
 
                 EmitEntityScoped(ids[di], def);
             }
@@ -153,6 +156,52 @@ namespace Ludots.Core.Presentation.Systems
                     EmitEntityScopedVT(definitionId, def, _vtWithCullQuery, requireCullCheck: true);
                     break;
             }
+        }
+
+        private bool ShouldSkipEntityScopedDefinition(int definitionId, PerformerDefinition def)
+        {
+            if (!TryGetRenderDebugState(out RenderDebugState renderDebug))
+            {
+                return false;
+            }
+
+            if (def.VisualKind == PerformerVisualKind.WorldBar &&
+                definitionId == ResolveWellKnownDefinitionId(ref _entityHealthBarDefinitionId, WellKnownPerformerKeys.EntityHealthBar))
+            {
+                return !renderDebug.DrawWorldHudBars;
+            }
+
+            if (def.VisualKind == PerformerVisualKind.WorldText &&
+                definitionId == ResolveWellKnownDefinitionId(ref _entityWorldTextDefinitionId, WellKnownPerformerKeys.EntityWorldText))
+            {
+                return !renderDebug.DrawWorldHudText;
+            }
+
+            return false;
+        }
+
+        private int ResolveWellKnownDefinitionId(ref int cache, string key)
+        {
+            if (cache != int.MinValue)
+            {
+                return cache;
+            }
+
+            cache = _definitions.GetId(key);
+            return cache;
+        }
+
+        private bool TryGetRenderDebugState(out RenderDebugState state)
+        {
+            if (_globals.TryGetValue(CoreServiceKeys.RenderDebugState.Name, out object? value) &&
+                value is RenderDebugState renderDebug)
+            {
+                state = renderDebug;
+                return true;
+            }
+
+            state = null!;
+            return false;
         }
 
         private void EmitEntityScopedWithAttr(int definitionId, PerformerDefinition def, QueryDescription query, bool requireCullCheck)

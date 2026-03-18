@@ -1,0 +1,13 @@
+{
+  "Id": "champion_skill_stress",
+  "Tags": ["champion.skill.sandbox", "showcase.gas", "stress"],
+  "DefaultCamera": {
+    "VirtualCameraId": "ChampionSkillSandbox.Camera.Tactical",
+    "TargetXCm": 2200,
+    "TargetYCm": 1320,
+    "DistanceCm": 5200,
+    "Pitch": 58,
+    "FovYDeg": 44
+  },
+  "Entities": []
+}

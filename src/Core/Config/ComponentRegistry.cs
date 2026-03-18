@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -292,5 +292,3 @@ namespace Ludots.Core.Config
         }
     }
 }
-
-
