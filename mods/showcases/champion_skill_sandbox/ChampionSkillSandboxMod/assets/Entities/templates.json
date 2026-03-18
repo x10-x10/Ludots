@@ -102,5 +102,333 @@
       "AttributeBuffer": { "base": { "Health": 320, "Shield": 0, "MoveSpeed": 0, "Armor": 10 } },
       "GameplayTagContainer": {}
     }
+  },
+  {
+    "id": "champion_skill_stress_team_a_warrior",
+    "components": {
+      "Name": { "Value": "StressWarriorA" },
+      "Team": { "Id": 1 },
+      "PlayerOwner": { "PlayerId": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 260, "Shield": 0, "MoveSpeed": 330, "Armor": 16 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 46
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1800,
+        "radiusCm": 46,
+        "neighborDistCm": 320,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.Warrior.Cleave"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_stress_team_a_fire_mage",
+    "components": {
+      "Name": { "Value": "StressFireMageA" },
+      "Team": { "Id": 1 },
+      "PlayerOwner": { "PlayerId": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 170, "Shield": 0, "MoveSpeed": 320, "Armor": 4 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 38
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
+        "radiusCm": 38,
+        "neighborDistCm": 280,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.FireMage.Fireball"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_stress_team_a_laser_mage",
+    "components": {
+      "Name": { "Value": "StressLaserMageA" },
+      "Team": { "Id": 1 },
+      "PlayerOwner": { "PlayerId": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 150, "Shield": 0, "MoveSpeed": 325, "Armor": 3 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 36
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
+        "radiusCm": 36,
+        "neighborDistCm": 268,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.LaserMage.Laser"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_stress_team_a_priest",
+    "components": {
+      "Name": { "Value": "StressPriestA" },
+      "Team": { "Id": 1 },
+      "PlayerOwner": { "PlayerId": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 180, "Shield": 0, "MoveSpeed": 315, "Armor": 5 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 34
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1600,
+        "radiusCm": 34,
+        "neighborDistCm": 256,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.Priest.Heal"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_stress_team_b_warrior",
+    "components": {
+      "Name": { "Value": "StressWarriorB" },
+      "Team": { "Id": 2 },
+      "PlayerOwner": { "PlayerId": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 3.14159 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 260, "Shield": 0, "MoveSpeed": 330, "Armor": 16 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 46
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1800,
+        "radiusCm": 46,
+        "neighborDistCm": 320,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.Warrior.Cleave"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_stress_team_b_fire_mage",
+    "components": {
+      "Name": { "Value": "StressFireMageB" },
+      "Team": { "Id": 2 },
+      "PlayerOwner": { "PlayerId": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 3.14159 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 170, "Shield": 0, "MoveSpeed": 320, "Armor": 4 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 38
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
+        "radiusCm": 38,
+        "neighborDistCm": 280,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.FireMage.Fireball"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_stress_team_b_laser_mage",
+    "components": {
+      "Name": { "Value": "StressLaserMageB" },
+      "Team": { "Id": 2 },
+      "PlayerOwner": { "PlayerId": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 3.14159 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 150, "Shield": 0, "MoveSpeed": 325, "Armor": 3 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 36
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1700,
+        "radiusCm": 36,
+        "neighborDistCm": 268,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.LaserMage.Laser"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_stress_team_b_priest",
+    "components": {
+      "Name": { "Value": "StressPriestB" },
+      "Team": { "Id": 2 },
+      "PlayerOwner": { "PlayerId": 2 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 3.14159 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 180, "Shield": 0, "MoveSpeed": 315, "Armor": 5 } },
+      "Collider2D": {
+        "shape": {
+          "type": "circle",
+          "radiusCm": 34
+        }
+      },
+      "PhysicsMaterial2D": {
+        "friction": 0.92,
+        "restitution": 0.0,
+        "baseDamping": 0.94
+      },
+      "NavKinematics2D": {
+        "maxAccelCmPerSec2": 1600,
+        "radiusCm": 34,
+        "neighborDistCm": 256,
+        "timeHorizonSec": 2.4,
+        "maxNeighbors": 20
+      },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.ChampionStress.Priest.Heal"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
   }
 ]

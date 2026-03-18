@@ -46,6 +46,13 @@ namespace ChampionSkillSandboxMod.Runtime
             GasPresentationEventBuffer? gasEvents = engine.GetService(CoreServiceKeys.GasPresentationEventBuffer);
             WorldHudBatchBuffer? worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer);
             PresentationCommandBuffer? commands = engine.GetService(CoreServiceKeys.PresentationCommandBuffer);
+            RenderDebugState? renderDebug = engine.GetService(CoreServiceKeys.RenderDebugState);
+            if (ChampionSkillSandboxIds.IsStressMap(engine.CurrentMapSession?.MapId.Value) &&
+                renderDebug is { DrawCombatText: false })
+            {
+                _combatTextCount = 0;
+            }
+
             TickCombatText(dt);
             EmitCombatTextEntries(engine.World, worldHud);
 
@@ -65,7 +72,7 @@ namespace ChampionSkillSandboxMod.Runtime
                         TryQueueCue(engine.World, commands, evt.Actor, ResolveCastCue(evt.AbilityId));
                         break;
                     case GasPresentationEventKind.EffectApplied:
-                        EmitEffectAppliedFeedback(engine.World, worldHud, commands, in evt);
+                        EmitEffectAppliedFeedback(engine.World, worldHud, commands, renderDebug?.DrawCombatText != false, in evt);
                         break;
                 }
             }
@@ -75,6 +82,7 @@ namespace ChampionSkillSandboxMod.Runtime
             World world,
             WorldHudBatchBuffer? worldHud,
             PresentationCommandBuffer commands,
+            bool allowCombatText,
             in GasPresentationEvent evt)
         {
             if (evt.Delta == 0f)
@@ -89,7 +97,10 @@ namespace ChampionSkillSandboxMod.Runtime
             }
 
             bool isDamage = evt.Delta < 0f;
-            QueueCombatText(worldHud, anchor, evt.Delta, isDamage ? DamageTextColor : HealTextColor);
+            if (allowCombatText)
+            {
+                QueueCombatText(worldHud, anchor, evt.Delta, isDamage ? DamageTextColor : HealTextColor);
+            }
             TryQueueCue(world, commands, anchor, ResolveHitCue(evt.EffectTemplateId));
         }
 
@@ -226,6 +237,10 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Hammer.ToTheSkies", "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_cast");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Transform.Cannon", "champion_skill_sandbox.cue.jayce_transform_cannon");
             RegisterAbilityCue(performers, "Ability.Champion.Jayce.Transform.Hammer", "champion_skill_sandbox.cue.jayce_transform_hammer");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.Warrior.Cleave", "champion_skill_sandbox.cue.stress_warrior_cleave");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.FireMage.Fireball", "champion_skill_sandbox.cue.stress_fireball_cast");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.LaserMage.Laser", "champion_skill_sandbox.cue.stress_laser_cast");
+            RegisterAbilityCue(performers, "Ability.ChampionStress.Priest.Heal", "champion_skill_sandbox.cue.stress_priest_heal_cast");
 
             RegisterEffectCue(performers, "Effect.Champion.Ezreal.EssenceFluxHit", "champion_skill_sandbox.cue.ezreal_essence_flux_hit");
             RegisterEffectCue(performers, "Effect.Champion.Ezreal.MysticShotHit", "champion_skill_sandbox.cue.ezreal_mystic_shot_hit");
@@ -236,6 +251,10 @@ namespace ChampionSkillSandboxMod.Runtime
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.LightningFieldHit", "champion_skill_sandbox.cue.jayce_hammer_lightning_field_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.ThunderingBlowHit", "champion_skill_sandbox.cue.jayce_hammer_thundering_blow_hit");
             RegisterEffectCue(performers, "Effect.Champion.Jayce.Hammer.ToTheSkiesHit", "champion_skill_sandbox.cue.jayce_hammer_to_the_skies_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.Warrior.CleaveHit", "champion_skill_sandbox.cue.stress_warrior_cleave_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.FireMage.FireballHit", "champion_skill_sandbox.cue.stress_fireball_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.LaserMage.LaserHit", "champion_skill_sandbox.cue.stress_laser_hit");
+            RegisterEffectCue(performers, "Effect.ChampionStress.Priest.Heal", "champion_skill_sandbox.cue.stress_priest_heal_hit");
 
             _cueIdsInitialized = true;
         }

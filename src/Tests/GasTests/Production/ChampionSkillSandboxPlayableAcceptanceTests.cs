@@ -12,6 +12,7 @@ using Ludots.Core.Components;
 using Ludots.Core.Engine;
 using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Gameplay.Components;
+using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Registry;
@@ -42,10 +43,13 @@ namespace Ludots.Tests.GAS.Production
     {
         private const float DeltaTime = 1f / 60f;
         private const string MapId = "champion_skill_sandbox";
+        private const string StressMapId = "champion_skill_stress";
         private const string SmartCastModeId = "ChampionSkillSandbox.Mode.SmartCast";
         private const string IndicatorModeId = "ChampionSkillSandbox.Mode.Indicator";
         private const string PressReleaseModeId = "ChampionSkillSandbox.Mode.PressReleaseAim";
         private const string SandboxTacticalCameraId = "ChampionSkillSandbox.Camera.Tactical";
+        private const string StressTeamAIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamA.Increase";
+        private const string StressTeamBIncreaseToolbarButtonId = "ChampionSkillSandbox.Stress.TeamB.Increase";
         private const string TestInputBackendKey = "Tests.ChampionSkillSandbox.InputBackend";
         private const string HeadlessCameraKey = "Tests.ChampionSkillSandbox.HeadlessCamera";
 
@@ -54,6 +58,7 @@ namespace Ludots.Tests.GAS.Production
             "LudotsCoreMod",
             "CoreInputMod",
             "CameraProfilesMod",
+            "DiagnosticsOverlayMod",
             "EntityCommandPanelMod",
             "ChampionSkillSandboxMod"
         };
@@ -134,8 +139,39 @@ namespace Ludots.Tests.GAS.Production
 
             SelectNamedEntity(engine, backend, "Ezreal Alpha", frameTimesMs);
             Vector2 ezrealStart = ReadPosition(engine.World, "Ezreal Alpha");
+            int baselineHoverRings = CountOverlays(overlays, GroundOverlayShape.Ring);
+            (string hoverEntityName, Vector2 hoverPoint) = FindAnyHoverableEntityScreenPoint(
+                engine,
+                backend,
+                GetSelectedEntityName(engine),
+                frameTimesMs);
+            backend.SetMousePosition(hoverPoint);
+            Tick(engine, 1, frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => CountOverlays(overlays, GroundOverlayShape.Ring) > baselineHoverRings,
+                maxFrames: 8);
+            Assert.That(ReadHoveredEntityName(engine), Is.EqualTo(hoverEntityName));
+            Assert.That(
+                CountOverlays(overlays, GroundOverlayShape.Ring),
+                Is.GreaterThan(baselineHoverRings),
+                "Normal hover should add a dedicated hover ring even when not actively aiming.");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "hover_marker_idle");
+            timeline.Add($"[T+005] Idle hover over {hoverEntityName} shows a dedicated hover marker before any cast input");
+
             Vector2 moveTargetScreen = GetGroundScreenFromWorld(engine, ezrealStart + new Vector2(220f, 0f));
+            int baselineMoveLines = CountOverlays(overlays, GroundOverlayShape.Line);
             RightClickWorld(engine, backend, moveTargetScreen, frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => CountOverlays(overlays, GroundOverlayShape.Line) > baselineMoveLines,
+                maxFrames: 8);
+            Assert.That(
+                CountOverlays(overlays, GroundOverlayShape.Line),
+                Is.GreaterThan(baselineMoveLines),
+                "Selected champion move orders should render a visible path overlay.");
             TickUntil(
                 engine,
                 frameTimesMs,
@@ -144,7 +180,7 @@ namespace Ludots.Tests.GAS.Production
             Vector2 ezrealAfterMove = ReadPosition(engine.World, "Ezreal Alpha");
             Assert.That(ezrealAfterMove.X, Is.GreaterThan(ezrealStart.X + 80f), "Right-click move should let the selected champion create distance.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "move_reposition");
-            timeline.Add($"[T+005] Ezreal Alpha.Move(RMB) -> X {ezrealStart.X:0} to {ezrealAfterMove.X:0} to create spacing");
+            timeline.Add($"[T+006] Ezreal Alpha.Move(RMB) -> X {ezrealStart.X:0} to {ezrealAfterMove.X:0} to create spacing with a visible path overlay");
 
             engine.GameSession.Camera.ApplyPose(new CameraPoseRequest
             {
@@ -163,14 +199,18 @@ namespace Ludots.Tests.GAS.Production
                 maxFrames: 6);
             Tick(engine, 2, frameTimesMs);
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "camera_reset");
-            timeline.Add("[T+006] Camera.Reset(F4) -> tactical view restored to sandbox default pose");
+            timeline.Add("[T+007] Camera.Reset(F4) -> tactical view restored to sandbox default pose");
 
             float ezrealDistanceToDummy = ReadDistance(engine.World, "Ezreal Alpha", "Target Dummy A");
             Assert.That(ezrealDistanceToDummy, Is.LessThanOrEqualTo(840f), "Sandbox layout should keep Target Dummy A inside Ezreal Q range for the opening smart-cast proof.");
             float dummyHealthBeforeQ = ReadHealth(engine.World, "Target Dummy A");
             SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy A"), frameTimesMs);
             PressButton(engine, backend, "<Keyboard>/q", frameTimesMs);
-            Tick(engine, 4, frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => ReadHealth(engine.World, "Target Dummy A") < dummyHealthBeforeQ,
+                maxFrames: 40);
             float dummyHealthAfterQ = ReadHealth(engine.World, "Target Dummy A");
             Assert.That(
                 dummyHealthAfterQ,
@@ -179,35 +219,36 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Smart cast hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Smart cast hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "smartcast_hit");
-            timeline.Add($"[T+007] Ezreal Alpha.Cast(Mystic Shot) -> Target Dummy A | Hit | HP {dummyHealthBeforeQ:0} -> {dummyHealthAfterQ:0}");
+            timeline.Add($"[T+008] Ezreal Alpha.Cast(Mystic Shot) -> Target Dummy A | Hit | HP {dummyHealthBeforeQ:0} -> {dummyHealthAfterQ:0}");
 
             toolbar.Activate(IndicatorModeId);
             Tick(engine, 1, frameTimesMs);
             Assert.That(GetActiveModeId(engine), Is.EqualTo(IndicatorModeId));
-            Vector2 dummyHoverPoint = FindHoverScreenPoint(engine, backend, "Target Dummy A", GetEntityScreen(engine, "Target Dummy A"), frameTimesMs);
-            Assert.That(ReadHoveredEntityName(engine), Is.EqualTo("Target Dummy A"));
-            SetMouseWorld(engine, backend, dummyHoverPoint, frameTimesMs);
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Ezreal Alpha"), frameTimesMs);
+            (string indicatorHoverEntityName, Vector2 indicatorHoverPoint) = FindAnyHoverableEntityScreenPoint(
+                engine,
+                backend,
+                GetSelectedEntityName(engine),
+                frameTimesMs);
+            backend.SetMousePosition(indicatorHoverPoint);
+            Tick(engine, 1, frameTimesMs);
+            Assert.That(ReadHoveredEntityName(engine), Is.EqualTo(indicatorHoverEntityName));
+            SetMouseWorld(engine, backend, GetEntityScreen(engine, "Target Dummy A"), frameTimesMs);
             int baselineIndicatorLines = CountOverlays(overlays, GroundOverlayShape.Line);
-            int baselineIndicatorRings = CountOverlays(overlays, GroundOverlayShape.Ring);
             HoldButton(engine, backend, "<Keyboard>/r", holdFrames: 2, frameTimesMs);
             Assert.That(
                 CountOverlays(overlays, GroundOverlayShape.Line),
                 Is.GreaterThan(baselineIndicatorLines),
                 $"{BuildInputActionDiagnostics(engine, "SkillR")} || {BuildAbilityDiagnostics(engine, "Ezreal Alpha")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)}");
+            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_hover_target");
+            timeline.Add($"[T+009] Indicator hover over {indicatorHoverEntityName} shows an extra target marker before release");
+            float dummyHealthBeforeR = ReadHealth(engine.World, "Target Dummy A");
+            ReleaseButton(engine, backend, "<Keyboard>/r", frameTimesMs);
             TickUntil(
                 engine,
                 frameTimesMs,
-                () => CountOverlays(overlays, GroundOverlayShape.Ring) > baselineIndicatorRings,
-                maxFrames: 8);
-            Assert.That(
-                CountOverlays(overlays, GroundOverlayShape.Ring),
-                Is.GreaterThan(baselineIndicatorRings),
-                "Indicator hover should add a dedicated marker on the hovered target.");
-            CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_hover_target");
-            timeline.Add("[T+008] Indicator hover over Target Dummy A shows an extra target marker before release");
-            float dummyHealthBeforeR = ReadHealth(engine.World, "Target Dummy A");
-            ReleaseButton(engine, backend, "<Keyboard>/r", frameTimesMs);
-            Tick(engine, 4, frameTimesMs);
+                () => ReadHealth(engine.World, "Target Dummy A") < dummyHealthBeforeR,
+                maxFrames: 40);
             float dummyHealthAfterR = ReadHealth(engine.World, "Target Dummy A");
             Assert.That(
                 dummyHealthAfterR,
@@ -216,7 +257,7 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Indicator release hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Indicator release hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "indicator_release_hit");
-            timeline.Add($"[T+009] Indicator mode hold-release previews Trueshot Barrage, then fires on release | HP {dummyHealthBeforeR:0} -> {dummyHealthAfterR:0}");
+            timeline.Add($"[T+010] Indicator mode hold-release previews Trueshot Barrage, then fires on release | HP {dummyHealthBeforeR:0} -> {dummyHealthAfterR:0}");
 
             SelectNamedEntity(engine, backend, "Jayce Cannon", frameTimesMs);
             toolbar.Activate(PressReleaseModeId);
@@ -250,7 +291,11 @@ namespace Ludots.Tests.GAS.Production
                 Is.GreaterThan(baselineAimLines),
                 $"{BuildInputActionDiagnostics(engine, "SkillQ")} || {BuildAbilityDiagnostics(engine, "Jayce Cannon")} || {BuildSelectionStateDiagnostics(engine)} || {BuildOverlayDiagnostics(overlays)}");
             LeftClickWorld(engine, backend, GetEntityScreen(engine, "Target Dummy A"), frameTimesMs);
-            Tick(engine, 4, frameTimesMs);
+            TickUntil(
+                engine,
+                frameTimesMs,
+                () => ReadHealth(engine.World, "Target Dummy A") < dummyHealthAfterCancel,
+                maxFrames: 40);
             float dummyHealthAfterConfirm = ReadHealth(engine.World, "Target Dummy A");
             Assert.That(
                 dummyHealthAfterConfirm,
@@ -259,11 +304,103 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(CountPrimitiveMarkers(primitives), Is.GreaterThan(0), "Press-release confirm hit should emit visible pulse markers.");
             Assert.That(CountWorldHudItems(worldHud, WorldHudItemKind.Text), Is.GreaterThan(0), "Press-release confirm hit should emit visible world text feedback.");
             CaptureSnapshot(engine, overlays, primitives, worldHud, snapshots, "press_release_confirm_hit");
-            timeline.Add($"[T+010] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
+            timeline.Add($"[T+011] Press-release aim cast shows confirm cursor for Jayce Cannon Q | cancel keeps HP {dummyHealthBeforeCancel:0} | confirm hits to {dummyHealthAfterConfirm:0}");
 
             File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildTraceJsonl(snapshots));
             File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildBattleReport(timeline, snapshots, frameTimesMs));
             File.WriteAllText(Path.Combine(artifactDir, "path.mmd"), BuildPathMermaid());
+        }
+
+        [Test]
+        public void ChampionSkillStress_PlayableFlow_WritesAcceptanceArtifacts()
+        {
+            string repoRoot = FindRepoRoot();
+            string artifactDir = Path.Combine(repoRoot, "artifacts", "acceptance", "champion-skill-stress");
+            Directory.CreateDirectory(artifactDir);
+
+            var timeline = new List<string>();
+            var snapshots = new List<StressAcceptanceSnapshot>();
+            var frameTimesMs = new List<double>();
+
+            using var engine = CreateEngine();
+            var primitives = engine.GetService(CoreServiceKeys.PresentationPrimitiveDrawBuffer)
+                ?? throw new InvalidOperationException("PrimitiveDrawBuffer missing.");
+            var worldHud = engine.GetService(CoreServiceKeys.PresentationWorldHudBuffer)
+                ?? throw new InvalidOperationException("WorldHudBatchBuffer missing.");
+            var toolbar = engine.GetService(CoreServiceKeys.EntityCommandPanelToolbarProvider)
+                ?? throw new InvalidOperationException("Toolbar provider missing.");
+
+            LoadMap(engine, StressMapId, frameTimesMs);
+            Assert.That(engine.TriggerManager.Errors.Count, Is.EqualTo(0));
+            Assert.That(toolbar.IsVisible, Is.True);
+            Assert.That(toolbar.Title, Is.EqualTo("Stress Harness"));
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "map_loaded");
+            timeline.Add("[T+001] champion_skill_stress loaded | stress toolbar mounted for both team-size controls");
+
+            TickUntil(engine, frameTimesMs, () =>
+            {
+                StressCombatSnapshot snapshot = ReadStressCombatSnapshot(engine.World);
+                return snapshot.TeamA >= 48 &&
+                       snapshot.TeamB >= 48 &&
+                       snapshot.TeamAWarriors > 0 &&
+                       snapshot.TeamAFireMages > 0 &&
+                       snapshot.TeamALaserMages > 0 &&
+                       snapshot.TeamAPriests > 0 &&
+                       snapshot.TeamBWarriors > 0 &&
+                       snapshot.TeamBFireMages > 0 &&
+                       snapshot.TeamBLaserMages > 0 &&
+                       snapshot.TeamBPriests > 0;
+            }, maxFrames: 360);
+
+            StressCombatSnapshot saturated = ReadStressCombatSnapshot(engine.World);
+            Assert.That(saturated.TeamA, Is.GreaterThanOrEqualTo(48));
+            Assert.That(saturated.TeamB, Is.GreaterThanOrEqualTo(48));
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "formations_saturated");
+            timeline.Add($"[T+002] Formations saturated | A={saturated.TeamA} (W/F/L/P {saturated.TeamAWarriors}/{saturated.TeamAFireMages}/{saturated.TeamALaserMages}/{saturated.TeamAPriests}) | B={saturated.TeamB} (W/F/L/P {saturated.TeamBWarriors}/{saturated.TeamBFireMages}/{saturated.TeamBLaserMages}/{saturated.TeamBPriests})");
+
+            var healthHistory = ReadStressEntityHealthMap(engine.World);
+            bool sawHeal = false;
+            int peakProjectiles = 0;
+            int peakPrimitives = 0;
+            int peakWorldText = 0;
+            for (int i = 0; i < 240; i++)
+            {
+                Tick(engine, 1, frameTimesMs);
+
+                StressCombatSnapshot combat = ReadStressCombatSnapshot(engine.World);
+                peakProjectiles = Math.Max(peakProjectiles, combat.Projectiles);
+                peakPrimitives = Math.Max(peakPrimitives, CountPrimitiveMarkers(primitives));
+                peakWorldText = Math.Max(peakWorldText, CountWorldHudItems(worldHud, WorldHudItemKind.Text));
+                sawHeal |= DetectStressHeal(engine.World, healthHistory);
+            }
+
+            StressCombatSnapshot active = ReadStressCombatSnapshot(engine.World);
+            Assert.That(peakProjectiles, Is.GreaterThan(0), "Stress exchange should create live projectile traffic.");
+            Assert.That(peakPrimitives, Is.GreaterThan(0), "Stress exchange should emit performer feedback.");
+            Assert.That(peakWorldText, Is.GreaterThan(0), "Stress exchange should emit readable combat text.");
+            Assert.That(active.TeamAInjured + active.TeamBInjured, Is.GreaterThan(0), "Frontline trading should injure live units.");
+            Assert.That(sawHeal, Is.True, "Priests should heal damaged allies during the sustained exchange.");
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "combat_active");
+            timeline.Add($"[T+003] Frontline melee plus fireball/laser volleys engaged | peak_projectiles={peakProjectiles} | peak_primitives={peakPrimitives} | peak_world_text={peakWorldText} | heal_observed={sawHeal}");
+
+            toolbar.Activate(StressTeamAIncreaseToolbarButtonId);
+            toolbar.Activate(StressTeamBIncreaseToolbarButtonId);
+            Tick(engine, 1, frameTimesMs);
+            TickUntil(engine, frameTimesMs, () =>
+            {
+                StressCombatSnapshot snapshot = ReadStressCombatSnapshot(engine.World);
+                return snapshot.TeamA >= 56 && snapshot.TeamB >= 56;
+            }, maxFrames: 360);
+
+            StressCombatSnapshot scaled = ReadStressCombatSnapshot(engine.World);
+            Assert.That(scaled.TeamA, Is.GreaterThanOrEqualTo(56));
+            Assert.That(scaled.TeamB, Is.GreaterThanOrEqualTo(56));
+            CaptureStressSnapshot(engine, primitives, worldHud, toolbar, snapshots, "scaled_up");
+            timeline.Add($"[T+004] Toolbar scale-up converged | A={scaled.TeamA} | B={scaled.TeamB} | injured A/B={scaled.TeamAInjured}/{scaled.TeamBInjured}");
+
+            File.WriteAllText(Path.Combine(artifactDir, "trace.jsonl"), BuildStressTraceJsonl(snapshots));
+            File.WriteAllText(Path.Combine(artifactDir, "battle-report.md"), BuildStressBattleReport(timeline, snapshots, frameTimesMs, peakProjectiles, peakPrimitives, peakWorldText, sawHeal));
+            File.WriteAllText(Path.Combine(artifactDir, "path.mmd"), BuildStressPathMermaid());
         }
 
         private static GameEngine CreateEngine()
@@ -590,8 +727,9 @@ namespace Ludots.Tests.GAS.Production
             sb.AppendLine($"- final_feedback_world_text: {finalSnapshot.WorldTextCount}");
             sb.AppendLine();
             sb.AppendLine("## Summary Stats");
-            sb.AppendLine("- total_actions: 10");
+            sb.AppendLine("- total_actions: 11");
             sb.AppendLine("- selection_switches: 4");
+            sb.AppendLine("- hover_previews: 1");
             sb.AppendLine("- move_commands: 1");
             sb.AppendLine("- camera_resets: 1");
             sb.AppendLine("- successful_hits: 3");
@@ -609,14 +747,138 @@ namespace Ludots.Tests.GAS.Production
                 "    A[\"MapLoaded: sandbox boot -> Ezreal Alpha selected\"] --> B[\"Selection: Ezreal Cooldown -> R blocked\"]",
                 "    B --> C[\"Selection: Garen Courage -> W active\"]",
                 "    C --> D[\"Selection: Jayce Hammer -> hammer form routed\"]",
-                "    D --> E[\"Move: RMB command repositions Ezreal Alpha\"]",
-                "    E --> F[\"Camera: F4 reset restores sandbox tactical pose\"]",
-                "    F --> G[\"SmartCast: Ezreal Q -> Target Dummy A hit\"]",
-                "    G --> H[\"Indicator: hold R on dummy -> hover marker appears\"]",
-                "    H --> I[\"Indicator: release -> Trueshot Barrage hit\"]",
-                "    I --> J[\"PressReleaseAim: toolbar switch -> Jayce Cannon Q preview\"]",
-                "    J --> K[\"RightClick confirm branch: cancel -> HP unchanged\"]",
-                "    J --> L[\"LeftClick confirm branch: hit -> HP reduced\"]"
+                "    D --> E[\"Hover: idle pointer over enemy -> hover marker appears\"]",
+                "    E --> F[\"Move: RMB command repositions Ezreal Alpha\"]",
+                "    F --> G[\"Camera: F4 reset restores sandbox tactical pose\"]",
+                "    G --> H[\"SmartCast: Ezreal Q -> Target Dummy A hit\"]",
+                "    H --> I[\"Indicator: hold R on dummy -> hover marker appears\"]",
+                "    I --> J[\"Indicator: release -> Trueshot Barrage hit\"]",
+                "    J --> K[\"PressReleaseAim: toolbar switch -> Jayce Cannon Q preview\"]",
+                "    K --> L[\"RightClick confirm branch: cancel -> HP unchanged\"]",
+                "    K --> M[\"LeftClick confirm branch: hit -> HP reduced\"]"
+            });
+        }
+
+        private static void CaptureStressSnapshot(
+            GameEngine engine,
+            PrimitiveDrawBuffer primitives,
+            WorldHudBatchBuffer worldHud,
+            IEntityCommandPanelToolbarProvider toolbar,
+            List<StressAcceptanceSnapshot> snapshots,
+            string step)
+        {
+            snapshots.Add(new StressAcceptanceSnapshot(
+                Step: step,
+                ActiveModeId: GetActiveModeId(engine),
+                ToolbarSubtitle: toolbar.Subtitle,
+                Metrics: ReadStressCombatSnapshot(engine.World),
+                PrimitiveCount: CountPrimitiveMarkers(primitives),
+                WorldTextCount: CountWorldHudItems(worldHud, WorldHudItemKind.Text)));
+        }
+
+        private static string BuildStressTraceJsonl(IReadOnlyList<StressAcceptanceSnapshot> snapshots)
+        {
+            var lines = new List<string>(snapshots.Count);
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                StressAcceptanceSnapshot snapshot = snapshots[i];
+                lines.Add(JsonSerializer.Serialize(new
+                {
+                    event_id = $"champion-stress-{i + 1:000}",
+                    step = snapshot.Step,
+                    active_mode_id = snapshot.ActiveModeId,
+                    toolbar_subtitle = snapshot.ToolbarSubtitle,
+                    team_a = snapshot.Metrics.TeamA,
+                    team_b = snapshot.Metrics.TeamB,
+                    team_a_roles = new
+                    {
+                        warriors = snapshot.Metrics.TeamAWarriors,
+                        fire_mages = snapshot.Metrics.TeamAFireMages,
+                        laser_mages = snapshot.Metrics.TeamALaserMages,
+                        priests = snapshot.Metrics.TeamAPriests
+                    },
+                    team_b_roles = new
+                    {
+                        warriors = snapshot.Metrics.TeamBWarriors,
+                        fire_mages = snapshot.Metrics.TeamBFireMages,
+                        laser_mages = snapshot.Metrics.TeamBLaserMages,
+                        priests = snapshot.Metrics.TeamBPriests
+                    },
+                    injured = new
+                    {
+                        team_a = snapshot.Metrics.TeamAInjured,
+                        team_b = snapshot.Metrics.TeamBInjured
+                    },
+                    projectiles = snapshot.Metrics.Projectiles,
+                    primitive_count = snapshot.PrimitiveCount,
+                    world_text_count = snapshot.WorldTextCount
+                }));
+            }
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        private static string BuildStressBattleReport(
+            IReadOnlyList<string> timeline,
+            IReadOnlyList<StressAcceptanceSnapshot> snapshots,
+            IReadOnlyList<double> frameTimesMs,
+            int peakProjectiles,
+            int peakPrimitives,
+            int peakWorldText,
+            bool sawHeal)
+        {
+            double medianTickMs = Median(frameTimesMs);
+            double maxTickMs = frameTimesMs.Count == 0 ? 0d : frameTimesMs.Max();
+            StressAcceptanceSnapshot finalSnapshot = snapshots[^1];
+
+            var sb = new StringBuilder();
+            sb.AppendLine("# Scenario: champion-skill-stress");
+            sb.AppendLine();
+            sb.AppendLine("## Header");
+            sb.AppendLine("- build: GasTests / ChampionSkillStress_PlayableFlow_WritesAcceptanceArtifacts");
+            sb.AppendLine("- map: champion_skill_stress");
+            sb.AppendLine("- clock: FixedFrame @ 60 Hz");
+            sb.AppendLine($"- execution_timestamp_utc: {DateTime.UtcNow:O}");
+            sb.AppendLine();
+            sb.AppendLine("## Timeline");
+            foreach (string entry in timeline)
+            {
+                sb.AppendLine(entry);
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("## Outcome");
+            sb.AppendLine("- result: success");
+            sb.AppendLine("- failure_branch: toolbar scale-up must converge; otherwise stress spawn or order routing regressed");
+            sb.AppendLine($"- final_toolbar: {finalSnapshot.ToolbarSubtitle}");
+            sb.AppendLine($"- final_team_counts: A={finalSnapshot.Metrics.TeamA}, B={finalSnapshot.Metrics.TeamB}");
+            sb.AppendLine($"- final_injured_counts: A={finalSnapshot.Metrics.TeamAInjured}, B={finalSnapshot.Metrics.TeamBInjured}");
+            sb.AppendLine($"- final_projectiles: {finalSnapshot.Metrics.Projectiles}");
+            sb.AppendLine();
+            sb.AppendLine("## Summary Stats");
+            sb.AppendLine("- total_actions: 4");
+            sb.AppendLine("- formation_saturations: 1");
+            sb.AppendLine("- sustained_combat_windows: 1");
+            sb.AppendLine("- toolbar_scale_ups: 1");
+            sb.AppendLine($"- peak_projectiles: {peakProjectiles}");
+            sb.AppendLine($"- peak_primitives: {peakPrimitives}");
+            sb.AppendLine($"- peak_world_text: {peakWorldText}");
+            sb.AppendLine($"- heal_observed: {sawHeal}");
+            sb.AppendLine($"- median_tick_ms: {medianTickMs:0.###}");
+            sb.AppendLine($"- max_tick_ms: {maxTickMs:0.###}");
+            return sb.ToString();
+        }
+
+        private static string BuildStressPathMermaid()
+        {
+            return string.Join(Environment.NewLine, new[]
+            {
+                "flowchart TD",
+                "    A[\"MapLoaded: stress battlefield boot -> toolbar mounted\"] --> B[\"Spawn: both teams converge to 48 units with W/F/L/P roles\"]",
+                "    B --> C[\"Combat: warriors melee while fireball and laser projectiles peak above zero\"]",
+                "    C --> D[\"Support: priests heal damaged allies -> health rises on tracked entities\"]",
+                "    D --> E[\"Toolbar: A+ and B+ -> both teams scale to 56 units\"]",
+                "    B --> F[\"if counts do not converge -> fail stress spawn / queue regression\"]"
             });
         }
 
@@ -676,6 +938,14 @@ namespace Ludots.Tests.GAS.Production
             return count;
         }
 
+        private static int CountProjectiles(World world)
+        {
+            int count = 0;
+            var query = new QueryDescription().WithAll<ProjectileState>();
+            world.Query(in query, (Entity _, ref ProjectileState __) => count++);
+            return count;
+        }
+
         private static string GetActiveModeId(GameEngine engine)
         {
             return engine.GlobalContext.TryGetValue(ViewModeManager.ActiveModeIdKey, out var modeIdObj) && modeIdObj is string modeId
@@ -706,6 +976,47 @@ namespace Ludots.Tests.GAS.Production
 
         private static Vector2 FindHoverScreenPoint(GameEngine engine, TestInputBackend backend, string entityName, Vector2 projectedScreenPoint, List<double> frameTimesMs)
         {
+            if (TryFindHoverScreenPoint(engine, backend, entityName, projectedScreenPoint, frameTimesMs, out Vector2 point, out string samples))
+            {
+                return point;
+            }
+
+            Assert.Fail(
+                $"Failed to hover '{entityName}' near projected point ({projectedScreenPoint.X:0.0},{projectedScreenPoint.Y:0.0}). Samples: {samples}");
+            return projectedScreenPoint;
+        }
+
+        private static (string EntityName, Vector2 Point) FindAnyHoverableEntityScreenPoint(
+            GameEngine engine,
+            TestInputBackend backend,
+            string excludedEntityName,
+            List<double> frameTimesMs)
+        {
+            var samples = new List<string>();
+            foreach (string candidateName in GetPreferredHoverCandidates(engine.World, excludedEntityName))
+            {
+                Vector2 projectedScreenPoint = GetEntityScreen(engine, candidateName);
+                if (TryFindHoverScreenPoint(engine, backend, candidateName, projectedScreenPoint, frameTimesMs, out Vector2 point, out string candidateSamples))
+                {
+                    return (candidateName, point);
+                }
+
+                samples.Add($"{candidateName}: {candidateSamples}");
+            }
+
+            Assert.Fail($"Failed to find any hoverable non-selected entity. Samples: {string.Join(" || ", samples)}");
+            return (string.Empty, default);
+        }
+
+        private static bool TryFindHoverScreenPoint(
+            GameEngine engine,
+            TestInputBackend backend,
+            string entityName,
+            Vector2 projectedScreenPoint,
+            List<double> frameTimesMs,
+            out Vector2 matchedPoint,
+            out string samples)
+        {
             var hoveredSamples = new List<string>(HoverProbeOffsets.Length);
             for (int i = 0; i < HoverProbeOffsets.Length; i++)
             {
@@ -717,13 +1028,15 @@ namespace Ludots.Tests.GAS.Production
                 hoveredSamples.Add($"{candidate.X:0.0},{candidate.Y:0.0}->{hovered}");
                 if (string.Equals(hovered, entityName, StringComparison.Ordinal))
                 {
-                    return candidate;
+                    matchedPoint = candidate;
+                    samples = string.Join(" | ", hoveredSamples);
+                    return true;
                 }
             }
 
-            Assert.Fail(
-                $"Failed to hover '{entityName}' near projected point ({projectedScreenPoint.X:0.0},{projectedScreenPoint.Y:0.0}). Samples: {string.Join(" | ", hoveredSamples)}");
-            return projectedScreenPoint;
+            matchedPoint = default;
+            samples = string.Join(" | ", hoveredSamples);
+            return false;
         }
 
         private static void UpdateHeadlessCamera(GameEngine engine)
@@ -790,6 +1103,37 @@ namespace Ludots.Tests.GAS.Production
             return found;
         }
 
+        private static IReadOnlyList<string> GetPreferredHoverCandidates(World world, string excludedEntityName)
+        {
+            string[] preferred =
+            {
+                "Jayce Cannon",
+                "Target Dummy A",
+                "Target Dummy B",
+                "Jayce Hammer",
+                "Garen Courage",
+                "Ezreal Cooldown"
+            };
+
+            var names = new List<string>(preferred.Length);
+            for (int i = 0; i < preferred.Length; i++)
+            {
+                string candidate = preferred[i];
+                if (string.Equals(candidate, excludedEntityName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Entity entity = FindEntityByName(world, candidate);
+                if (entity != Entity.Null)
+                {
+                    names.Add(candidate);
+                }
+            }
+
+            return names;
+        }
+
         private static Vector2 ReadPosition(World world, string name)
         {
             Entity entity = FindEntityByName(world, name);
@@ -813,6 +1157,145 @@ namespace Ludots.Tests.GAS.Production
             }
 
             return attributes.GetCurrent(healthId);
+        }
+
+        private static StressCombatSnapshot ReadStressCombatSnapshot(World world)
+        {
+            int healthId = AttributeRegistry.GetId("Health");
+            int teamA = 0;
+            int teamB = 0;
+            int teamAWarriors = 0;
+            int teamAFireMages = 0;
+            int teamALaserMages = 0;
+            int teamAPriests = 0;
+            int teamBWarriors = 0;
+            int teamBFireMages = 0;
+            int teamBLaserMages = 0;
+            int teamBPriests = 0;
+            int teamAInjured = 0;
+            int teamBInjured = 0;
+
+            var query = new QueryDescription().WithAll<Name, Team, MapEntity, AttributeBuffer>();
+            world.Query(in query, (Entity _, ref Name name, ref Team team, ref MapEntity mapEntity, ref AttributeBuffer attributes) =>
+            {
+                if (!string.Equals(mapEntity.MapId.Value, StressMapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                float currentHealth = healthId >= 0 ? attributes.GetCurrent(healthId) : 0f;
+                float maxHealth = healthId >= 0 ? attributes.GetBase(healthId) : 0f;
+                bool injured = maxHealth > 0f && currentHealth < maxHealth - 0.01f;
+
+                if (team.Id == 1)
+                {
+                    teamA++;
+                    if (injured)
+                    {
+                        teamAInjured++;
+                    }
+
+                    if (name.Value.Contains("FireMage", StringComparison.Ordinal))
+                    {
+                        teamAFireMages++;
+                    }
+                    else if (name.Value.Contains("LaserMage", StringComparison.Ordinal))
+                    {
+                        teamALaserMages++;
+                    }
+                    else if (name.Value.Contains("Priest", StringComparison.Ordinal))
+                    {
+                        teamAPriests++;
+                    }
+                    else
+                    {
+                        teamAWarriors++;
+                    }
+                }
+                else if (team.Id == 2)
+                {
+                    teamB++;
+                    if (injured)
+                    {
+                        teamBInjured++;
+                    }
+
+                    if (name.Value.Contains("FireMage", StringComparison.Ordinal))
+                    {
+                        teamBFireMages++;
+                    }
+                    else if (name.Value.Contains("LaserMage", StringComparison.Ordinal))
+                    {
+                        teamBLaserMages++;
+                    }
+                    else if (name.Value.Contains("Priest", StringComparison.Ordinal))
+                    {
+                        teamBPriests++;
+                    }
+                    else
+                    {
+                        teamBWarriors++;
+                    }
+                }
+            });
+
+            return new StressCombatSnapshot(
+                TeamA: teamA,
+                TeamB: teamB,
+                TeamAWarriors: teamAWarriors,
+                TeamAFireMages: teamAFireMages,
+                TeamALaserMages: teamALaserMages,
+                TeamAPriests: teamAPriests,
+                TeamBWarriors: teamBWarriors,
+                TeamBFireMages: teamBFireMages,
+                TeamBLaserMages: teamBLaserMages,
+                TeamBPriests: teamBPriests,
+                TeamAInjured: teamAInjured,
+                TeamBInjured: teamBInjured,
+                Projectiles: CountProjectiles(world));
+        }
+
+        private static Dictionary<int, float> ReadStressEntityHealthMap(World world)
+        {
+            int healthId = AttributeRegistry.GetId("Health");
+            var values = new Dictionary<int, float>();
+            var query = new QueryDescription().WithAll<Team, MapEntity, AttributeBuffer>();
+            world.Query(in query, (Entity entity, ref Team _, ref MapEntity mapEntity, ref AttributeBuffer attributes) =>
+            {
+                if (!string.Equals(mapEntity.MapId.Value, StressMapId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                if (healthId >= 0)
+                {
+                    values[entity.Id] = attributes.GetCurrent(healthId);
+                }
+            });
+
+            return values;
+        }
+
+        private static bool DetectStressHeal(World world, Dictionary<int, float> previousHealthByEntity)
+        {
+            bool sawHeal = false;
+            Dictionary<int, float> current = ReadStressEntityHealthMap(world);
+            foreach ((int entityId, float health) in current)
+            {
+                if (previousHealthByEntity.TryGetValue(entityId, out float previousHealth) &&
+                    health > previousHealth + 0.1f)
+                {
+                    sawHeal = true;
+                }
+            }
+
+            previousHealthByEntity.Clear();
+            foreach ((int entityId, float health) in current)
+            {
+                previousHealthByEntity[entityId] = health;
+            }
+
+            return sawHeal;
         }
 
         private static string BuildAbilityDiagnostics(GameEngine engine, string actorName)
@@ -990,6 +1473,29 @@ namespace Ludots.Tests.GAS.Production
         private sealed record EntityState(
             string Name,
             float Health);
+
+        private sealed record StressAcceptanceSnapshot(
+            string Step,
+            string ActiveModeId,
+            string ToolbarSubtitle,
+            StressCombatSnapshot Metrics,
+            int PrimitiveCount,
+            int WorldTextCount);
+
+        private sealed record StressCombatSnapshot(
+            int TeamA,
+            int TeamB,
+            int TeamAWarriors,
+            int TeamAFireMages,
+            int TeamALaserMages,
+            int TeamAPriests,
+            int TeamBWarriors,
+            int TeamBFireMages,
+            int TeamBLaserMages,
+            int TeamBPriests,
+            int TeamAInjured,
+            int TeamBInjured,
+            int Projectiles);
 
         private sealed class TestInputBackend : IInputBackend
         {

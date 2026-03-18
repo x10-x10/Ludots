@@ -287,7 +287,10 @@ namespace Ludots.Core.Gameplay.GAS.Orders
             }
 
             ref var buffer = ref world.Get<OrderBuffer>(entity);
+            int completedOrderId = buffer.HasActive ? buffer.ActiveOrder.Order.OrderId : 0;
+            int completedOrderTypeId = buffer.HasActive ? buffer.ActiveOrder.Order.OrderTypeId : 0;
             DeactivateCurrentOrder(world, entity, ref buffer, registry);
+            WriteCompletedOrderSignal(world, entity, completedOrderId, completedOrderTypeId);
 
             if (buffer.PromoteNext())
             {
@@ -345,6 +348,31 @@ namespace Ludots.Core.Gameplay.GAS.Orders
             ref var buffer = ref world.Get<OrderBuffer>(entity);
             DeactivateCurrentOrder(world, entity, ref buffer, registry);
             buffer.Clear();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void WriteCompletedOrderSignal(World world, Entity entity, int orderId, int orderTypeId)
+        {
+            if (orderId <= 0 ||
+                !world.Has<OrderContinuationBuffer>(entity) ||
+                !world.Get<OrderContinuationBuffer>(entity).HasEntries)
+            {
+                return;
+            }
+
+            if (!world.Has<CompletedOrderSignal>(entity))
+            {
+                world.Add(entity, new CompletedOrderSignal
+                {
+                    OrderId = orderId,
+                    OrderTypeId = orderTypeId
+                });
+                return;
+            }
+
+            ref var signal = ref world.Get<CompletedOrderSignal>(entity);
+            signal.OrderId = orderId;
+            signal.OrderTypeId = orderTypeId;
         }
     }
 }

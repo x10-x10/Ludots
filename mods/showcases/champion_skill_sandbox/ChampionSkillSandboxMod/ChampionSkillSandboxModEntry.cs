@@ -12,6 +12,7 @@ namespace ChampionSkillSandboxMod
         public void OnLoad(IModContext context)
         {
             context.Log("[ChampionSkillSandboxMod] Loaded");
+            ChampionSkillSandboxComponentAuthoring.Register(context.ModId);
 
             var runtime = new ChampionSkillSandboxRuntime();
             var toolbarProvider = new ChampionSkillCastModeToolbarProvider();

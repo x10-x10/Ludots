@@ -60,6 +60,9 @@ using Ludots.Core.Engine.Navigation2D;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Map.Board;
 using Ludots.Core.Gameplay.Camera.FollowTargets;
+using Ludots.Core.Navigation.GraphCore;
+using Ludots.Core.Navigation.Pathing;
+using Ludots.Core.Navigation.Pathing.Config;
 using Ludots.Core.Registry;
 
 namespace Ludots.Core.Engine
@@ -103,6 +106,9 @@ namespace Ludots.Core.Engine
     {
         private const int PrimitiveDrawBufferCapacity = 8192;
         private const int VisualSnapshotBufferCapacity = 131072;
+        private const int PerformerInstanceBufferCapacity = 4096;
+        private const int PathStoreMaxPaths = 512;
+        private const int PathStoreMaxPointsPerPath = 256;
 
         private bool _isRunning;
         private EffectTemplateLoader _effectTemplateLoader;
@@ -487,7 +493,7 @@ namespace Ludots.Core.Engine
             var groundOverlayBuffer = new GroundOverlayBuffer();
             var worldHudBuffer = new WorldHudBatchBuffer();
             var performerDefinitions = new PerformerDefinitionRegistry();
-            var performerInstances = new PerformerInstanceBuffer();
+            var performerInstances = new PerformerInstanceBuffer(PerformerInstanceBufferCapacity);
             var projectilePresentationBindings = new ProjectilePresentationBindingRegistry();
             var performerGraphApi = new GasGraphRuntimeApi(World, spatialQueries: null, coords: null, eventBus: null);
             new MeshAssetConfigLoader(ConfigPipeline, meshAssets, presentationPrefabs).Load();
@@ -594,6 +600,7 @@ namespace Ludots.Core.Engine
             var abilityExecSystem = new AbilityExecSystem(World, clock, abilityInputRequestQueue, inputResponseBuffer, selectionRequestQueue, selectionResponseBuffer, effectRequestQueue, abilityDefinitions, EventBus, cfgCastAbility, gasPresentationEvents, phaseExecutor: phaseExecutor, graphPrograms: graphProgramRegistry, graphApi: gasGraphApi, tagOps: tagOps, orderTypeRegistry: orderTypeRegistry);
             var stopOrderSystem = new StopOrderSystem(World, orderTypeRegistry, cfgStop);
             var moveToOrderSystem = new MoveToWorldCmOrderSystem(World, orderTypeRegistry, cfgMoveTo);
+            var orderContinuationSystem = new OrderContinuationSystem(World, clock, orderTypeRegistry, orderRuleRegistry, stepRateHz);
 
             // Register systems in Phase order according to GAS design document
             // Phase 0: SchemaUpdate
@@ -694,6 +701,8 @@ namespace Ludots.Core.Engine
                 SetService(CoreServiceKeys.Navigation2DRuntime, navigation2dRuntime);
 
                 const string nav2dSystemTypeName = "Ludots.Core.Physics2D.Systems.Navigation2DSimulationSystem2D";
+                const string physics2dSystemTypeName = "Ludots.Core.Physics2D.Ticking.Physics2DSimulationSystem";
+                const string worldSyncSystemTypeName = "Ludots.Core.Physics2D.Systems.Physics2DToWorldPositionSyncSystem";
                 const string physics2dAssemblyName = "Ludots.Physics2D";
                 var nav2dSystemType = Type.GetType($"{nav2dSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
                 if (nav2dSystemType == null)
@@ -708,10 +717,31 @@ namespace Ludots.Core.Engine
                 }
                 else
                 {
+                    var physics2dSystemType = Type.GetType($"{physics2dSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
+                    var worldSyncSystemType = Type.GetType($"{worldSyncSystemTypeName}, {physics2dAssemblyName}", throwOnError: false);
+                    if (physics2dSystemType == null || worldSyncSystemType == null)
+                    {
+                        throw new InvalidOperationException("Navigation2D.Enabled=true requires Physics2DSimulationSystem and Physics2DToWorldPositionSyncSystem to be loadable.");
+                    }
+
+                    RegisterSystem(new Ludots.Core.Navigation2D.Systems.NavOrderAgentBootstrapSystem(World), SystemGroup.InputCollection);
+
                     var nav2dSystemObj = Activator.CreateInstance(nav2dSystemType, World, navigation2dRuntime, clock, navigation2dTickPolicy);
                     if (nav2dSystemObj is ISystem<float> nav2dSystem)
                     {
                         RegisterSystem(nav2dSystem, SystemGroup.InputCollection);
+                    }
+
+                    var physics2dSystemObj = Activator.CreateInstance(physics2dSystemType, World, clock, physics2dTickPolicy);
+                    if (physics2dSystemObj is ISystem<float> physics2dSystem)
+                    {
+                        RegisterSystem(physics2dSystem, SystemGroup.InputCollection);
+                    }
+
+                    var worldSyncSystemObj = Activator.CreateInstance(worldSyncSystemType, World);
+                    if (worldSyncSystemObj is ISystem<float> worldSyncSystem)
+                    {
+                        RegisterSystem(worldSyncSystem, SystemGroup.PostMovement);
                     }
                 }
             }
@@ -723,6 +753,7 @@ namespace Ludots.Core.Engine
             RegisterSystem(abilitySystem, SystemGroup.AbilityActivation);
             RegisterSystem(abilityExecSystem, SystemGroup.AbilityActivation);
             RegisterSystem(moveToOrderSystem, SystemGroup.AbilityActivation);
+            RegisterSystem(orderContinuationSystem, SystemGroup.AbilityActivation);
             
             // Phase 3: EffectProcessing (含响应链)
             var responseChainOrderTypes = new ResponseChainOrderTypes
@@ -838,6 +869,7 @@ namespace Ludots.Core.Engine
                 }
 
                 LoadNavForMap(mapId, mapConfig);
+                LoadPathingForSession(session);
                 Diagnostics.Log.Info(in LogChannels.Engine, "Creating Entities from MapConfig...");
                 MapLoader.LoadEntities(mapConfig);
                 SetMapEntitiesSuspended(mid, false);
@@ -916,12 +948,20 @@ namespace Ludots.Core.Engine
                     LoadBoardTerrainData(restored, restored.MapConfig);
                     LoadNavForMap(restored.MapId.Value, restored.MapConfig);
                 }
+                LoadPathingForSession(restored);
                 SetMapEntitiesSuspended(restored.MapId, false);
 
                 var resumeCtx = CreateContext();
                 resumeCtx.Set(CoreServiceKeys.MapId, restored.MapId);
                 foreach (var kvp in GlobalContext) resumeCtx.Set(kvp.Key, kvp.Value);
                 CompleteLifecycleEvent(TriggerManager.FireMapEventAsync(restored.MapId, GameEvents.MapResumed, resumeCtx));
+            }
+            else if (wasFocused)
+            {
+                CurrentMapSession = null;
+                GlobalContext.Remove(CoreServiceKeys.MapSession.Name);
+                ClearNavServices();
+                ClearPathingServices();
             }
         }
 
@@ -968,6 +1008,7 @@ namespace Ludots.Core.Engine
                 LoadBoardTerrainData(session, mapConfig);
                 LoadNavForMap(innerMapId, mapConfig);
             }
+            LoadPathingForSession(session);
 
             MapLoader.LoadEntities(mapConfig);
             SetMapEntitiesSuspended(inner, false);
@@ -1041,6 +1082,7 @@ namespace Ludots.Core.Engine
                     LoadBoardTerrainData(outerSession, outerSession.MapConfig);
                     LoadNavForMap(outerSession.MapId.Value, outerSession.MapConfig);
                 }
+                LoadPathingForSession(outerSession);
                 SetMapEntitiesSuspended(outerSession.MapId, false);
 
                 var resumeCtx = CreateContext();
@@ -1375,9 +1417,7 @@ namespace Ludots.Core.Engine
 
         private void LoadNavForMap(string mapId, MapConfig mapConfig)
         {
-            GlobalContext.Remove(CoreServiceKeys.NavMeshBakeConfig.Name);
-            GlobalContext.Remove(CoreServiceKeys.NavMeshProfiles.Name);
-            GlobalContext.Remove(CoreServiceKeys.NavQueryServices.Name);
+            ClearNavServices();
 
             if (mapConfig?.Tags == null || mapConfig.Tags.Count == 0) return;
             bool navEnabled = false;
@@ -1438,6 +1478,132 @@ namespace Ludots.Core.Engine
             }
 
             SetService(CoreServiceKeys.NavQueryServices, new NavQueryServiceRegistry(stores));
+        }
+
+        private void ClearNavServices()
+        {
+            GlobalContext.Remove(CoreServiceKeys.NavMeshBakeConfig.Name);
+            GlobalContext.Remove(CoreServiceKeys.NavMeshProfiles.Name);
+            GlobalContext.Remove(CoreServiceKeys.NavQueryServices.Name);
+        }
+
+        private void LoadPathingForSession(MapSession session)
+        {
+            ClearPathingServices();
+
+            if (session == null)
+            {
+                return;
+            }
+
+            var pathingConfig = new PathingConfigLoader(ConfigPipeline).Load(ConfigCatalog, ConfigConflictReport);
+            var pathStore = new PathStore(PathStoreMaxPaths, PathStoreMaxPointsPerPath);
+            var graph = BuildPathingGraph(session.PrimaryBoard);
+            IPathService nodeGraphService = new NodeGraphPathServiceAdapter(graph, pathStore);
+            IPathService pathService = nodeGraphService;
+
+            var navRegistry = GetService(CoreServiceKeys.NavQueryServices);
+            var navProfiles = GetService(CoreServiceKeys.NavMeshProfiles);
+
+            if (navRegistry != null && navProfiles != null)
+            {
+                var autoPathService = new AutoPathService(graph, navRegistry, navProfiles, pathStore, pathingConfig);
+                pathService = autoPathService;
+
+                if (TryCreateDefaultNavMeshPathService(pathingConfig, navRegistry, navProfiles, pathStore, out var navMeshService))
+                {
+                    pathService = new PathServiceRouter(nodeGraphService, navMeshService, autoPathService, pathStore);
+                }
+            }
+
+            SetService(CoreServiceKeys.PathingConfig, pathingConfig);
+            SetService(CoreServiceKeys.PathStore, pathStore);
+            SetService(CoreServiceKeys.PathService, pathService);
+
+            Diagnostics.Log.Info(
+                in LogChannels.Engine,
+                $"Pathing bootstrap ready for map '{session.MapId.Value}': service={pathService.GetType().Name}, board='{session.PrimaryBoard?.Name ?? "<none>"}'.");
+        }
+
+        private void ClearPathingServices()
+        {
+            GlobalContext.Remove(CoreServiceKeys.PathingConfig.Name);
+            GlobalContext.Remove(CoreServiceKeys.PathStore.Name);
+            GlobalContext.Remove(CoreServiceKeys.PathService.Name);
+        }
+
+        private static NodeGraph BuildPathingGraph(IBoard board)
+        {
+            if (board is INodeGraphBoard nodeGraphBoard)
+            {
+                return nodeGraphBoard.GraphStore.BuildLoadedView().Graph;
+            }
+
+            return new NodeGraphBuilder(0, 0).Build();
+        }
+
+        private static bool TryCreateDefaultNavMeshPathService(
+            PathingConfig pathingConfig,
+            NavQueryServiceRegistry navRegistry,
+            NavMeshProfileRegistry navProfiles,
+            PathStore pathStore,
+            out IPathService navMeshService)
+        {
+            navMeshService = null;
+            if (pathingConfig?.AgentTypes == null || pathingConfig.AgentTypes.Count == 0)
+            {
+                return false;
+            }
+
+            var agent = pathingConfig.AgentTypes[0];
+            if (agent == null || !navProfiles.TryGetIndex(agent.ProfileId, out int profileIndex))
+            {
+                return false;
+            }
+
+            var areaCosts = BuildPathNavAreaCosts(agent.NavMesh);
+            if (!navRegistry.TryCreateQuery(agent.Layer, profileIndex, areaCosts, out var query))
+            {
+                return false;
+            }
+
+            navMeshService = new NavMeshPathServiceAdapter(query, pathStore);
+            return true;
+        }
+
+        private static NavAreaCostTable BuildPathNavAreaCosts(PathingNavMeshConfig cfg)
+        {
+            var arr = new Fix64[256];
+            for (int i = 0; i < arr.Length; i++)
+            {
+                arr[i] = Fix64.OneValue;
+            }
+
+            if (cfg?.AreaCosts != null)
+            {
+                for (int i = 0; i < cfg.AreaCosts.Count; i++)
+                {
+                    var area = cfg.AreaCosts[i];
+                    if (area == null)
+                    {
+                        continue;
+                    }
+
+                    if (area.AreaId < 0 || area.AreaId > 255)
+                    {
+                        throw new InvalidOperationException($"Invalid pathing areaId: {area.AreaId}");
+                    }
+
+                    if (area.Cost <= 0f || float.IsNaN(area.Cost))
+                    {
+                        throw new InvalidOperationException($"Invalid pathing cost for areaId={area.AreaId}");
+                    }
+
+                    arr[area.AreaId] = Fix64.FromFloat(area.Cost);
+                }
+            }
+
+            return new NavAreaCostTable(arr);
         }
 
         private NavMeshBakeConfig LoadNavMeshBakeConfig()

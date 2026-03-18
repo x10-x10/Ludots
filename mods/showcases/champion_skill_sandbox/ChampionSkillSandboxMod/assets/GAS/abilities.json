@@ -391,5 +391,97 @@
         "PressReleaseAimCast": "Release key, then confirm transform"
       }
     }
+  },
+  {
+    "id": "Ability.ChampionStress.Warrior.Cleave",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 18, "tag": "Cooldown.ChampionStress.Warrior.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.ChampionStress.Warrior.Cleave" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 180, "radius": 180, "showRangeCircle": true, "validColor": "#F1A45E77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.ChampionStress.Warrior.Q"] },
+    "presentation": {
+      "displayName": "Cleave",
+      "iconGlyph": "Q",
+      "accentColor": "#F1A45E",
+      "hintText": "Frontline melee sweep",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview melee arc",
+        "PressReleaseAimCast": "Release key, then confirm melee sweep"
+      }
+    }
+  },
+  {
+    "id": "Ability.ChampionStress.FireMage.Fireball",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 30, "tag": "Cooldown.ChampionStress.FireMage.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.ChampionStress.FireMage.Fireball" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 1200, "radius": 180, "showRangeCircle": true, "validColor": "#FF8B5F77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.ChampionStress.FireMage.Q"] },
+    "presentation": {
+      "displayName": "Fireball",
+      "iconGlyph": "Q",
+      "accentColor": "#FF8B5F",
+      "hintText": "Projectile blast with AOE",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview fireball impact",
+        "PressReleaseAimCast": "Release key, then confirm fireball"
+      }
+    }
+  },
+  {
+    "id": "Ability.ChampionStress.LaserMage.Laser",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 20, "tag": "Cooldown.ChampionStress.LaserMage.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.ChampionStress.LaserMage.Laser" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 1400, "radius": 80, "showRangeCircle": true, "validColor": "#63D8FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.ChampionStress.LaserMage.Q"] },
+    "presentation": {
+      "displayName": "Laser Bolt",
+      "iconGlyph": "Q",
+      "accentColor": "#63D8FF",
+      "hintText": "Fast projectile beam",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview laser line",
+        "PressReleaseAimCast": "Release key, then confirm laser"
+      }
+    }
+  },
+  {
+    "id": "Ability.ChampionStress.Priest.Heal",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 24, "tag": "Cooldown.ChampionStress.Priest.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.ChampionStress.Priest.Heal" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 900, "radius": 140, "showRangeCircle": true, "validColor": "#83E7A177", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.ChampionStress.Priest.Q"] },
+    "presentation": {
+      "displayName": "Renew",
+      "iconGlyph": "Q",
+      "accentColor": "#83E7A1",
+      "hintText": "Direct heal on ally",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview heal range",
+        "PressReleaseAimCast": "Release key, then confirm heal"
+      }
+    }
   }
 ]
