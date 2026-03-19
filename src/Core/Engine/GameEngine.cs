@@ -681,6 +681,7 @@ namespace Ludots.Core.Engine
             SetService(CoreServiceKeys.VirtualCameraRegistry, virtualCameraRegistry);
             GameSession.Camera.SetVirtualCameraRegistry(virtualCameraRegistry);
             var cameraRuntimeSystem = new CameraRuntimeSystem(World, GameSession.Camera, GlobalContext, virtualCameraRegistry);
+            var animatorRuntimeSystem = new AnimatorRuntimeSystem(World, animatorControllers);
             RegisterSystem(new GasBudgetResetSystem(gasBudget), SystemGroup.SchemaUpdate);
             RegisterSystem(schemaUpdateSystem, SystemGroup.SchemaUpdate);
             
@@ -798,6 +799,7 @@ namespace Ludots.Core.Engine
             RegisterSystem(deferredTriggerProcessSystem, SystemGroup.DeferredTriggerCollection);
             
             // Phase 6: Cleanup
+            RegisterSystem(animatorRuntimeSystem, SystemGroup.EventDispatch);
             RegisterSystem(new GameplayEventDispatchSystem(EventBus, gasBudget), SystemGroup.EventDispatch);
             RegisterSystem(new GasBudgetReportSystem(gasBudget), SystemGroup.EventDispatch);
             
@@ -1753,6 +1755,12 @@ namespace Ludots.Core.Engine
         public void Dispose()
         {
             Stop();
+            if (ModLoader != null)
+            {
+                Diagnostics.Log.Info(in LogChannels.Engine, "Unloading ModLoader contexts...");
+                ModLoader.UnloadAll();
+            }
+
             if (_jobScheduler != null)
             {
                 Diagnostics.Log.Info(in LogChannels.Engine, "Disposing JobScheduler...");
