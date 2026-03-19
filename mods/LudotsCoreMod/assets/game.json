@@ -1,6 +1,9 @@
 {
   "startupMapId": "entry",
   "startupInputContexts": ["Default_Gameplay"],
+  "presentation": {
+    "performerInstanceCapacity": 2048
+  },
   "constants": {
     "orderTypeIds": {
       "castAbility": 100,

@@ -67,6 +67,7 @@ namespace Ludots.Core.NodeLibraries.GASGraph
         FanOutApplyEffect = 201,            // Apply Effect(Imm=templateId) to ALL entities in TargetList
         ApplyEffectDynamic = 202,           // source=Caster, target=E[A], templateId=I[B]
         FanOutApplyEffectDynamic = 203,     // source=Caster, TargetList, templateId=I[A]
+        RemoveEffectTemplate = 204,         // Remove all active effects matching templateId from E[A]
         ModifyAttributeAdd = 210,
         SendEvent = 220,
 

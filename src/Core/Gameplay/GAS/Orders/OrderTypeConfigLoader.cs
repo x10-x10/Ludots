@@ -123,6 +123,7 @@ namespace Ludots.Core.Gameplay.GAS.Orders
 
             return new OrderTypeConfig
             {
+                Key = key,
                 OrderTypeId = json.OrderTypeId,
                 Label = string.IsNullOrWhiteSpace(json.Label) ? key : json.Label,
                 MaxQueueSize = json.MaxQueueSize,

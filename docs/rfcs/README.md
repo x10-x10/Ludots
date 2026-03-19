@@ -20,6 +20,8 @@
     *   提议以 PREFAB 作为目录骨架、以 LTS 作为分工与投入元数据，并把 GDD / PRD / TDD / RLD / ADD / NDD 及 AI / 测试设计收敛为同一套可机读设计协议
 *   [RFC-0057 英雄技能 Sandbox、全局施法模式与技能面板呈现](RFC-0057-champion-skill-sandbox-cast-mode-and-panel-presentation.md)
     *   提议以现有 selection / input / GAS / command panel / indicator 为基础，交付 EZ / 盖伦 / 杰斯技能 sandbox，并补齐全局施法模式与技能图标呈现基建
+*   [RFC-0058 运行时具现体与空间查询策略统一合同](RFC-0058-runtime-manifestation-and-spatial-query-strategy-unification.md)
+    *   提议把 projectile、summon、beam、zone、wall、trap 等运行时法术形态统一收敛到同一套 runtime manifestation + spatial query strategy 合同
 
 ## 2 使用规则
 

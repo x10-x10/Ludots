@@ -42,6 +42,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly OrderRequestQueue _orderRequests;
         private readonly ResponseChainOrderTypes _responseChainOrderTypes;
         private readonly GasPresentationEventBuffer _presentationEvents;
+        private readonly TagOps _tagOps;
 
         // 鈹€鈹€ Phase Graph execution (optional) 鈹€鈹€
         private readonly EffectPhaseExecutor _phaseExecutor;
@@ -233,7 +234,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
         }
 
-        public EffectProposalProcessingSystem(World world, EffectRequestQueue queue, GasBudget budget = null, EffectTemplateRegistry templates = null, InputRequestQueue inputRequests = null, OrderQueue chainOrders = null, ResponseChainTelemetryBuffer telemetry = null, OrderRequestQueue orderRequests = null, ResponseChainOrderTypes? responseChainOrderTypes = null, GasPresentationEventBuffer presentationEvents = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null)
+        public EffectProposalProcessingSystem(World world, EffectRequestQueue queue, GasBudget budget = null, EffectTemplateRegistry templates = null, InputRequestQueue inputRequests = null, OrderQueue chainOrders = null, ResponseChainTelemetryBuffer telemetry = null, OrderRequestQueue orderRequests = null, ResponseChainOrderTypes? responseChainOrderTypes = null, GasPresentationEventBuffer presentationEvents = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null, TagOps tagOps = null)
             : base(world)
         {
             _queue = queue;
@@ -245,6 +246,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _orderRequests = orderRequests;
             _responseChainOrderTypes = responseChainOrderTypes ?? ResponseChainOrderTypes.Default;
             _presentationEvents = presentationEvents;
+            _tagOps = tagOps ?? new TagOps();
             _phaseExecutor = phaseExecutor;
             _graphApiHost = graphApi;
             _graphApi = graphApi;
@@ -809,7 +811,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 EffectModifierOps.Apply(in e.Modifiers, ref attr);
                                 float after = primaryAttrId >= 0 ? attr.GetCurrent(primaryAttrId) : 0f;
                                 delta = after - before;
-                                if (_presentationEvents != null && delta != 0f)
+                                if (_presentationEvents != null)
                                 {
                                     _presentationEvents.Publish(new GasPresentationEvent
                                     {
@@ -1065,11 +1067,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         }
 
                         // Update tag contributions (delta from oldCount 鈫?newCount)
-                        if (World.Has<EffectGrantedTags>(existing) && World.Has<TagCountContainer>(proposal.Target))
+                        if (World.Has<EffectGrantedTags>(existing))
                         {
                             ref readonly var grantedTags = ref World.Get<EffectGrantedTags>(existing);
-                            ref var tagCounts = ref World.Get<TagCountContainer>(proposal.Target);
-                            EffectTagContributionHelper.Update(in grantedTags, ref tagCounts, oldCount, stack.Count, _budget);
+                            EffectTagContributionHelper.UpdateOnEntity(World, proposal.Target, in grantedTags, oldCount, stack.Count, _tagOps, _budget);
                         }
                         return; // Merged into existing stack, no new entity
                     }

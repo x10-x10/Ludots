@@ -329,12 +329,91 @@ namespace Ludots.Core.Gameplay.GAS.Config
                 }
             }
 
+            int hitId = 0;
+            if (!string.IsNullOrWhiteSpace(cfg.HitEffect))
+            {
+                hitId = EffectTemplateIdRegistry.GetId(cfg.HitEffect);
+                if (hitId <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.hitEffect references unknown effect template '{cfg.HitEffect}'.");
+                }
+            }
+
+            int presentationId = 0;
+            if (!string.IsNullOrWhiteSpace(cfg.PresentationEffect))
+            {
+                presentationId = EffectTemplateIdRegistry.GetId(cfg.PresentationEffect);
+                if (presentationId <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.presentationEffect references unknown effect template '{cfg.PresentationEffect}'.");
+                }
+            }
+            else
+            {
+                presentationId = impactId > 0 ? impactId : hitId;
+            }
+
+            ProjectileTravelMode travelMode = ParseProjectileTravelMode(cfg.TravelMode);
+            ProjectileImpactPolicy impactPolicy = ParseProjectileImpactPolicy(cfg.ImpactPolicy);
+            if (impactPolicy != ProjectileImpactPolicy.Legacy)
+            {
+                if (hitId <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.impactPolicy '{impactPolicy}' requires projectile.hitEffect.");
+                }
+
+                if (cfg.CollisionHalfWidth <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.impactPolicy '{impactPolicy}' requires projectile.collisionHalfWidth > 0.");
+                }
+            }
+
             return new ProjectileDescriptor
             {
                 Speed = cfg.Speed,
                 Range = cfg.Range,
                 ArcHeight = cfg.ArcHeight,
-                ImpactEffectTemplateId = impactId
+                ImpactEffectTemplateId = impactId,
+                HitEffectTemplateId = hitId,
+                PresentationEffectTemplateId = presentationId,
+                TravelMode = travelMode,
+                ImpactPolicy = impactPolicy,
+                CollisionHalfWidthCm = cfg.CollisionHalfWidth,
+                CollisionRelationFilter = RelationshipFilterUtil.Parse(cfg.CollisionRelationFilter),
+                CollisionExcludeSource = cfg.CollisionExcludeSource,
+                MaxHitCount = cfg.MaxHitCount
+            };
+        }
+
+        private static ProjectileTravelMode ParseProjectileTravelMode(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return ProjectileTravelMode.Legacy;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "legacy" => ProjectileTravelMode.Legacy,
+                "direction" => ProjectileTravelMode.Direction,
+                "tracktarget" => ProjectileTravelMode.TrackTarget,
+                _ => throw new InvalidOperationException($"Unsupported projectile.travelMode '{raw}'.")
+            };
+        }
+
+        private static ProjectileImpactPolicy ParseProjectileImpactPolicy(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return ProjectileImpactPolicy.Legacy;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "legacy" => ProjectileImpactPolicy.Legacy,
+                "destroyonfirsthit" => ProjectileImpactPolicy.DestroyOnFirstHit,
+                "continueonhit" => ProjectileImpactPolicy.ContinueOnHit,
+                _ => throw new InvalidOperationException($"Unsupported projectile.impactPolicy '{raw}'.")
             };
         }
 
@@ -342,10 +421,23 @@ namespace Ludots.Core.Gameplay.GAS.Config
         {
             if (cfg == null) return default;
 
-            int unitTypeId = UnitTypeRegistry.Register(cfg.UnitType);
-            if (unitTypeId <= 0)
+            bool hasUnitType = !string.IsNullOrWhiteSpace(cfg.UnitType);
+            bool hasTemplateId = !string.IsNullOrWhiteSpace(cfg.TemplateId);
+            if (hasUnitType == hasTemplateId)
             {
-                throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: unitCreation.unitType is required.");
+                throw new InvalidOperationException(
+                    $"Effect template '{ownerId}' in {relativePath}: unitCreation must declare exactly one of unitType or templateId.");
+            }
+
+            int unitTypeId = 0;
+            if (hasUnitType)
+            {
+                unitTypeId = UnitTypeRegistry.Register(cfg.UnitType);
+                if (unitTypeId <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Effect template '{ownerId}' in {relativePath}: unitCreation.unitType is required.");
+                }
             }
 
             int onSpawnId = 0;
@@ -360,10 +452,50 @@ namespace Ludots.Core.Gameplay.GAS.Config
 
             return new UnitCreationDescriptor
             {
+                PlacementPattern = ParseUnitCreationPlacementPattern(cfg.PlacementPattern),
+                FacingPattern = ParseUnitCreationFacingPattern(cfg.FacingPattern),
                 UnitTypeId = unitTypeId,
+                TemplateId = hasTemplateId ? cfg.TemplateId : string.Empty,
+                UseTemplateSpawn = hasTemplateId,
                 Count = cfg.Count,
                 OffsetRadius = cfg.OffsetRadius,
-                OnSpawnEffectTemplateId = onSpawnId
+                PlacementRadiusCm = cfg.PlacementRadiusCm,
+                PlacementStartAngleDeg = cfg.PlacementStartAngleDeg,
+                OnSpawnEffectTemplateId = onSpawnId,
+                CopySourcePlayerOwner = cfg.CopySourcePlayerOwner,
+                LinkSourceAsParent = cfg.LinkSourceAsParent,
+            };
+        }
+
+        private static UnitCreationPlacementPattern ParseUnitCreationPlacementPattern(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return UnitCreationPlacementPattern.Scatter;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "scatter" => UnitCreationPlacementPattern.Scatter,
+                "circle" => UnitCreationPlacementPattern.Circle,
+                _ => throw new InvalidOperationException($"Unsupported unitCreation.placementPattern '{raw}'.")
+            };
+        }
+
+        private static UnitCreationFacingPattern ParseUnitCreationFacingPattern(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return UnitCreationFacingPattern.PreserveTemplate;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "preservetemplate" => UnitCreationFacingPattern.PreserveTemplate,
+                "radialoutward" => UnitCreationFacingPattern.RadialOutward,
+                "tangentclockwise" => UnitCreationFacingPattern.TangentClockwise,
+                "tangentcounterclockwise" => UnitCreationFacingPattern.TangentCounterClockwise,
+                _ => throw new InvalidOperationException($"Unsupported unitCreation.facingPattern '{raw}'.")
             };
         }
 

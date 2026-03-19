@@ -83,6 +83,28 @@ namespace Ludots.Tests.GAS
             That(result, Is.EqualTo(targetCtx));
         }
 
+        [Test]
+        public void GraphCompiler_LoadContextTarget_ThenRemoveEffectTemplate_Compiles()
+        {
+            var cfg = new GraphConfig
+            {
+                Id = "Test.RemoveEffectTemplate",
+                Entry = "target",
+                Nodes =
+                {
+                    new GraphNodeConfig { Id = "target", Op = "LoadContextTarget", Next = "remove" },
+                    new GraphNodeConfig { Id = "remove", Op = "RemoveEffectTemplate", EffectTemplate = "Effect.Test.Mark", Inputs = { "target" } },
+                }
+            };
+
+            var (pkg, diags) = GraphCompiler.Compile(cfg);
+
+            That(diags, Is.Empty);
+            That(pkg.HasValue, Is.True);
+            That((GraphNodeOp)pkg!.Value.Program[0].Op, Is.EqualTo(GraphNodeOp.LoadContextTarget));
+            That((GraphNodeOp)pkg.Value.Program[1].Op, Is.EqualTo(GraphNodeOp.RemoveEffectTemplate));
+        }
+
         // ════════════════════════════════════════════════════════════════════
         //  ApplyEffectDynamic
         // ════════════════════════════════════════════════════════════════════
@@ -212,6 +234,31 @@ namespace Ludots.Tests.GAS
 
             That(requests.Count, Is.EqualTo(1));
             That(requests[0].TemplateId, Is.EqualTo(777));
+        }
+
+        [Test]
+        public void GraphOps_RemoveEffectTemplate_MarksMatchingActiveEffectForCancellation()
+        {
+            using var world = World.Create();
+            var api = new GasGraphRuntimeApi(world, null, null, null);
+
+            var target = world.Create(new ActiveEffectContainer());
+            var effect = world.Create(
+                new GameplayEffect { LifetimeKind = EffectLifetimeKind.After, ClockId = GasClockId.FixedFrame },
+                new EffectTemplateRef { TemplateId = 91 });
+
+            ref var container = ref world.Get<ActiveEffectContainer>(target);
+            That(container.Add(effect), Is.True);
+
+            var program = new GraphInstruction[]
+            {
+                new() { Op = (ushort)GraphNodeOp.LoadContextTarget, Dst = 2 },
+                new() { Op = (ushort)GraphNodeOp.RemoveEffectTemplate, A = 2, Imm = 91 },
+            };
+
+            ExecuteProgram(world, api, caster: Entity.Null, target, program);
+
+            That(world.Get<GameplayEffect>(effect).CancelRequested, Is.True);
         }
 
         // ════════════════════════════════════════════════════════════════════

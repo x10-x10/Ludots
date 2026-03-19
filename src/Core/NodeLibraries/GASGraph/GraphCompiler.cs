@@ -96,6 +96,9 @@ namespace Ludots.Core.NodeLibraries.GASGraph
                         break;
                     case GraphNodeOp.LoadCaster:
                     case GraphNodeOp.LoadExplicitTarget:
+                    case GraphNodeOp.LoadContextSource:
+                    case GraphNodeOp.LoadContextTarget:
+                    case GraphNodeOp.LoadContextTargetContext:
                         break;
                     case GraphNodeOp.Jump:
                         ins.Imm = node.IntValue;
@@ -158,6 +161,16 @@ namespace Ludots.Core.NodeLibraries.GASGraph
                         }
                         ins.Flags = floatCount;
                         break;
+                    case GraphNodeOp.RemoveEffectTemplate:
+                        ins.A = node.Inputs.Count > 0
+                            ? RequireInput(node, 0, GraphValueType.Entity, valueMap, cfg.Id, diagnostics)
+                            : (byte)1;
+                        ins.Imm = Intern(symbolToIndex, symbols, node.EffectTemplate);
+                        break;
+                    case GraphNodeOp.HasTag:
+                        ins.A = RequireInput(node, 0, GraphValueType.Entity, valueMap, cfg.Id, diagnostics);
+                        ins.Imm = Intern(symbolToIndex, symbols, node.Tag);
+                        break;
                     case GraphNodeOp.ModifyAttributeAdd:
                         ins.A = RequireInput(node, 0, GraphValueType.Entity, valueMap, cfg.Id, diagnostics);
                         ins.B = RequireInput(node, 1, GraphValueType.Float, valueMap, cfg.Id, diagnostics);
@@ -190,10 +203,14 @@ namespace Ludots.Core.NodeLibraries.GASGraph
                 GraphNodeOp.ConstFloat => (GraphValueType.Float, null),
                 GraphNodeOp.LoadCaster => (GraphValueType.Entity, 0),
                 GraphNodeOp.LoadExplicitTarget => (GraphValueType.Entity, 1),
+                GraphNodeOp.LoadContextSource => (GraphValueType.Entity, null),
+                GraphNodeOp.LoadContextTarget => (GraphValueType.Entity, null),
+                GraphNodeOp.LoadContextTargetContext => (GraphValueType.Entity, null),
                 GraphNodeOp.LoadAttribute => (GraphValueType.Float, null),
                 GraphNodeOp.AddFloat => (GraphValueType.Float, null),
                 GraphNodeOp.MulFloat => (GraphValueType.Float, null),
                 GraphNodeOp.CompareGtFloat => (GraphValueType.Bool, null),
+                GraphNodeOp.HasTag => (GraphValueType.Bool, null),
                 GraphNodeOp.SelectEntity => (GraphValueType.Entity, null),
                 GraphNodeOp.AggCount => (GraphValueType.Int, null),
                 GraphNodeOp.AggMinByDistance => (GraphValueType.Entity, null),

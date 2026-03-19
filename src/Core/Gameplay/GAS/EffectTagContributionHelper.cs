@@ -1,3 +1,4 @@
+using Arch.Core;
 using Ludots.Core.Gameplay.GAS.Components;
 
 namespace Ludots.Core.Gameplay.GAS
@@ -9,6 +10,82 @@ namespace Ludots.Core.Gameplay.GAS
     /// </summary>
     public static class EffectTagContributionHelper
     {
+        public static void GrantToEntity(World world, Entity target, in EffectGrantedTags grantedTags, int stackCount, TagOps tagOps, GasBudget budget = null)
+        {
+            if (!world.IsAlive(target) || grantedTags.Count <= 0)
+            {
+                return;
+            }
+
+            EnsureTagState(world, target);
+            ref var tags = ref world.Get<GameplayTagContainer>(target);
+            ref var counts = ref world.Get<TagCountContainer>(target);
+            ref var dirtyFlags = ref world.Get<DirtyFlags>(target);
+            tagOps ??= new TagOps();
+
+            for (int i = 0; i < grantedTags.Count; i++)
+            {
+                var contribution = grantedTags.Get(i);
+                int amount = contribution.Compute(stackCount);
+                for (int repeat = 0; repeat < amount; repeat++)
+                {
+                    tagOps.AddTag(ref tags, ref counts, contribution.TagId, ref dirtyFlags);
+                }
+            }
+        }
+
+        public static void RevokeFromEntity(World world, Entity target, in EffectGrantedTags grantedTags, int stackCount, TagOps tagOps, GasBudget budget = null)
+        {
+            if (!world.IsAlive(target) || grantedTags.Count <= 0 || !world.Has<TagCountContainer>(target))
+            {
+                return;
+            }
+
+            if (!world.Has<GameplayTagContainer>(target))
+            {
+                world.Add(target, new GameplayTagContainer());
+            }
+
+            if (!world.Has<DirtyFlags>(target))
+            {
+                world.Add(target, new DirtyFlags());
+            }
+
+            ref var tags = ref world.Get<GameplayTagContainer>(target);
+            ref var counts = ref world.Get<TagCountContainer>(target);
+            ref var dirtyFlags = ref world.Get<DirtyFlags>(target);
+            tagOps ??= new TagOps();
+
+            for (int i = 0; i < grantedTags.Count; i++)
+            {
+                var contribution = grantedTags.Get(i);
+                int amount = contribution.Compute(stackCount);
+                for (int repeat = 0; repeat < amount; repeat++)
+                {
+                    tagOps.RemoveTag(ref tags, ref counts, contribution.TagId, ref dirtyFlags);
+                }
+            }
+        }
+
+        public static void UpdateOnEntity(World world, Entity target, in EffectGrantedTags grantedTags, int oldStackCount, int newStackCount, TagOps tagOps, GasBudget budget = null)
+        {
+            if (!world.IsAlive(target) || grantedTags.Count <= 0)
+            {
+                return;
+            }
+
+            if (newStackCount > oldStackCount)
+            {
+                GrantToEntity(world, target, in grantedTags, newStackCount - oldStackCount, tagOps, budget);
+                return;
+            }
+
+            if (newStackCount < oldStackCount)
+            {
+                RevokeFromEntity(world, target, in grantedTags, oldStackCount - newStackCount, tagOps, budget);
+            }
+        }
+
         /// <summary>
         /// Grant tags to the target's <see cref="TagCountContainer"/> based on effect's granted tag declarations.
         /// Called when an effect is first applied.
@@ -81,6 +158,24 @@ namespace Ludots.Core.Gameplay.GAS
                 {
                     tagCounts.RemoveCount(contribution.TagId, (ushort)System.Math.Min(-delta, ushort.MaxValue));
                 }
+            }
+        }
+
+        private static void EnsureTagState(World world, Entity target)
+        {
+            if (!world.Has<GameplayTagContainer>(target))
+            {
+                world.Add(target, new GameplayTagContainer());
+            }
+
+            if (!world.Has<TagCountContainer>(target))
+            {
+                world.Add(target, new TagCountContainer());
+            }
+
+            if (!world.Has<DirtyFlags>(target))
+            {
+                world.Add(target, new DirtyFlags());
             }
         }
     }

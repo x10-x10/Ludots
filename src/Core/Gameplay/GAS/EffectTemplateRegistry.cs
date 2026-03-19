@@ -154,8 +154,38 @@ namespace Ludots.Core.Gameplay.GAS
         public int Range;
         /// <summary>Arc height for parabolic trajectories (0 = straight line).</summary>
         public int ArcHeight;
-        /// <summary>Effect template ID to apply on impact.</summary>
+        /// <summary>Effect template ID to apply when the projectile completes its travel.</summary>
         public int ImpactEffectTemplateId;
+        /// <summary>Effect template ID to apply to entities hit during travel.</summary>
+        public int HitEffectTemplateId;
+        /// <summary>Effect template ID used only for presentation startup binding.</summary>
+        public int PresentationEffectTemplateId;
+        /// <summary>How the projectile computes movement.</summary>
+        public ProjectileTravelMode TravelMode;
+        /// <summary>How the projectile reacts to mid-flight entity collisions.</summary>
+        public ProjectileImpactPolicy ImpactPolicy;
+        /// <summary>Collision query half-width in centimeters.</summary>
+        public int CollisionHalfWidthCm;
+        /// <summary>Relationship filter applied to collision hits.</summary>
+        public RelationshipFilter CollisionRelationFilter;
+        /// <summary>Whether to ignore the source entity in collision hits.</summary>
+        public bool CollisionExcludeSource;
+        /// <summary>Maximum number of distinct collision hits before despawn. 0 = unlimited.</summary>
+        public int MaxHitCount;
+    }
+
+    public enum ProjectileTravelMode : byte
+    {
+        Legacy = 0,
+        Direction = 1,
+        TrackTarget = 2,
+    }
+
+    public enum ProjectileImpactPolicy : byte
+    {
+        Legacy = 0,
+        DestroyOnFirstHit = 1,
+        ContinueOnHit = 2,
     }
 
     /// <summary>
@@ -163,14 +193,42 @@ namespace Ludots.Core.Gameplay.GAS
     /// </summary>
     public struct UnitCreationDescriptor
     {
+        public UnitCreationPlacementPattern PlacementPattern;
+        public UnitCreationFacingPattern FacingPattern;
         /// <summary>Unit type identifier (resolved from string at load time).</summary>
         public int UnitTypeId;
+        /// <summary>Template identifier for template-backed runtime manifestation spawns.</summary>
+        public string TemplateId;
+        /// <summary>True when CreateUnit should materialize a template instead of a bare UnitType.</summary>
+        public bool UseTemplateSpawn;
         /// <summary>Number of units to create.</summary>
         public int Count;
         /// <summary>Spawn offset radius from target position (cm).</summary>
         public int OffsetRadius;
         /// <summary>Effect template ID to apply to each spawned unit.</summary>
         public int OnSpawnEffectTemplateId;
+        /// <summary>Whether the spawned unit should inherit PlayerOwner from the source entity.</summary>
+        public bool CopySourcePlayerOwner;
+        /// <summary>Whether the source entity should become the parent relation of the spawned unit.</summary>
+        public bool LinkSourceAsParent;
+        /// <summary>Fixed formation radius in centimeters for non-scatter patterns.</summary>
+        public int PlacementRadiusCm;
+        /// <summary>Starting angle for circular formation patterns in degrees.</summary>
+        public int PlacementStartAngleDeg;
+    }
+
+    public enum UnitCreationPlacementPattern : byte
+    {
+        Scatter = 0,
+        Circle = 1,
+    }
+
+    public enum UnitCreationFacingPattern : byte
+    {
+        PreserveTemplate = 0,
+        RadialOutward = 1,
+        TangentClockwise = 2,
+        TangentCounterClockwise = 3,
     }
 
     /// <summary>

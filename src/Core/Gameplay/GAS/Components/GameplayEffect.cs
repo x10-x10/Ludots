@@ -37,5 +37,21 @@ namespace Ludots.Core.Gameplay.GAS.Components
             readonly get => (EffectState)((Flags >> 1) & 0x07);
             set => Flags = (byte)((Flags & 0xF1) | ((byte)value << 1));
         }
+
+        public bool CancelRequested
+        {
+            readonly get => (Flags & 0x01) != 0;
+            set
+            {
+                if (value)
+                {
+                    Flags |= 0x01;
+                }
+                else
+                {
+                    Flags &= 0xFE;
+                }
+            }
+        }
     }
 }

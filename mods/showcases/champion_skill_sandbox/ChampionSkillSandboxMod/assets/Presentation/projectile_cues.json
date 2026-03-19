@@ -1,13 +1,5 @@
 [
   {
-    "id": "Effect.Champion.Ezreal.MysticShotResolve",
-    "startupPerformerIds": ["champion_skill_sandbox.projectile.ezreal_q"]
-  },
-  {
-    "id": "Effect.Champion.Ezreal.TrueshotBarrageResolve",
-    "startupPerformerIds": ["champion_skill_sandbox.projectile.ezreal_r"]
-  },
-  {
     "id": "Effect.Champion.Jayce.Cannon.ShockBlastResolve",
     "startupPerformerIds": ["champion_skill_sandbox.projectile.jayce_q"]
   },
