@@ -56,6 +56,7 @@ namespace Ludots.Core.NodeLibraries.GASGraph
         int GetRelationship(int teamA, int teamB);
         void ApplyEffectTemplate(Entity caster, Entity target, int templateId);
         void ApplyEffectTemplate(Entity caster, Entity target, int templateId, in EffectArgs args);
+        void RemoveEffectTemplate(Entity target, int templateId);
         void ModifyAttributeAdd(Entity caster, Entity target, int attributeId, float delta);
         void SendEvent(Entity caster, Entity target, int eventTagId, float magnitude);
 

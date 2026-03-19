@@ -13,23 +13,80 @@
     }
   },
   {
-    "id": "Effect.Champion.Ezreal.EssenceFlux",
+    "id": "Effect.Champion.Ezreal.ArcaneShiftBolt",
     "tags": ["Effect.Champion.Damage"],
-    "presetType": "Search",
+    "presetType": "LaunchProjectile",
     "lifetime": "Instant",
     "participatesInResponse": true,
-    "targetQuery": { "kind": "BuiltinSpatial", "shape": "Circle", "radius": 150 },
-    "targetFilter": { "relationFilter": "Hostile", "excludeSource": true, "maxTargets": 12 },
-    "targetDispatch": { "payloadEffect": "Effect.Champion.Ezreal.EssenceFluxHit" }
+    "projectile": {
+      "speed": 2200,
+      "range": 760,
+      "arcHeight": 0,
+      "hitEffect": "Effect.Champion.Ezreal.ArcaneShiftBoltHit",
+      "presentationEffect": "Effect.Champion.Ezreal.ArcaneShiftBolt",
+      "travelMode": "TrackTarget",
+      "impactPolicy": "DestroyOnFirstHit",
+      "collisionHalfWidth": 70,
+      "collisionRelationFilter": "Hostile",
+      "collisionExcludeSource": true,
+      "maxHitCount": 1
+    }
   },
   {
-    "id": "Effect.Champion.Ezreal.EssenceFluxHit",
+    "id": "Effect.Champion.Ezreal.ArcaneShiftBoltHit",
     "tags": ["Effect.Champion.Damage"],
     "presetType": "InstantDamage",
     "lifetime": "Instant",
     "participatesInResponse": true,
     "modifiers": [
-      { "attribute": "Health", "op": "Add", "value": -10.0 }
+      { "attribute": "Health", "op": "Add", "value": -14.0 }
+    ]
+  },
+  {
+    "id": "Effect.Champion.Ezreal.EssenceFlux",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "LaunchProjectile",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "projectile": {
+      "speed": 1700,
+      "range": 760,
+      "arcHeight": 0,
+      "hitEffect": "Effect.Champion.Ezreal.EssenceFluxHit",
+      "presentationEffect": "Effect.Champion.Ezreal.EssenceFlux",
+      "travelMode": "Direction",
+      "impactPolicy": "DestroyOnFirstHit",
+      "collisionHalfWidth": 85,
+      "collisionRelationFilter": "Hostile",
+      "collisionExcludeSource": true,
+      "maxHitCount": 1
+    }
+  },
+  {
+    "id": "Effect.Champion.Ezreal.EssenceFluxHit",
+    "tags": ["Effect.Champion.Buff"],
+    "presetType": "Buff",
+    "lifetime": "After",
+    "participatesInResponse": false,
+    "duration": { "durationTicks": 240 },
+    "stack": { "limit": 1, "policy": "RefreshDuration", "overflowPolicy": "RejectNew" },
+    "grantedTags": [
+      { "tag": "State.Champion.Ezreal.WMark", "formula": "Fixed", "amount": 1 }
+    ],
+    "phaseListeners": [
+      { "phase": "OnApply", "scope": "Target", "action": "graph", "listenEffectId": "Effect.Champion.Ezreal.MysticShotHit", "graphProgram": "Graph.Champion.Ezreal.PopEssenceFlux" },
+      { "phase": "OnApply", "scope": "Target", "action": "graph", "listenEffectId": "Effect.Champion.Ezreal.ArcaneShiftBoltHit", "graphProgram": "Graph.Champion.Ezreal.PopEssenceFlux" },
+      { "phase": "OnApply", "scope": "Target", "action": "graph", "listenEffectId": "Effect.Champion.Ezreal.TrueshotBarrageHit", "graphProgram": "Graph.Champion.Ezreal.PopEssenceFlux" }
+    ]
+  },
+  {
+    "id": "Effect.Champion.Ezreal.EssenceFluxPop",
+    "tags": ["Effect.Champion.Damage"],
+    "presetType": "InstantDamage",
+    "lifetime": "Instant",
+    "participatesInResponse": true,
+    "modifiers": [
+      { "attribute": "Health", "op": "Add", "value": -12.0 }
     ]
   },
   {
@@ -42,18 +99,15 @@
       "speed": 2100,
       "range": 840,
       "arcHeight": 0,
-      "impactEffect": "Effect.Champion.Ezreal.MysticShotResolve"
+      "hitEffect": "Effect.Champion.Ezreal.MysticShotHit",
+      "presentationEffect": "Effect.Champion.Ezreal.MysticShot",
+      "travelMode": "Direction",
+      "impactPolicy": "DestroyOnFirstHit",
+      "collisionHalfWidth": 70,
+      "collisionRelationFilter": "Hostile",
+      "collisionExcludeSource": true,
+      "maxHitCount": 1
     }
-  },
-  {
-    "id": "Effect.Champion.Ezreal.MysticShotResolve",
-    "tags": ["Effect.Champion.Damage"],
-    "presetType": "Search",
-    "lifetime": "Instant",
-    "participatesInResponse": true,
-    "targetQuery": { "kind": "BuiltinSpatial", "shape": "Line", "length": 840, "halfWidth": 70 },
-    "targetFilter": { "relationFilter": "Hostile", "excludeSource": true, "maxTargets": 10 },
-    "targetDispatch": { "payloadEffect": "Effect.Champion.Ezreal.MysticShotHit" }
   },
   {
     "id": "Effect.Champion.Ezreal.MysticShotHit",
@@ -73,20 +127,17 @@
     "participatesInResponse": true,
     "projectile": {
       "speed": 1800,
-      "range": 1200,
+      "range": 20000,
       "arcHeight": 0,
-      "impactEffect": "Effect.Champion.Ezreal.TrueshotBarrageResolve"
+      "hitEffect": "Effect.Champion.Ezreal.TrueshotBarrageHit",
+      "presentationEffect": "Effect.Champion.Ezreal.TrueshotBarrage",
+      "travelMode": "Direction",
+      "impactPolicy": "ContinueOnHit",
+      "collisionHalfWidth": 120,
+      "collisionRelationFilter": "Hostile",
+      "collisionExcludeSource": true,
+      "maxHitCount": 32
     }
-  },
-  {
-    "id": "Effect.Champion.Ezreal.TrueshotBarrageResolve",
-    "tags": ["Effect.Champion.Damage"],
-    "presetType": "Search",
-    "lifetime": "Instant",
-    "participatesInResponse": true,
-    "targetQuery": { "kind": "BuiltinSpatial", "shape": "Line", "length": 1200, "halfWidth": 120 },
-    "targetFilter": { "relationFilter": "Hostile", "excludeSource": true, "maxTargets": 24 },
-    "targetDispatch": { "payloadEffect": "Effect.Champion.Ezreal.TrueshotBarrageHit" }
   },
   {
     "id": "Effect.Champion.Ezreal.TrueshotBarrageHit",

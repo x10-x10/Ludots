@@ -45,6 +45,9 @@ namespace Ludots.Core.Presentation.Performers
 
         public PerformerInstanceBuffer(int capacity = 256)
         {
+            if (capacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(capacity), "PerformerInstanceBuffer capacity must be positive.");
+
             _slots = new PerformerInstance[capacity];
             _freeStack = new int[capacity];
             _overrideKeys = new int[capacity * MaxOverridesPerInstance];
@@ -240,6 +243,57 @@ namespace Ludots.Core.Presentation.Performers
             Array.Fill(_overrideKeys, -1);
             _highWaterMark = 0;
             _freeCount = 0;
+        }
+
+        /// <summary>
+        /// Release active instances whose entity anchor owner is no longer alive.
+        /// This prevents dead-map/session performer instances from holding slots
+        /// until a later emit pass happens to observe them.
+        /// </summary>
+        public int ReleaseDeadEntityAnchors(World world)
+        {
+            int released = 0;
+            for (int i = 0; i < _highWaterMark; i++)
+            {
+                if (!_slots[i].Active || _slots[i].AnchorKind != PresentationAnchorKind.Entity)
+                    continue;
+
+                if (world.IsAlive(_slots[i].Owner))
+                    continue;
+
+                _slots[i].Active = false;
+                ClearAllOverrides(i);
+                PushFree(i);
+                released++;
+            }
+
+            return released;
+        }
+
+        public bool HasActiveScopedInstance(
+            int defId,
+            Entity owner,
+            int scopeId,
+            PresentationAnchorKind anchorKind,
+            in Vector3 worldPosition)
+        {
+            for (int i = 0; i < _highWaterMark; i++)
+            {
+                ref readonly var slot = ref _slots[i];
+                if (!slot.Active ||
+                    slot.DefId != defId ||
+                    slot.ScopeId != scopeId ||
+                    slot.Owner != owner ||
+                    slot.AnchorKind != anchorKind)
+                {
+                    continue;
+                }
+
+                if (anchorKind != PresentationAnchorKind.WorldPosition || slot.WorldPosition == worldPosition)
+                    return true;
+            }
+
+            return false;
         }
 
         private void InitSlot(

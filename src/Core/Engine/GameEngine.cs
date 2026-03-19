@@ -493,7 +493,8 @@ namespace Ludots.Core.Engine
             var groundOverlayBuffer = new GroundOverlayBuffer();
             var worldHudBuffer = new WorldHudBatchBuffer();
             var performerDefinitions = new PerformerDefinitionRegistry();
-            var performerInstances = new PerformerInstanceBuffer();
+            var presentationConfig = config.Presentation ?? new PresentationRuntimeConfig();
+            var performerInstances = new PerformerInstanceBuffer(presentationConfig.GetEffectivePerformerInstanceCapacity());
             var projectilePresentationBindings = new ProjectilePresentationBindingRegistry();
             var performerGraphApi = new GasGraphRuntimeApi(World, spatialQueries: null, coords: null, eventBus: null);
             new MeshAssetConfigLoader(ConfigPipeline, meshAssets, presentationPrefabs).Load();
@@ -502,7 +503,7 @@ namespace Ludots.Core.Engine
             var presentationTextLocaleSelection = new PresentationTextLocaleSelection(presentationTextCatalog);
             BuiltinPerformerDefinitions.Register(performerDefinitions, meshAssets, presentationTextCatalog.GetTokenId);
             var performerRuleSystem = new PerformerRuleSystem(World, presentationEventStream, presentationCommandBuffer, performerDefinitions, graphProgramRegistry, performerGraphApi, GlobalContext);
-            var performerRuntimeSystem = new PerformerRuntimeSystem(World, presentationPrefabs, presentationCommandBuffer, primitiveDrawBuffer, transientMarkerBuffer, performerInstances, presentationStableIds);
+            var performerRuntimeSystem = new PerformerRuntimeSystem(World, presentationPrefabs, presentationCommandBuffer, primitiveDrawBuffer, transientMarkerBuffer, performerInstances, presentationStableIds, performerDefinitions);
             var performerEmitSystem = new PerformerEmitSystem(World, performerInstances, performerDefinitions, groundOverlayBuffer, primitiveDrawBuffer, worldHudBuffer, graphProgramRegistry, performerGraphApi, GlobalContext,
                 entityColorResolver: (world, entity) => Ludots.Core.Presentation.Utils.TeamColorResolver.Resolve(world, entity));
             new PerformerDefinitionConfigLoader(
@@ -580,6 +581,8 @@ namespace Ludots.Core.Engine
             int cfgChainPass = responseChainOrderTypeIds.GetValueOrDefault("chainPass", 1);
             int cfgChainNegate = responseChainOrderTypeIds.GetValueOrDefault("chainNegate", 2);
             int cfgChainActivateEffect = responseChainOrderTypeIds.GetValueOrDefault("chainActivateEffect", 3);
+            int cfgCastAbilityStart = orderTypeRegistry.TryGetId("castAbility.Start", out int resolvedCastAbilityStart) ? resolvedCastAbilityStart : 0;
+            int cfgCastAbilityEnd = orderTypeRegistry.TryGetId("castAbility.End", out int resolvedCastAbilityEnd) ? resolvedCastAbilityEnd : 0;
             if (!orderTypeRegistry.IsRegistered(cfgCastAbility) ||
                 !orderTypeRegistry.IsRegistered(cfgMoveTo) ||
                 !orderTypeRegistry.IsRegistered(cfgAttackTarget) ||
@@ -597,7 +600,8 @@ namespace Ludots.Core.Engine
                 World, clock, orderTypeRegistry, orderRuleRegistry,
                 orderQueue, stepRateHz,
                 graphProgramRegistry, gasGraphApi);
-            var abilityExecSystem = new AbilityExecSystem(World, clock, abilityInputRequestQueue, inputResponseBuffer, selectionRequestQueue, selectionResponseBuffer, effectRequestQueue, abilityDefinitions, EventBus, cfgCastAbility, gasPresentationEvents, phaseExecutor: phaseExecutor, graphPrograms: graphProgramRegistry, graphApi: gasGraphApi, tagOps: tagOps, orderTypeRegistry: orderTypeRegistry);
+            var abilityExecSystem = new AbilityExecSystem(World, clock, abilityInputRequestQueue, inputResponseBuffer, selectionRequestQueue, selectionResponseBuffer, effectRequestQueue, abilityDefinitions, EventBus, cfgCastAbility, cfgCastAbilityStart, gasPresentationEvents, phaseExecutor: phaseExecutor, graphPrograms: graphProgramRegistry, graphApi: gasGraphApi, tagOps: tagOps, orderTypeRegistry: orderTypeRegistry);
+            var abilityEndOrderSystem = new AbilityEndOrderSystem(World, orderTypeRegistry, cfgCastAbilityEnd);
             var stopOrderSystem = new StopOrderSystem(World, orderTypeRegistry, cfgStop);
             var moveToOrderSystem = new MoveToWorldCmOrderSystem(World, orderTypeRegistry, cfgMoveTo);
 
@@ -724,6 +728,7 @@ namespace Ludots.Core.Engine
             
             // Phase 2: AbilityActivation
             RegisterSystem(orderBufferSystem, SystemGroup.AbilityActivation);
+            RegisterSystem(abilityEndOrderSystem, SystemGroup.AbilityActivation);
             RegisterSystem(stopOrderSystem, SystemGroup.AbilityActivation);
             RegisterSystem(reactionSystem, SystemGroup.AbilityActivation);
             RegisterSystem(abilitySystem, SystemGroup.AbilityActivation);
@@ -740,7 +745,7 @@ namespace Ludots.Core.Engine
             RegisterSystem(new DestroyWhenParentExecutionEndsSystem(World), SystemGroup.EffectProcessing);
             RegisterSystem(new ManifestationMotion2DSystem(World), SystemGroup.EffectProcessing);
             RegisterSystem(new EffectProcessingLoopSystem(World, effectRequestQueue, clock, gasConditions, gasBudget, effectTemplateRegistry, inputRequestQueue, chainOrderQueue, responseChainTelemetry, orderRequestQueue, responseChainOrderTypes, gasPresentationEvents, SpatialQueries, runtimeEntitySpawnQueue, phaseExecutor: phaseExecutor, graphApi: gasGraphApi, tagOps: tagOps), SystemGroup.EffectProcessing);
-            RegisterSystem(new ProjectileRuntimeSystem(World, clock, effectRequestQueue), SystemGroup.EffectProcessing);
+            RegisterSystem(new ProjectileRuntimeSystem(World, effectRequestQueue, SpatialQueries), SystemGroup.EffectProcessing);
             RegisterSystem(new RuntimeEntitySpawnSystem(World, runtimeEntitySpawnQueue, MapLoader.TemplateRegistry, presentationAuthoring, effectRequestQueue), SystemGroup.EffectProcessing);
             const string manifestationObstacleBridgeSystemTypeName = "Ludots.Core.Physics2D.Systems.ManifestationObstacleBridge2DSystem";
             var manifestationObstacleBridgeType = Type.GetType($"{manifestationObstacleBridgeSystemTypeName}, Ludots.Physics2D", throwOnError: false);

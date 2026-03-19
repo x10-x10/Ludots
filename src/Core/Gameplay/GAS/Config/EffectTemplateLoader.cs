@@ -329,12 +329,91 @@ namespace Ludots.Core.Gameplay.GAS.Config
                 }
             }
 
+            int hitId = 0;
+            if (!string.IsNullOrWhiteSpace(cfg.HitEffect))
+            {
+                hitId = EffectTemplateIdRegistry.GetId(cfg.HitEffect);
+                if (hitId <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.hitEffect references unknown effect template '{cfg.HitEffect}'.");
+                }
+            }
+
+            int presentationId = 0;
+            if (!string.IsNullOrWhiteSpace(cfg.PresentationEffect))
+            {
+                presentationId = EffectTemplateIdRegistry.GetId(cfg.PresentationEffect);
+                if (presentationId <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.presentationEffect references unknown effect template '{cfg.PresentationEffect}'.");
+                }
+            }
+            else
+            {
+                presentationId = impactId > 0 ? impactId : hitId;
+            }
+
+            ProjectileTravelMode travelMode = ParseProjectileTravelMode(cfg.TravelMode);
+            ProjectileImpactPolicy impactPolicy = ParseProjectileImpactPolicy(cfg.ImpactPolicy);
+            if (impactPolicy != ProjectileImpactPolicy.Legacy)
+            {
+                if (hitId <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.impactPolicy '{impactPolicy}' requires projectile.hitEffect.");
+                }
+
+                if (cfg.CollisionHalfWidth <= 0)
+                {
+                    throw new InvalidOperationException($"Effect template '{ownerId}' in {relativePath}: projectile.impactPolicy '{impactPolicy}' requires projectile.collisionHalfWidth > 0.");
+                }
+            }
+
             return new ProjectileDescriptor
             {
                 Speed = cfg.Speed,
                 Range = cfg.Range,
                 ArcHeight = cfg.ArcHeight,
-                ImpactEffectTemplateId = impactId
+                ImpactEffectTemplateId = impactId,
+                HitEffectTemplateId = hitId,
+                PresentationEffectTemplateId = presentationId,
+                TravelMode = travelMode,
+                ImpactPolicy = impactPolicy,
+                CollisionHalfWidthCm = cfg.CollisionHalfWidth,
+                CollisionRelationFilter = RelationshipFilterUtil.Parse(cfg.CollisionRelationFilter),
+                CollisionExcludeSource = cfg.CollisionExcludeSource,
+                MaxHitCount = cfg.MaxHitCount
+            };
+        }
+
+        private static ProjectileTravelMode ParseProjectileTravelMode(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return ProjectileTravelMode.Legacy;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "legacy" => ProjectileTravelMode.Legacy,
+                "direction" => ProjectileTravelMode.Direction,
+                "tracktarget" => ProjectileTravelMode.TrackTarget,
+                _ => throw new InvalidOperationException($"Unsupported projectile.travelMode '{raw}'.")
+            };
+        }
+
+        private static ProjectileImpactPolicy ParseProjectileImpactPolicy(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return ProjectileImpactPolicy.Legacy;
+            }
+
+            return raw.Trim().ToLowerInvariant() switch
+            {
+                "legacy" => ProjectileImpactPolicy.Legacy,
+                "destroyonfirsthit" => ProjectileImpactPolicy.DestroyOnFirstHit,
+                "continueonhit" => ProjectileImpactPolicy.ContinueOnHit,
+                _ => throw new InvalidOperationException($"Unsupported projectile.impactPolicy '{raw}'.")
             };
         }
 

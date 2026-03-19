@@ -17,6 +17,22 @@ namespace Ludots.Core.Gameplay.GAS
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Apply(in EffectModifiers modifiers, ref AttributeBuffer buffer)
         {
+            ApplyInternal(in modifiers, ref buffer, clampToCapacity: true);
+        }
+
+        /// <summary>
+        /// Apply aggregated modifiers while bypassing ClampCurrentToBase.
+        /// Used by attribute recomputation to rebuild dynamic caps before persistent current values are restored.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void ApplyAggregated(in EffectModifiers modifiers, ref AttributeBuffer buffer)
+        {
+            ApplyInternal(in modifiers, ref buffer, clampToCapacity: false);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ApplyInternal(in EffectModifiers modifiers, ref AttributeBuffer buffer, bool clampToCapacity)
+        {
             for (int i = 0; i < modifiers.Count; i++)
             {
                 var mod = modifiers.Get(i);
@@ -25,13 +41,34 @@ namespace Ludots.Core.Gameplay.GAS
                 switch (mod.Operation)
                 {
                     case ModifierOp.Add:
-                        buffer.SetCurrent(mod.AttributeId, current + mod.Value);
+                        if (clampToCapacity)
+                        {
+                            buffer.SetCurrent(mod.AttributeId, current + mod.Value);
+                        }
+                        else
+                        {
+                            buffer.SetAggregatedCurrent(mod.AttributeId, current + mod.Value);
+                        }
                         break;
                     case ModifierOp.Multiply:
-                        buffer.SetCurrent(mod.AttributeId, current * mod.Value);
+                        if (clampToCapacity)
+                        {
+                            buffer.SetCurrent(mod.AttributeId, current * mod.Value);
+                        }
+                        else
+                        {
+                            buffer.SetAggregatedCurrent(mod.AttributeId, current * mod.Value);
+                        }
                         break;
                     case ModifierOp.Override:
-                        buffer.SetCurrent(mod.AttributeId, mod.Value);
+                        if (clampToCapacity)
+                        {
+                            buffer.SetCurrent(mod.AttributeId, mod.Value);
+                        }
+                        else
+                        {
+                            buffer.SetAggregatedCurrent(mod.AttributeId, mod.Value);
+                        }
                         break;
                 }
             }

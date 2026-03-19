@@ -37,7 +37,11 @@ namespace Ludots.Core.Input.Systems
             bool uiCaptured = _globals.TryGetValue(CoreServiceKeys.UiCaptured.Name, out var capturedObj) && capturedObj is bool b && b;
             input.InputBlocked = uiCaptured;
             input.Update();
-            _authoritativeInput?.CaptureVisualFrame(input);
+            if (_authoritativeInput != null)
+            {
+                _authoritativeInput.CaptureVisualFrame(input);
+                AuthoritativeGroundPointerHelper.Capture(_globals, input, _authoritativeInput);
+            }
 
             if (_globals.TryGetValue(CoreServiceKeys.GameSession.Name, out var sessionObj) && sessionObj is GameSession session)
             {

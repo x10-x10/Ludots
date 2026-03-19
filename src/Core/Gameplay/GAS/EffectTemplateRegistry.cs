@@ -154,8 +154,38 @@ namespace Ludots.Core.Gameplay.GAS
         public int Range;
         /// <summary>Arc height for parabolic trajectories (0 = straight line).</summary>
         public int ArcHeight;
-        /// <summary>Effect template ID to apply on impact.</summary>
+        /// <summary>Effect template ID to apply when the projectile completes its travel.</summary>
         public int ImpactEffectTemplateId;
+        /// <summary>Effect template ID to apply to entities hit during travel.</summary>
+        public int HitEffectTemplateId;
+        /// <summary>Effect template ID used only for presentation startup binding.</summary>
+        public int PresentationEffectTemplateId;
+        /// <summary>How the projectile computes movement.</summary>
+        public ProjectileTravelMode TravelMode;
+        /// <summary>How the projectile reacts to mid-flight entity collisions.</summary>
+        public ProjectileImpactPolicy ImpactPolicy;
+        /// <summary>Collision query half-width in centimeters.</summary>
+        public int CollisionHalfWidthCm;
+        /// <summary>Relationship filter applied to collision hits.</summary>
+        public RelationshipFilter CollisionRelationFilter;
+        /// <summary>Whether to ignore the source entity in collision hits.</summary>
+        public bool CollisionExcludeSource;
+        /// <summary>Maximum number of distinct collision hits before despawn. 0 = unlimited.</summary>
+        public int MaxHitCount;
+    }
+
+    public enum ProjectileTravelMode : byte
+    {
+        Legacy = 0,
+        Direction = 1,
+        TrackTarget = 2,
+    }
+
+    public enum ProjectileImpactPolicy : byte
+    {
+        Legacy = 0,
+        DestroyOnFirstHit = 1,
+        ContinueOnHit = 2,
     }
 
     /// <summary>

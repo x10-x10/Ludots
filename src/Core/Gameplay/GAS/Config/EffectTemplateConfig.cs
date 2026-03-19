@@ -172,6 +172,14 @@ namespace Ludots.Core.Gameplay.GAS.Config
         public int Range { get; set; }
         public int ArcHeight { get; set; }
         public string ImpactEffect { get; set; }
+        public string HitEffect { get; set; }
+        public string PresentationEffect { get; set; }
+        public string TravelMode { get; set; }
+        public string ImpactPolicy { get; set; }
+        public int CollisionHalfWidth { get; set; }
+        public string CollisionRelationFilter { get; set; }
+        public bool CollisionExcludeSource { get; set; } = true;
+        public int MaxHitCount { get; set; }
     }
 
     /// <summary>Unit creation component configuration.</summary>

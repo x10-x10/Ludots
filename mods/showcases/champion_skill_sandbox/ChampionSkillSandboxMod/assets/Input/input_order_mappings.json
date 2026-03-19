@@ -37,7 +37,9 @@
       "orderTypeKey": "castAbility",
       "argsTemplate": { "i0": 3 },
       "requireSelection": false,
-      "selectionType": "Position",
+      "selectionType": "Direction",
+      "cursorTargetPolicy": "NearestEnemyInRange",
+      "cursorTargetRangeCm": 320,
       "isSkillMapping": true,
       "modifierBehavior": "QueueOnModifier"
     },

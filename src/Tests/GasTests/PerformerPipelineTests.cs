@@ -253,6 +253,7 @@ namespace Ludots.Tests.Presentation
         private World _world;
         private PresentationCommandBuffer _commands;
         private PerformerInstanceBuffer _instances;
+        private PerformerDefinitionRegistry _definitions;
         private PerformerRuntimeSystem _system;
 
         [SetUp]
@@ -261,10 +262,11 @@ namespace Ludots.Tests.Presentation
             _world = World.Create();
             _commands = new PresentationCommandBuffer();
             _instances = new PerformerInstanceBuffer();
+            _definitions = new PerformerDefinitionRegistry();
             var prefabs = new Ludots.Core.Presentation.Assets.PrefabRegistry();
             var draw = new PrimitiveDrawBuffer();
             var markers = new TransientMarkerBuffer();
-            _system = new PerformerRuntimeSystem(_world, prefabs, _commands, draw, markers, _instances, new Ludots.Core.Presentation.PresentationStableIdAllocator());
+            _system = new PerformerRuntimeSystem(_world, prefabs, _commands, draw, markers, _instances, new Ludots.Core.Presentation.PresentationStableIdAllocator(), _definitions);
         }
 
         [TearDown]
@@ -278,10 +280,15 @@ namespace Ludots.Tests.Presentation
         public void CreatePerformerCommand_AllocatesInstance()
         {
             var owner = _world.Create();
+            _definitions.Register("test.runtime.basic", new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.Marker3D,
+                DefaultLifetime = 1f,
+            });
             _commands.TryAdd(new PresentationCommand
             {
                 Kind = PresentationCommandKind.CreatePerformer,
-                IdA = 100, // defId
+                IdA = _definitions.GetId("test.runtime.basic"),
                 IdB = 5,   // scopeId
                 Source = owner,
             });
@@ -295,10 +302,15 @@ namespace Ludots.Tests.Presentation
         public void DestroyPerformerScopeCommand_ReleasesInstances()
         {
             var owner = _world.Create();
+            _definitions.Register("test.runtime.scope", new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.Marker3D,
+                DefaultLifetime = -1f,
+            });
             _commands.TryAdd(new PresentationCommand
             {
                 Kind = PresentationCommandKind.CreatePerformer,
-                IdA = 100,
+                IdA = _definitions.GetId("test.runtime.scope"),
                 IdB = 7,
                 Source = owner,
             });
@@ -313,6 +325,65 @@ namespace Ludots.Tests.Presentation
             _system.Update(0.016f);
 
             Assert.That(_instances.IsActive(0), Is.False);
+        }
+
+        [Test]
+        public void CreatePerformerCommand_ReleasesDeadOwnerInstancesBeforeAllocating()
+        {
+            _definitions.Register("test.runtime.dead_owner", new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.Marker3D,
+                DefaultLifetime = -1f,
+            });
+            int defId = _definitions.GetId("test.runtime.dead_owner");
+            var firstOwner = _world.Create();
+            Assert.That(_instances.TryAllocate(defId, firstOwner, 1, out int staleHandle), Is.True);
+            _world.Destroy(firstOwner);
+
+            var secondOwner = _world.Create();
+            _commands.TryAdd(new PresentationCommand
+            {
+                Kind = PresentationCommandKind.CreatePerformer,
+                IdA = defId,
+                IdB = 2,
+                Source = secondOwner,
+            });
+
+            _system.Update(0.016f);
+
+            Assert.That(_instances.IsActive(staleHandle), Is.False);
+            Assert.That(_instances.ActiveCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CreatePerformerCommand_DedupesPersistentScopedInstance()
+        {
+            _definitions.Register("test.runtime.persistent_scope", new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.Marker3D,
+                DefaultLifetime = -1f,
+            });
+            int defId = _definitions.GetId("test.runtime.persistent_scope");
+            var owner = _world.Create();
+
+            _commands.TryAdd(new PresentationCommand
+            {
+                Kind = PresentationCommandKind.CreatePerformer,
+                IdA = defId,
+                IdB = 77,
+                Source = owner,
+            });
+            _commands.TryAdd(new PresentationCommand
+            {
+                Kind = PresentationCommandKind.CreatePerformer,
+                IdA = defId,
+                IdB = 77,
+                Source = owner,
+            });
+
+            _system.Update(0.016f);
+
+            Assert.That(_instances.ActiveCount, Is.EqualTo(1));
         }
     }
 
@@ -438,6 +509,36 @@ namespace Ludots.Tests.Presentation
             Assert.That(span.Length, Is.EqualTo(1));
             Assert.That(span[0].Color.W, Is.LessThan(1f));
             Assert.That(span[0].Color.W, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void InstanceScoped_GroundOverlay_FacingRadiansBinding_UsesOwnerFacingAngle()
+        {
+            var entity = _world.Create(
+                new VisualTransform { Position = Vector3.Zero },
+                new FacingDirection { AngleRad = MathF.PI * 0.5f });
+            var def = new PerformerDefinition
+            {
+                VisualKind = PerformerVisualKind.GroundOverlay,
+                MeshOrShapeId = (int)GroundOverlayShape.Line,
+                DefaultScale = 1f,
+                Bindings = new[]
+                {
+                    new PerformerParamBinding
+                    {
+                        ParamKey = WellKnownPerformerParamKeys.OverlayRotation,
+                        Value = ValueRef.FromFacingRadians()
+                    }
+                }
+            };
+            int defId = _defs.Register("test_overlay_facing_radians", def);
+            _instances.TryAllocate(defId, entity, 0, out _);
+
+            _system.Update(0.016f);
+
+            var span = _overlays.GetSpan();
+            Assert.That(span.Length, Is.EqualTo(1));
+            Assert.That(span[0].Rotation, Is.EqualTo(MathF.PI * 0.5f).Within(0.0001f));
         }
 
         [Test]

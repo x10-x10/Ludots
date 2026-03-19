@@ -34,6 +34,22 @@
     ]
   },
   {
+    "id": "champion_skill_sandbox.projectile.ezreal_e",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.44, 0.9, 1.0, 0.92],
+    "defaultScale": 0.2,
+    "defaultLifetime": -1
+  },
+  {
+    "id": "champion_skill_sandbox.projectile.ezreal_w",
+    "visualKind": "Marker3D",
+    "meshOrShapeId": "Sphere",
+    "defaultColor": [0.98, 0.82, 0.36, 0.92],
+    "defaultScale": 0.24,
+    "defaultLifetime": -1
+  },
+  {
     "id": "champion_skill_sandbox.projectile.ezreal_q",
     "visualKind": "Marker3D",
     "meshOrShapeId": "Sphere",
@@ -530,7 +546,7 @@
     "defaultLifetime": -1,
     "positionOffset": [0, 0.05, 0],
     "bindings": [
-      { "paramKey": 3, "source": "facingdegrees" },
+      { "paramKey": 3, "source": "facingradians" },
       { "paramKey": 8, "source": "constant", "constantValue": 1.0 },
       { "paramKey": 9, "source": "constant", "constantValue": 0.64 },
       { "paramKey": 10, "source": "constant", "constantValue": 0.48 },
@@ -549,7 +565,7 @@
     "defaultLifetime": -1,
     "positionOffset": [0, 0.06, 0],
     "bindings": [
-      { "paramKey": 3, "source": "facingdegrees" },
+      { "paramKey": 3, "source": "facingradians" },
       { "paramKey": 8, "source": "constant", "constantValue": 0.82 },
       { "paramKey": 9, "source": "constant", "constantValue": 0.66 },
       { "paramKey": 10, "source": "constant", "constantValue": 1.0 },

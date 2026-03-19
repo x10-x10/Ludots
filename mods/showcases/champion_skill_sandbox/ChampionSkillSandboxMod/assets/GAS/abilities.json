@@ -5,17 +5,22 @@
       "clockId": "FixedFrame",
       "items": [
         { "kind": "TagClip", "tick": 0, "duration": 72, "tag": "Cooldown.Champion.Ezreal.E" },
-        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.ArcaneShift" },
-        { "kind": "End", "tick": 0 }
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.ArcaneShift", "dispatchTarget": "Source" },
+        { "kind": "EffectSignal", "tick": 5, "template": "Effect.Champion.Ezreal.ArcaneShiftBolt" },
+        { "kind": "End", "tick": 5 }
       ]
     },
     "indicator": { "shape": "Circle", "range": 440, "radius": 120, "showRangeCircle": true, "validColor": "#4FD7F077", "invalidColor": "#E2575788" },
     "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.E"] },
+    "input": {
+      "autoTargetPolicy": "NearestEnemyInRange",
+      "autoTargetRangeCm": 760
+    },
     "presentation": {
       "displayName": "Arcane Shift",
       "iconGlyph": "E",
       "accentColor": "#44C2F0",
-      "hintText": "Blink to cursor",
+      "hintText": "Blink, then fire a magic bolt",
       "modeHints": {
         "SmartCastWithIndicator": "Hold to preview blink",
         "PressReleaseAimCast": "Release key, then confirm blink"
@@ -32,16 +37,16 @@
         { "kind": "End", "tick": 0 }
       ]
     },
-    "indicator": { "shape": "Circle", "range": 760, "radius": 150, "showRangeCircle": true, "validColor": "#F0C35A77", "invalidColor": "#E2575788" },
+    "indicator": { "shape": "Line", "range": 760, "radius": 85, "showRangeCircle": true, "validColor": "#F0C35A77", "invalidColor": "#E2575788" },
     "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.W"] },
     "presentation": {
       "displayName": "Essence Flux",
       "iconGlyph": "W",
       "accentColor": "#F0C35A",
-      "hintText": "Zone mark at cursor",
+      "hintText": "Projectile mark that can be detonated",
       "modeHints": {
-        "SmartCastWithIndicator": "Hold to preview zone",
-        "PressReleaseAimCast": "Release key, then confirm zone"
+        "SmartCastWithIndicator": "Hold to preview mark shot",
+        "PressReleaseAimCast": "Release key, then confirm mark shot"
       }
     }
   },
@@ -61,7 +66,7 @@
       "displayName": "Mystic Shot",
       "iconGlyph": "Q",
       "accentColor": "#61C3FF",
-      "hintText": "Line shot to cursor",
+      "hintText": "Projectile that stops on first enemy",
       "modeHints": {
         "SmartCastWithIndicator": "Hold to preview line shot",
         "PressReleaseAimCast": "Release key, then confirm line shot"
@@ -78,16 +83,16 @@
         { "kind": "End", "tick": 0 }
       ]
     },
-    "indicator": { "shape": "Line", "range": 1200, "radius": 120, "showRangeCircle": true, "validColor": "#9BE0FF77", "invalidColor": "#E2575788" },
+    "indicator": { "shape": "Line", "range": 2200, "radius": 120, "showRangeCircle": true, "validColor": "#9BE0FF77", "invalidColor": "#E2575788" },
     "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.R"] },
     "presentation": {
       "displayName": "Trueshot Barrage",
       "iconGlyph": "R",
       "accentColor": "#9BE0FF",
-      "hintText": "Long line blast",
+      "hintText": "Global projectile fired by direction",
       "modeHints": {
-        "SmartCastWithIndicator": "Hold to preview barrage",
-        "PressReleaseAimCast": "Release key, then confirm barrage"
+        "SmartCastWithIndicator": "Hold to preview barrage direction",
+        "PressReleaseAimCast": "Release key, then confirm barrage direction"
       }
     }
   },
@@ -567,14 +572,18 @@
     },
     "indicator": { "shape": "Line", "range": 1050, "radius": 75, "showRangeCircle": true, "validColor": "#B07CFF77", "invalidColor": "#E2575788" },
     "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.R"] },
+    "input": {
+      "trigger": "Held",
+      "heldPolicy": "StartEnd",
+      "castModeOverride": "SmartCast"
+    },
     "presentation": {
       "displayName": "Guided Laser",
       "iconGlyph": "R",
       "accentColor": "#B07CFF",
-      "hintText": "Channel a steerable beam, stop with S",
+      "hintText": "Hold to channel steerable beam, release to stop",
       "modeHints": {
-        "SmartCastWithIndicator": "Hold to preview laser lane",
-        "PressReleaseAimCast": "Release key, then confirm channel"
+        "SmartCast": "Hold to channel steerable beam, release to stop"
       }
     }
   }

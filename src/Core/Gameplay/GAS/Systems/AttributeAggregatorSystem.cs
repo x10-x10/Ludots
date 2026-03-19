@@ -2,6 +2,7 @@ using Arch.Core;
 using Arch.Core.Extensions;
 using Arch.Buffer;
 using Ludots.Core.Gameplay.GAS.Components;
+using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.GraphRuntime;
 using Ludots.Core.NodeLibraries.GASGraph;
 using Ludots.Core.Mathematics;
@@ -108,13 +109,14 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     if (World.IsAlive(effectEntity))
                     {
                         ref var modifiers = ref World.Get<EffectModifiers>(effectEntity);
-                        EffectModifierOps.Apply(in modifiers, ref attrBuffer);
+                        EffectModifierOps.ApplyAggregated(in modifiers, ref attrBuffer);
                     }
                     }
                 }
 
                 // 3. Execute derived graphs (non-linear attribute formulas)
                 ExecuteDerivedGraphs(World, entity, GraphPrograms, GraphApi);
+                RestorePersistentCurrentValues(ref attrBuffer, oldValues);
 
                 // 4. 标记脏属性（用于延迟触发器）
                 for (int i = 0; i < AttributeBuffer.MAX_ATTRS; i++)
@@ -157,12 +159,13 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         if (!World.IsAlive(effectEntity)) continue;
 
                         ref var modifiers = ref World.Get<EffectModifiers>(effectEntity);
-                        EffectModifierOps.Apply(in modifiers, ref attrBuffer);
+                        EffectModifierOps.ApplyAggregated(in modifiers, ref attrBuffer);
                     }
                 }
 
                 // Execute derived graphs (non-linear attribute formulas)
                 ExecuteDerivedGraphs(World, entity, GraphPrograms, GraphApi);
+                RestorePersistentCurrentValues(ref attrBuffer, oldValues);
 
                 var dirtyFlags = new DirtyFlags();
                 bool anyDirty = false;
@@ -181,6 +184,20 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 }
             }
 
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void RestorePersistentCurrentValues(ref AttributeBuffer attrBuffer, Span<float> previousCurrentValues)
+        {
+            for (int i = 0; i < AttributeBuffer.MAX_ATTRS; i++)
+            {
+                attrBuffer.CapValues[i] = attrBuffer.CurrentValues[i];
+                if (AttributeRegistry.TryGetConstraints(i, out var constraints) &&
+                    constraints.ClampCurrentToBase)
+                {
+                    attrBuffer.SetCurrent(i, previousCurrentValues[i]);
+                }
+            }
         }
     }
 }

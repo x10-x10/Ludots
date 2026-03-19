@@ -143,6 +143,11 @@ namespace Ludots.Core.Input.Selection
         {
             groundWorldCm = default;
 
+            if (TryGetInput(out var input) && AuthoritativeGroundPointerHelper.TryRead(input, out groundWorldCm))
+            {
+                return true;
+            }
+
             if (!_globals.TryGetValue(CoreServiceKeys.ScreenRayProvider.Name, out var rayObj) || rayObj is not IScreenRayProvider rayProvider)
             {
                 return false;

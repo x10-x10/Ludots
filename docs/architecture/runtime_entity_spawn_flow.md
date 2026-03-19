@@ -165,3 +165,28 @@ Design boundary:
   support currently ships with `Ludots.Physics2D`; future `Hex` / `Grid`
   backends should add their own sink systems instead of branching in effect
   handlers or config.
+
+## 9 2026-03 Ability-level held input contract
+
+The unified manifestation runtime now also treats sustained beam / channel input
+as a reusable GAS-order concern instead of hero-specific control code.
+
+Additions:
+
+* `AbilityDefinition.input` can override the selected slot's local input
+  contract with `trigger`, `heldPolicy`, and `castModeOverride`.
+* `InputOrderMappingSystem` resolves that override from the effective ability
+  slot after form / granted-slot routing, so QWER bindings stay generic while
+  individual abilities can opt into `Held + StartEnd`.
+* Held lifecycle now sinks into formal order types: `castAbility.Start`
+  activates the exec, `castAbility.End` ends the matching slot exec through
+  `AbilityEndOrderSystem`.
+* `StopOrderSystem` remains the global stop / cancel path. Channel end is no
+  longer modeled as "pretend this was a stop".
+
+Resulting boundary:
+
+* Authoring can express "hold to channel, release to end" without hardcoding a
+  hero, slot, performer, or manifestation subtype.
+* Presentation panels resolve hint text against the effective ability-level cast
+  mode, so UI copy stays aligned with the actual runtime contract.

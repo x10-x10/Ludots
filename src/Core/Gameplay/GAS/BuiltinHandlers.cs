@@ -190,6 +190,15 @@ namespace Ludots.Core.Gameplay.GAS
                 ? world.Get<WorldPositionCm>(context.Source).Value
                 : Fix64Vec2.Zero;
             bool hasTargetPoint = TryResolveProjectileTargetPoint(world, in context, in mergedParams, out var targetPointCm);
+            bool hasDirection = TryResolveProjectileDirection(
+                world,
+                context.Source,
+                context.Target,
+                hasLaunchOrigin,
+                launchOrigin,
+                hasTargetPoint,
+                targetPointCm,
+                out var direction);
 
             var request = new RuntimeEntitySpawnRequest
             {
@@ -202,12 +211,22 @@ namespace Ludots.Core.Gameplay.GAS
                     Range = proj.Range,
                     ArcHeight = proj.ArcHeight,
                     ImpactEffectTemplateId = proj.ImpactEffectTemplateId,
+                    HitEffectTemplateId = proj.HitEffectTemplateId,
+                    PresentationEffectTemplateId = proj.PresentationEffectTemplateId,
+                    TravelMode = proj.TravelMode,
+                    ImpactPolicy = proj.ImpactPolicy,
+                    CollisionHalfWidthCm = proj.CollisionHalfWidthCm,
+                    CollisionRelationFilter = proj.CollisionRelationFilter,
+                    CollisionExcludeSource = (byte)(proj.CollisionExcludeSource ? 1 : 0),
+                    MaxHitCount = proj.MaxHitCount,
                     Source = context.Source,
                     Target = context.Target,
                     LaunchOriginCm = launchOrigin,
                     HasLaunchOrigin = (byte)(hasLaunchOrigin ? 1 : 0),
                     TargetPointCm = targetPointCm,
                     HasTargetPoint = (byte)(hasTargetPoint ? 1 : 0),
+                    Direction = direction,
+                    HasDirection = (byte)(hasDirection ? 1 : 0),
                 },
                 HasProjectileState = 1,
             };
@@ -394,6 +413,48 @@ namespace Ludots.Core.Gameplay.GAS
             }
 
             targetPointCm = default;
+            return false;
+        }
+
+        private static bool TryResolveProjectileDirection(
+            World world,
+            Entity source,
+            Entity target,
+            bool hasLaunchOrigin,
+            in Fix64Vec2 launchOrigin,
+            bool hasTargetPoint,
+            in Fix64Vec2 targetPointCm,
+            out Fix64Vec2 direction)
+        {
+            if (hasLaunchOrigin && world.IsAlive(target) && world.Has<WorldPositionCm>(target))
+            {
+                var delta = world.Get<WorldPositionCm>(target).Value - launchOrigin;
+                if (delta.LengthSquared() > Fix64.OneValue)
+                {
+                    direction = delta.Normalized();
+                    return true;
+                }
+            }
+
+            if (hasLaunchOrigin && hasTargetPoint)
+            {
+                var delta = targetPointCm - launchOrigin;
+                if (delta.LengthSquared() > Fix64.OneValue)
+                {
+                    direction = delta.Normalized();
+                    return true;
+                }
+            }
+
+            if (world.IsAlive(source) && world.Has<FacingDirection>(source))
+            {
+                float angle = world.Get<FacingDirection>(source).AngleRad;
+                var angleFix = Fix64.FromFloat(angle);
+                direction = new Fix64Vec2(Fix64Math.Cos(angleFix), Fix64Math.Sin(angleFix));
+                return true;
+            }
+
+            direction = Fix64Vec2.UnitX;
             return false;
         }
 

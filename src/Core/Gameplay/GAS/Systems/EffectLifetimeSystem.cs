@@ -229,9 +229,10 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             {
                 if (effect.State < EffectState.Committed) return;
                 bool shouldExpire = false;
+                bool cancelled = effect.CancelRequested || World.Has<EffectCancelled>(entity);
                 int now = Clock.Now(effect.ClockId.ToDomainId());
 
-                if (effect.LifetimeKind == EffectLifetimeKind.After)
+                if (!cancelled && effect.LifetimeKind == EffectLifetimeKind.After)
                 {
                     if (effect.ExpiresAtTick == 0)
                     {
@@ -245,6 +246,11 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 else if (effect.LifetimeKind == EffectLifetimeKind.Infinite)
                 {
                     shouldExpire = false;
+                }
+
+                if (cancelled)
+                {
+                    shouldExpire = true;
                 }
 
                 if (!shouldExpire && effect.ExpireCondition.IsValid)
@@ -268,17 +274,19 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 {
                     int tplId = World.Get<EffectTemplateRef>(entity).TemplateId;
                     var entry = new PhaseGraphEntry { TemplateId = tplId, EffectEntityId = entity.Id, EffectEntity = entity, Context = context };
-                    ExpirePhaseGraphs.Add(entry);
+                    if (!cancelled)
+                    {
+                        ExpirePhaseGraphs.Add(entry);
+                    }
                     RemovePhaseGraphs.Add(entry);
                 }
 
                 // Revoke granted tags from target before destroying
-                if (World.Has<EffectGrantedTags>(entity) && World.IsAlive(context.Target) && World.Has<TagCountContainer>(context.Target))
+                if (World.Has<EffectGrantedTags>(entity) && World.IsAlive(context.Target))
                 {
                     ref readonly var grantedTags = ref World.Get<EffectGrantedTags>(entity);
-                    ref var tagCounts = ref World.Get<TagCountContainer>(context.Target);
                     int stackCount = World.Has<EffectStack>(entity) ? World.Get<EffectStack>(entity).Count : 1;
-                    EffectTagContributionHelper.Revoke(in grantedTags, ref tagCounts, stackCount, GasBudget);
+                    EffectTagContributionHelper.RevokeFromEntity(World, context.Target, in grantedTags, stackCount, TagOps, GasBudget);
                 }
 
                 if (World.IsAlive(context.Target) && World.Has<ActiveEffectContainer>(context.Target))

@@ -13,6 +13,7 @@ using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Gameplay.GAS.Systems;
+using Ludots.Core.Gameplay.Teams;
 using Ludots.Core.Input.Config;
 using Ludots.Core.Input.Orders;
 using Ludots.Core.Input.Runtime;
@@ -158,8 +159,15 @@ namespace Ludots.Tests.GAS.Production
             Assert.That(ezrealCount, Is.EqualTo(4));
             Assert.That(ezrealSlots[3].DisplayLabel, Is.EqualTo("Trueshot Barrage"));
             Assert.That(ezrealSlots[3].ActionId, Is.EqualTo("SkillR"));
-            Assert.That(ezrealSlots[3].DetailLabel, Is.EqualTo("Long line blast"));
+            Assert.That(ezrealSlots[3].DetailLabel, Is.EqualTo("Global projectile fired by direction"));
             Assert.That(ezrealSlots[3].StateFlags.HasFlag(EntityCommandSlotStateFlags.Blocked), Is.True);
+
+            var mapping = WaitForActiveInputOrderMapping(engine);
+            var ezrealRMapping = mapping.GetMapping("SkillR");
+            Assert.That(ezrealRMapping, Is.Not.Null);
+            Assert.That(ezrealRMapping!.SelectionType, Is.EqualTo(OrderSelectionType.Direction));
+            Assert.That(ezrealRMapping.CursorTargetPolicy, Is.EqualTo(AutoTargetPolicy.NearestEnemyInRange));
+            Assert.That(ezrealRMapping.CursorTargetRangeCm, Is.EqualTo(320));
 
             var garenSlots = new EntityCommandPanelSlotView[8];
             int garenCount = source.CopySlots(FindEntityByName(engine.World, "Garen Courage"), 0, garenSlots);
@@ -213,10 +221,13 @@ namespace Ludots.Tests.GAS.Production
 
             var source = ResolveGasPanelSource(engine);
             Entity ezreal = FindEntityByName(engine.World, "Ezreal Alpha");
+            Entity spellEngineer = FindEntityByName(engine.World, "Spell Engineer Alpha");
             var slots = new EntityCommandPanelSlotView[8];
 
             source.CopySlots(ezreal, 0, slots);
-            Assert.That(slots[0].DetailLabel, Is.EqualTo("Line shot to cursor"));
+            Assert.That(slots[0].DetailLabel, Is.EqualTo("Projectile that stops on first enemy"));
+            source.CopySlots(spellEngineer, 0, slots);
+            Assert.That(slots[3].DetailLabel, Is.EqualTo("Hold to channel steerable beam, release to stop"));
 
             toolbar.Activate("ChampionSkillSandbox.Mode.Indicator");
             Tick(engine, 1);
@@ -226,6 +237,8 @@ namespace Ludots.Tests.GAS.Production
 
             source.CopySlots(ezreal, 0, slots);
             Assert.That(slots[0].DetailLabel, Is.EqualTo("Hold to preview line shot"));
+            source.CopySlots(spellEngineer, 0, slots);
+            Assert.That(slots[3].DetailLabel, Is.EqualTo("Hold to channel steerable beam, release to stop"));
 
             toolbar.Activate("ChampionSkillSandbox.Mode.PressReleaseAim");
             Tick(engine, 1);
@@ -235,6 +248,8 @@ namespace Ludots.Tests.GAS.Production
 
             source.CopySlots(ezreal, 0, slots);
             Assert.That(slots[0].DetailLabel, Is.EqualTo("Release key, then confirm line shot"));
+            source.CopySlots(spellEngineer, 0, slots);
+            Assert.That(slots[3].DetailLabel, Is.EqualTo("Hold to channel steerable beam, release to stop"));
 
             InputOrderMapping? command = mapping.GetMapping("Command");
             Assert.That(command, Is.Not.Null);
@@ -302,6 +317,75 @@ namespace Ludots.Tests.GAS.Production
         }
 
         [Test]
+        public void ChampionSkillSandbox_EzrealProjectileSemantics_AreRegistered()
+        {
+            using var engine = CreateEngine();
+
+            var effects = engine.GetService(CoreServiceKeys.EffectTemplateRegistry)
+                ?? throw new InvalidOperationException("EffectTemplateRegistry missing.");
+
+            AssertEzrealProjectileEffect(
+                effects,
+                effectKey: "Effect.Champion.Ezreal.MysticShot",
+                expectedHitEffectKey: "Effect.Champion.Ezreal.MysticShotHit",
+                expectedTravelMode: ProjectileTravelMode.Direction,
+                expectedImpactPolicy: ProjectileImpactPolicy.DestroyOnFirstHit,
+                expectedRelationFilter: RelationshipFilter.Hostile,
+                expectedMaxHitCount: 1);
+            AssertEzrealProjectileEffect(
+                effects,
+                effectKey: "Effect.Champion.Ezreal.EssenceFlux",
+                expectedHitEffectKey: "Effect.Champion.Ezreal.EssenceFluxHit",
+                expectedTravelMode: ProjectileTravelMode.Direction,
+                expectedImpactPolicy: ProjectileImpactPolicy.DestroyOnFirstHit,
+                expectedRelationFilter: RelationshipFilter.Hostile,
+                expectedMaxHitCount: 1);
+            AssertEzrealProjectileEffect(
+                effects,
+                effectKey: "Effect.Champion.Ezreal.ArcaneShiftBolt",
+                expectedHitEffectKey: "Effect.Champion.Ezreal.ArcaneShiftBoltHit",
+                expectedTravelMode: ProjectileTravelMode.TrackTarget,
+                expectedImpactPolicy: ProjectileImpactPolicy.DestroyOnFirstHit,
+                expectedRelationFilter: RelationshipFilter.Hostile,
+                expectedMaxHitCount: 1);
+            AssertEzrealProjectileEffect(
+                effects,
+                effectKey: "Effect.Champion.Ezreal.TrueshotBarrage",
+                expectedHitEffectKey: "Effect.Champion.Ezreal.TrueshotBarrageHit",
+                expectedTravelMode: ProjectileTravelMode.Direction,
+                expectedImpactPolicy: ProjectileImpactPolicy.ContinueOnHit,
+                expectedRelationFilter: RelationshipFilter.Hostile,
+                expectedMaxHitCount: 32);
+        }
+
+        [Test]
+        public void ChampionSkillSandbox_EzrealArcaneShift_UsesSourceBlinkAndAutoTargetBolt()
+        {
+            using var engine = CreateEngine();
+
+            var abilities = engine.GetService(CoreServiceKeys.AbilityDefinitionRegistry)
+                ?? throw new InvalidOperationException("AbilityDefinitionRegistry missing.");
+
+            int abilityId = AbilityIdRegistry.GetId("Ability.Champion.Ezreal.ArcaneShift");
+            Assert.That(abilityId, Is.GreaterThan(0));
+            Assert.That(abilities.TryGet(abilityId, out var ability), Is.True);
+            Assert.That(ability.HasInputBindingOverride, Is.True);
+            Assert.That(ability.InputBindingOverride.HasAutoTargetPolicy, Is.True);
+            Assert.That(ability.InputBindingOverride.AutoTargetPolicy, Is.EqualTo(AutoTargetPolicy.NearestEnemyInRange));
+            Assert.That(ability.InputBindingOverride.HasAutoTargetRangeCm, Is.True);
+            Assert.That(ability.InputBindingOverride.AutoTargetRangeCm, Is.EqualTo(760));
+
+            Assert.That(ability.ExecSpec.GetKind(1), Is.EqualTo(ExecItemKind.EffectSignal));
+            Assert.That(
+                (ExecEffectDispatchTarget)ability.ExecSpec.GetPayloadA(1),
+                Is.EqualTo(ExecEffectDispatchTarget.Source));
+            Assert.That(ability.ExecSpec.GetKind(2), Is.EqualTo(ExecItemKind.EffectSignal));
+            Assert.That(
+                (ExecEffectDispatchTarget)ability.ExecSpec.GetPayloadA(2),
+                Is.EqualTo(ExecEffectDispatchTarget.Default));
+        }
+
+        [Test]
         public void ChampionSkillSandbox_ProjectileBindingsAndSkillCueConfigs_AreRegistered()
         {
             using var engine = CreateEngine();
@@ -313,26 +397,33 @@ namespace Ludots.Tests.GAS.Production
             var performers = engine.GetService(CoreServiceKeys.PerformerDefinitionRegistry)
                 ?? throw new InvalidOperationException("PerformerDefinitionRegistry missing.");
 
-            AssertProjectileEffect(
+            AssertProjectileUsesDirectPrimitiveFeedback(
                 effects,
                 projectileBindings,
-                performers,
+                projectileEffectKey: "Effect.Champion.Ezreal.ArcaneShiftBolt",
+                hitEffectKey: "Effect.Champion.Ezreal.ArcaneShiftBoltHit");
+            AssertProjectileUsesDirectPrimitiveFeedback(
+                effects,
+                projectileBindings,
+                projectileEffectKey: "Effect.Champion.Ezreal.EssenceFlux",
+                hitEffectKey: "Effect.Champion.Ezreal.EssenceFluxHit");
+            AssertProjectileUsesDirectPrimitiveFeedback(
+                effects,
+                projectileBindings,
                 projectileEffectKey: "Effect.Champion.Ezreal.MysticShot",
-                resolveEffectKey: "Effect.Champion.Ezreal.MysticShotResolve",
-                projectilePerformerKey: "champion_skill_sandbox.projectile.ezreal_q");
-            AssertProjectileEffect(
+                hitEffectKey: "Effect.Champion.Ezreal.MysticShotHit");
+            AssertProjectileUsesDirectPrimitiveFeedback(
                 effects,
                 projectileBindings,
-                performers,
                 projectileEffectKey: "Effect.Champion.Ezreal.TrueshotBarrage",
-                resolveEffectKey: "Effect.Champion.Ezreal.TrueshotBarrageResolve",
-                projectilePerformerKey: "champion_skill_sandbox.projectile.ezreal_r");
+                hitEffectKey: "Effect.Champion.Ezreal.TrueshotBarrageHit");
             AssertProjectileEffect(
                 effects,
                 projectileBindings,
                 performers,
                 projectileEffectKey: "Effect.Champion.Jayce.Cannon.ShockBlast",
-                resolveEffectKey: "Effect.Champion.Jayce.Cannon.ShockBlastResolve",
+                bindingEffectKey: "Effect.Champion.Jayce.Cannon.ShockBlastResolve",
+                hitEffectKey: null,
                 projectilePerformerKey: "champion_skill_sandbox.projectile.jayce_q");
 
             Assert.That(performers.GetId("champion_skill_sandbox.cue.ezreal_arcane_shift"), Is.GreaterThan(0));
@@ -458,6 +549,21 @@ namespace Ludots.Tests.GAS.Production
             }
         }
 
+        private static void TickUntil(GameEngine engine, Func<bool> predicate, int maxFrames)
+        {
+            for (int i = 0; i < maxFrames; i++)
+            {
+                if (predicate())
+                {
+                    return;
+                }
+
+                Tick(engine, 1);
+            }
+
+            Assert.That(predicate(), Is.True, $"Predicate was not satisfied within {maxFrames} frames.");
+        }
+
         private static int CountOverlays(GroundOverlayBuffer overlays, GroundOverlayShape shape)
         {
             int count = 0;
@@ -477,28 +583,77 @@ namespace Ludots.Tests.GAS.Production
             ProjectilePresentationBindingRegistry projectileBindings,
             PerformerDefinitionRegistry performers,
             string projectileEffectKey,
-            string resolveEffectKey,
+            string bindingEffectKey,
+            string? hitEffectKey,
             string projectilePerformerKey)
         {
             int projectileEffectId = EffectTemplateIdRegistry.GetId(projectileEffectKey);
-            int resolveEffectId = EffectTemplateIdRegistry.GetId(resolveEffectKey);
+            int bindingEffectId = EffectTemplateIdRegistry.GetId(bindingEffectKey);
             int projectilePerformerId = performers.GetId(projectilePerformerKey);
 
             Assert.That(projectileEffectId, Is.GreaterThan(0), $"{projectileEffectKey} should be registered.");
-            Assert.That(resolveEffectId, Is.GreaterThan(0), $"{resolveEffectKey} should be registered.");
+            Assert.That(bindingEffectId, Is.GreaterThan(0), $"{bindingEffectKey} should be registered.");
             Assert.That(projectilePerformerId, Is.GreaterThan(0), $"{projectilePerformerKey} should be registered.");
 
             Assert.That(effects.TryGet(projectileEffectId, out var projectileEffect), Is.True);
             Assert.That(projectileEffect.PresetType, Is.EqualTo(EffectPresetType.LaunchProjectile));
-            Assert.That(projectileEffect.Projectile.ImpactEffectTemplateId, Is.EqualTo(resolveEffectId));
+            Assert.That(projectileEffect.Projectile.PresentationEffectTemplateId, Is.EqualTo(bindingEffectId));
+            if (hitEffectKey != null)
+            {
+                Assert.That(
+                    projectileEffect.Projectile.HitEffectTemplateId,
+                    Is.EqualTo(EffectTemplateIdRegistry.GetId(hitEffectKey)));
+            }
 
-            Assert.That(effects.TryGet(resolveEffectId, out var resolveEffect), Is.True);
-            Assert.That(resolveEffect.PresetType, Is.EqualTo(EffectPresetType.Search));
-
-            Assert.That(projectileBindings.TryGet(resolveEffectId, out var binding), Is.True);
-            Assert.That(binding.ImpactEffectTemplateId, Is.EqualTo(resolveEffectId));
+            Assert.That(projectileBindings.TryGet(bindingEffectId, out var binding), Is.True);
+            Assert.That(binding.ImpactEffectTemplateId, Is.EqualTo(bindingEffectId));
             Assert.That(binding.StartupPerformers.Count, Is.EqualTo(1));
             Assert.That(binding.StartupPerformers.Get(0), Is.EqualTo(projectilePerformerId));
+        }
+
+        private static void AssertProjectileUsesDirectPrimitiveFeedback(
+            EffectTemplateRegistry effects,
+            ProjectilePresentationBindingRegistry projectileBindings,
+            string projectileEffectKey,
+            string hitEffectKey)
+        {
+            int projectileEffectId = EffectTemplateIdRegistry.GetId(projectileEffectKey);
+            int hitEffectId = EffectTemplateIdRegistry.GetId(hitEffectKey);
+
+            Assert.That(projectileEffectId, Is.GreaterThan(0), $"{projectileEffectKey} should be registered.");
+            Assert.That(hitEffectId, Is.GreaterThan(0), $"{hitEffectKey} should be registered.");
+            Assert.That(effects.TryGet(projectileEffectId, out var projectileEffect), Is.True);
+            Assert.That(projectileEffect.PresetType, Is.EqualTo(EffectPresetType.LaunchProjectile));
+            Assert.That(projectileEffect.Projectile.PresentationEffectTemplateId, Is.EqualTo(projectileEffectId));
+            Assert.That(projectileEffect.Projectile.HitEffectTemplateId, Is.EqualTo(hitEffectId));
+            Assert.That(
+                projectileBindings.TryGet(projectileEffectId, out _),
+                Is.False,
+                $"{projectileEffectKey} should use champion sandbox direct primitive feedback instead of startup performers.");
+        }
+
+        private static void AssertEzrealProjectileEffect(
+            EffectTemplateRegistry effects,
+            string effectKey,
+            string expectedHitEffectKey,
+            ProjectileTravelMode expectedTravelMode,
+            ProjectileImpactPolicy expectedImpactPolicy,
+            RelationshipFilter expectedRelationFilter,
+            int expectedMaxHitCount)
+        {
+            int effectId = EffectTemplateIdRegistry.GetId(effectKey);
+            int hitEffectId = EffectTemplateIdRegistry.GetId(expectedHitEffectKey);
+
+            Assert.That(effectId, Is.GreaterThan(0), $"{effectKey} should be registered.");
+            Assert.That(hitEffectId, Is.GreaterThan(0), $"{expectedHitEffectKey} should be registered.");
+            Assert.That(effects.TryGet(effectId, out var effect), Is.True);
+            Assert.That(effect.PresetType, Is.EqualTo(EffectPresetType.LaunchProjectile));
+            Assert.That(effect.Projectile.HitEffectTemplateId, Is.EqualTo(hitEffectId));
+            Assert.That(effect.Projectile.TravelMode, Is.EqualTo(expectedTravelMode));
+            Assert.That(effect.Projectile.ImpactPolicy, Is.EqualTo(expectedImpactPolicy));
+            Assert.That(effect.Projectile.CollisionRelationFilter, Is.EqualTo(expectedRelationFilter));
+            Assert.That(effect.Projectile.CollisionExcludeSource, Is.True);
+            Assert.That(effect.Projectile.MaxHitCount, Is.EqualTo(expectedMaxHitCount));
         }
 
         private static void AssertTemplateBackedCreateUnit(
@@ -562,6 +717,69 @@ namespace Ludots.Tests.GAS.Production
             return entity != Entity.Null && world.IsAlive(entity) && world.TryGet(entity, out Name name)
                 ? name.Value
                 : string.Empty;
+        }
+
+        private static float ReadHealth(World world, string entityName)
+        {
+            Entity entity = FindEntityByName(world, entityName);
+            int healthId = AttributeRegistry.GetId("Health");
+            Assert.That(healthId, Is.GreaterThanOrEqualTo(0), "Health attribute should be registered.");
+            Assert.That(world.TryGet(entity, out AttributeBuffer attributes), Is.True, $"{entityName} should expose AttributeBuffer.");
+            return attributes.GetCurrent(healthId);
+        }
+
+        private static bool HasTag(World world, Entity entity, int tagId)
+        {
+            return world.IsAlive(entity) &&
+                   tagId > 0 &&
+                   world.TryGet(entity, out GameplayTagContainer tags) &&
+                   tags.HasTag(tagId);
+        }
+
+        private static int CountActiveEffects(World world, Entity entity, string effectKey)
+        {
+            if (!world.IsAlive(entity) || !world.TryGet(entity, out ActiveEffectContainer container))
+            {
+                return 0;
+            }
+
+            int templateId = EffectTemplateIdRegistry.GetId(effectKey);
+            Assert.That(templateId, Is.GreaterThan(0), $"{effectKey} should be registered.");
+
+            int count = 0;
+            for (int i = 0; i < container.Count; i++)
+            {
+                Entity effectEntity = container.GetEntity(i);
+                if (effectEntity == Entity.Null || !world.IsAlive(effectEntity))
+                {
+                    continue;
+                }
+
+                if (world.TryGet(effectEntity, out EffectTemplateRef effectRef) &&
+                    effectRef.TemplateId == templateId)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static void PublishEffect(GameEngine engine, Entity source, Entity target, string effectKey)
+        {
+            var requests = engine.GetService(CoreServiceKeys.EffectRequestQueue)
+                ?? throw new InvalidOperationException("EffectRequestQueue missing.");
+            int templateId = EffectTemplateIdRegistry.GetId(effectKey);
+            Assert.That(templateId, Is.GreaterThan(0), $"{effectKey} should be registered.");
+
+            requests.Publish(new EffectRequest
+            {
+                RootId = 0,
+                Source = source,
+                Target = target,
+                TargetContext = Entity.Null,
+                TemplateId = templateId,
+            });
         }
 
         private static void AssertNamedEntityOwner(World world, string entityName, int expectedPlayerId)

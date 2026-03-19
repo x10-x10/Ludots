@@ -16,6 +16,9 @@ using Ludots.Core.Scripting;
 using Ludots.Core.Mathematics.FixedPoint;
 using Ludots.Core.Components;
 using Ludots.Core.Presentation.Components;
+using Ludots.Core.Spatial;
+using Ludots.Core.Gameplay.Teams;
+using Ludots.Core.Mathematics;
 using NUnit.Framework;
 using static NUnit.Framework.Assert;
 
@@ -433,7 +436,7 @@ namespace Ludots.Tests.GAS
                 WorldPositionCm.FromCm(100, 200),
                 new PreviousWorldPositionCm { Value = WorldPositionCm.FromCm(100, 200).Value });
 
-            using var system = new ProjectileRuntimeSystem(world, new DiscreteClock(), requests);
+            using var system = new ProjectileRuntimeSystem(world, requests, spatialQueries: null);
             system.Update(0.2f);
 
             That(world.IsAlive(projectile), Is.False, "Projectile should despawn after reaching the preserved target point.");
@@ -450,6 +453,51 @@ namespace Ludots.Tests.GAS
             That(originY, Is.EqualTo(200f).Within(0.01f));
             That(targetX, Is.EqualTo(160f).Within(0.01f));
             That(targetY, Is.EqualTo(240f).Within(0.01f));
+        }
+
+        [Test]
+        public void ProjectileRuntimeSystem_DestroyOnFirstHit_PublishesHitEffectAndDespawns()
+        {
+            using var world = World.Create();
+            var requests = new EffectRequestQueue();
+            var caster = world.Create(
+                WorldPositionCm.FromCm(0, 0),
+                new Team { Id = 1 });
+            var hostile = world.Create(
+                WorldPositionCm.FromCm(260, 0),
+                new Team { Id = 2 });
+            var bystander = world.Create(
+                WorldPositionCm.FromCm(520, 0),
+                new Team { Id = 2 });
+            var projectile = world.Create(
+                new ProjectileState
+                {
+                    Speed = Fix64.FromInt(1200),
+                    Range = 900,
+                    HitEffectTemplateId = 88,
+                    PresentationEffectTemplateId = 88,
+                    TravelMode = ProjectileTravelMode.Direction,
+                    ImpactPolicy = ProjectileImpactPolicy.DestroyOnFirstHit,
+                    CollisionHalfWidthCm = 60,
+                    CollisionRelationFilter = RelationshipFilter.Hostile,
+                    CollisionExcludeSource = 1,
+                    MaxHitCount = 1,
+                    Source = caster,
+                    LaunchOriginCm = Fix64Vec2.Zero,
+                    HasLaunchOrigin = 1,
+                    Direction = Fix64Vec2.UnitX,
+                    HasDirection = 1,
+                },
+                WorldPositionCm.FromCm(0, 0),
+                new PreviousWorldPositionCm { Value = WorldPositionCm.FromCm(0, 0).Value });
+
+            using var system = new ProjectileRuntimeSystem(world, requests, new TestLineQueryService(hostile, bystander));
+            system.Update(0.3f);
+
+            That(world.IsAlive(projectile), Is.False);
+            That(requests.Count, Is.EqualTo(1));
+            That(requests[0].TemplateId, Is.EqualTo(88));
+            That(requests[0].Target, Is.EqualTo(hostile));
         }
 
         [Test]
@@ -1032,6 +1080,34 @@ namespace Ludots.Tests.GAS
         // ════════════════════════════════════════════════════════════════════
         //  Helper: create a minimal ConfigPipeline from a JSON effect string
         // ════════════════════════════════════════════════════════════════════
+
+        private sealed class TestLineQueryService : ISpatialQueryService
+        {
+            private readonly Entity[] _hits;
+
+            public TestLineQueryService(params Entity[] hits)
+            {
+                _hits = hits;
+            }
+
+            public SpatialQueryResult QueryAabb(in WorldAabbCm bounds, Span<Entity> buffer) => default;
+            public SpatialQueryResult QueryRadius(WorldCmInt2 center, int radiusCm, Span<Entity> buffer) => default;
+            public SpatialQueryResult QueryCone(WorldCmInt2 origin, int directionDeg, int halfAngleDeg, int rangeCm, Span<Entity> buffer) => default;
+            public SpatialQueryResult QueryRectangle(WorldCmInt2 center, int halfWidthCm, int halfHeightCm, int rotationDeg, Span<Entity> buffer) => default;
+            public SpatialQueryResult QueryHexRange(Ludots.Core.Map.Hex.HexCoordinates center, int hexRadius, Span<Entity> buffer) => default;
+            public SpatialQueryResult QueryHexRing(Ludots.Core.Map.Hex.HexCoordinates center, int hexRadius, Span<Entity> buffer) => default;
+
+            public SpatialQueryResult QueryLine(WorldCmInt2 origin, int directionDeg, int lengthCm, int halfWidthCm, Span<Entity> buffer)
+            {
+                int count = Math.Min(buffer.Length, _hits.Length);
+                for (int i = 0; i < count; i++)
+                {
+                    buffer[i] = _hits[i];
+                }
+
+                return new SpatialQueryResult(count, 0);
+            }
+        }
 
         private static ConfigPipeline CreateMinimalPipeline(string effectJson, string templatesJson = null)
         {

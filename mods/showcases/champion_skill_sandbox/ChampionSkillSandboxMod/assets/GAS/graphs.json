@@ -1,0 +1,12 @@
+[
+  {
+    "id": "Graph.Champion.Ezreal.PopEssenceFlux",
+    "kind": "Effect",
+    "entry": "target",
+    "nodes": [
+      { "id": "target", "op": "LoadContextTarget", "next": "pop" },
+      { "id": "pop", "op": "ApplyEffectTemplate", "effectTemplate": "Effect.Champion.Ezreal.EssenceFluxPop", "inputs": [ "target" ], "next": "consume" },
+      { "id": "consume", "op": "RemoveEffectTemplate", "effectTemplate": "Effect.Champion.Ezreal.EssenceFluxHit", "inputs": [ "target" ] }
+    ]
+  }
+]

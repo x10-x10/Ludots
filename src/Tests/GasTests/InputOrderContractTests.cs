@@ -150,6 +150,69 @@ namespace Ludots.Tests.GAS
             Assert.That(orders[0].OrderTypeId, Is.EqualTo(77));
         }
 
+        [Test]
+        public void DirectionSelection_UsesCursorTargetFallback_WhenHoverIsMissing()
+        {
+            var input = new FrozenInputActionReader();
+            input.SetActionState("SkillR", Vector3.Zero, isDown: true, pressedThisFrame: true, releasedThisFrame: false);
+
+            var config = new InputOrderMappingConfig
+            {
+                InteractionMode = InteractionModeType.SmartCast,
+                Mappings = new List<InputOrderMapping>
+                {
+                    new()
+                    {
+                        ActionId = "SkillR",
+                        Trigger = InputTriggerType.PressedThisFrame,
+                        OrderTypeKey = "castAbility",
+                        SelectionType = OrderSelectionType.Direction,
+                        RequireSelection = false,
+                        IsSkillMapping = true,
+                        CursorTargetPolicy = AutoTargetPolicy.NearestEnemyInRange,
+                        CursorTargetRangeCm = 320
+                    }
+                }
+            };
+
+            using var world = World.Create();
+            Entity actor = world.Create();
+            Entity enemy = world.Create();
+            var system = new InputOrderMappingSystem(input, config);
+            var orders = new List<Ludots.Core.Gameplay.GAS.Orders.Order>();
+
+            system.SetLocalPlayer(actor, 1);
+            system.SetOrderTypeKeyResolver(key => key == "castAbility" ? 203 : 0);
+            system.SetGroundPositionProvider((out Vector3 worldCm) =>
+            {
+                worldCm = new Vector3(1960f, 0f, 413f);
+                return true;
+            });
+            system.SetHoveredEntityProvider((out Entity entity) =>
+            {
+                entity = default;
+                return false;
+            });
+            system.SetCursorTargetProvider((Entity resolvedActor, AutoTargetPolicy policy, int rangeCm, Vector3 cursorWorldCm, out Entity target) =>
+            {
+                target = enemy;
+                return resolvedActor == actor &&
+                       policy == AutoTargetPolicy.NearestEnemyInRange &&
+                       rangeCm == 320 &&
+                       cursorWorldCm == new Vector3(1960f, 0f, 413f);
+            });
+            system.SetOrderSubmitHandler((in Ludots.Core.Gameplay.GAS.Orders.Order order) => orders.Add(order));
+
+            system.Update(0f);
+
+            Assert.That(orders.Count, Is.EqualTo(1));
+            Assert.That(orders[0].OrderTypeId, Is.EqualTo(203));
+            Assert.That(orders[0].Actor, Is.EqualTo(actor));
+            Assert.That(orders[0].Target, Is.EqualTo(enemy));
+            Assert.That(orders[0].Args.Spatial.Mode, Is.EqualTo(Ludots.Core.Gameplay.GAS.Orders.OrderCollectionMode.Single));
+            Assert.That(orders[0].Args.Spatial.WorldCm, Is.EqualTo(new Vector3(1960f, 0f, 413f)));
+        }
+
         private static (TestInputBackend backend, PlayerInputHandler handler) BuildHandler()
         {
             var backend = new TestInputBackend();
