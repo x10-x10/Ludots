@@ -34,6 +34,7 @@ namespace ChampionSkillSandboxMod
         public const string HoverIndicatorPerformerKey = "champion_skill_sandbox.hover_indicator";
         public const int SelectionIndicatorScopeId = 4101;
         public const int HoverIndicatorScopeId = 4102;
+        public const int AimHoverIndicatorScopeId = 4103;
 
         public const string EzrealAlphaName = "Ezreal Alpha";
         public const string EzrealCooldownName = "Ezreal Cooldown";
