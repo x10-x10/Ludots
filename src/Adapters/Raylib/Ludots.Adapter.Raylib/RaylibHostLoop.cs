@@ -7,7 +7,6 @@ using Ludots.Client.Raylib.Rendering;
 using Ludots.Core.Components;
 using Ludots.Core.Diagnostics;
 using Ludots.Core.Engine;
-using Ludots.Core.Hosting;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Selection;
 using Ludots.Core.Mathematics;
@@ -35,31 +34,23 @@ namespace Ludots.Adapter.Raylib
 {
     internal static class RaylibHostLoop
     {
-        private const string SelectedMovePathDebugSummaryKey = "CoreInputMod.SelectedMovePath.DebugSummary";
         private static bool _uiPointerCaptured;
         private static bool _emptyBufferWarned;
 
-        public static RuntimeHostExitReason Run(
-            RaylibHostSetup setup,
-            RuntimeReloadMonitor? reloadMonitor = null,
-            bool reuseWindow = false)
+        public static void Run(RaylibHostSetup setup)
         {
             var engine = setup.Engine;
             var config = setup.Config;
             var uiRoot = setup.UiRoot;
             var skiaRenderer = setup.Renderer;
             var presentationTiming = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
-            var exitReason = RuntimeHostExitReason.ExitRequested;
 
             int screenWidth = config.WindowWidth <= 0 ? 1280 : config.WindowWidth;
             int screenHeight = config.WindowHeight <= 0 ? 720 : config.WindowHeight;
             string title = string.IsNullOrWhiteSpace(config.WindowTitle) ? "Ludots Engine" : config.WindowTitle;
             // targetFps = 0 表示不锁帧，< 0 使用默认 60
             int targetFps = config.TargetFps == 0 ? 0 : (config.TargetFps < 0 ? 60 : config.TargetFps);
-            bool windowOpened = reuseWindow;
-            bool closeWindowOnExit = reuseWindow;
-            _uiPointerCaptured = false;
-            _emptyBufferWarned = false;
+            bool windowOpened = false;
 
             var terrainRenderer = new RaylibTerrainRenderer
             {
@@ -73,14 +64,9 @@ namespace Ludots.Adapter.Raylib
 
             try
             {
-                if (!reuseWindow)
-                {
-                    Rl.InitWindow(screenWidth, screenHeight, title);
-                    windowOpened = true;
-                    closeWindowOnExit = true;
-                    Rl.SetExitKey(0);
-                }
-
+                Rl.InitWindow(screenWidth, screenHeight, title);
+                windowOpened = true;
+                Rl.SetExitKey(0);
                 Rl.SetTargetFPS(targetFps);
 
                 using var compositeRenderer = new RaylibSkiaRenderer(screenWidth, screenHeight);
@@ -234,13 +220,18 @@ namespace Ludots.Adapter.Raylib
                             presentationTiming?.ObserveScreenOverlayBuild(0d, 0, 0);
                         }
 
+                        string? activeMapId = engine.CurrentMapSession?.MapId.Value;
+                        bool uxPrototypeMapActive = string.Equals(activeMapId, "ux_prototype_battle", StringComparison.OrdinalIgnoreCase);
+
                         Rl.BeginDrawing();
-                        Rl.ClearBackground(new Raylib_cs.Color(0, 0, 0, 255));
+                        Rl.ClearBackground(uxPrototypeMapActive
+                            ? new Raylib_cs.Color(6, 10, 16, 255)
+                            : new Raylib_cs.Color(0, 0, 0, 255));
 
                         var activeCamera = cameraAdapter.Camera;
                         Rl.BeginMode3D(activeCamera);
 
-                        if (drawDebugDraw)
+                        if (drawDebugDraw && !uxPrototypeMapActive)
                         {
                             DrawInfiniteGrid(activeCamera.target, 300, 1.0f, 10);
 
@@ -453,13 +444,6 @@ namespace Ludots.Adapter.Raylib
                             screenshotPending = false;
                             Log.Info(in LogChannels.Engine, $"Captured runtime screenshot: {fullScreenshotPath}");
                         }
-
-                        if (reloadMonitor != null && reloadMonitor.Poll())
-                        {
-                            closeWindowOnExit = false;
-                            exitReason = RuntimeHostExitReason.ReloadRequested;
-                            break;
-                        }
                     }
                     catch (Exception ex)
                     {
@@ -470,12 +454,10 @@ namespace Ludots.Adapter.Raylib
             }
             finally
             {
+                if (windowOpened) Rl.CloseWindow();
                 terrainRenderer.Dispose();
-                engine.Dispose();
-                if (windowOpened && closeWindowOnExit) Rl.CloseWindow();
+                engine.Stop();
             }
-
-            return exitReason;
         }
 
         private static void AppendRaylibDiagnostic(string? diagnosticPath, string message)
@@ -630,12 +612,7 @@ namespace Ludots.Adapter.Raylib
             }
 
             string targetSummary = BuildSelectionTargetSummary(engine);
-            string movePathSummary = engine.GlobalContext.TryGetValue(SelectedMovePathDebugSummaryKey, out var movePathObj) &&
-                                     movePathObj is string movePathText &&
-                                     !string.IsNullOrWhiteSpace(movePathText)
-                ? $"movePath=[{movePathText}]"
-                : "movePath=[unavailable]";
-            return $"windowFocused={Rl.IsWindowFocused()} {pointerSummary} {authPointerSummary} {liveSelectSummary} {authSelectSummary} {liveCommandSummary} {authCommandSummary} {hoveredSummary} {selectedSummary} uiCaptured={uiCaptured} {dragSummary} {targetSummary} {movePathSummary}";
+            return $"windowFocused={Rl.IsWindowFocused()} {pointerSummary} {authPointerSummary} {liveSelectSummary} {authSelectSummary} {liveCommandSummary} {authCommandSummary} {hoveredSummary} {selectedSummary} uiCaptured={uiCaptured} {dragSummary} {targetSummary}";
         }
 
         private static string BuildActionStateSummary(IInputActionReader input, string actionId, string label)
