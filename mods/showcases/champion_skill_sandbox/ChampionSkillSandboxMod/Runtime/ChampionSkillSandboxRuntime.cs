@@ -24,6 +24,7 @@ namespace ChampionSkillSandboxMod.Runtime
         private Entity _lastPanelTarget = Entity.Null;
         private Entity _selectionIndicatorTarget = Entity.Null;
         private Entity _hoverIndicatorTarget = Entity.Null;
+        private Entity _aimHoverIndicatorTarget = Entity.Null;
         private string _lastMapId = string.Empty;
         private bool _scenarioTagsApplied;
         private bool _initialSelectionApplied;
@@ -76,6 +77,7 @@ namespace ChampionSkillSandboxMod.Runtime
             SyncCameraFollow(engine);
             SyncFocusPanel(engine);
             SyncHoverIndicator(engine);
+            SyncAimHoverIndicator(engine);
         }
 
         private void EnsureScenarioState(GameEngine engine)
@@ -399,6 +401,7 @@ namespace ChampionSkillSandboxMod.Runtime
         {
             DestroySelectionIndicator(engine);
             DestroyHoverIndicator(engine);
+            DestroyAimHoverIndicator(engine);
 
             if (_focusPanelHandle.IsValid &&
                 engine.GetService(CoreServiceKeys.EntityCommandPanelService) is IEntityCommandPanelService service)
@@ -417,6 +420,7 @@ namespace ChampionSkillSandboxMod.Runtime
             _lastPanelTarget = Entity.Null;
             _selectionIndicatorTarget = Entity.Null;
             _hoverIndicatorTarget = Entity.Null;
+            _aimHoverIndicatorTarget = Entity.Null;
             _scenarioTagsApplied = false;
             _initialSelectionApplied = false;
             _lastMapId = string.Empty;
@@ -485,18 +489,57 @@ namespace ChampionSkillSandboxMod.Runtime
                 ChampionSkillSandboxIds.HoverIndicatorScopeId);
         }
 
+        private void SyncAimHoverIndicator(GameEngine engine)
+        {
+            SyncIndicator(
+                engine,
+                ResolveAimHoverIndicatorTarget(engine),
+                ref _aimHoverIndicatorTarget,
+                ChampionSkillSandboxIds.HoverIndicatorPerformerKey,
+                ChampionSkillSandboxIds.AimHoverIndicatorScopeId);
+        }
+
         private static Entity ResolveHoverIndicatorTarget(GameEngine engine)
         {
-            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) ||
-                hoveredObj is not Entity hovered ||
-                hovered == Entity.Null ||
-                !engine.World.IsAlive(hovered))
+            Entity hovered = ResolveHoveredEntity(engine);
+            if (hovered == Entity.Null)
             {
                 return Entity.Null;
             }
 
             Entity selected = engine.GetService(CoreServiceKeys.SelectedEntity);
             if (selected == hovered)
+            {
+                return Entity.Null;
+            }
+
+            return hovered;
+        }
+
+        private static Entity ResolveAimHoverIndicatorTarget(GameEngine engine)
+        {
+            if (engine.GetService(CoreServiceKeys.ActiveInputOrderMapping) is not InputOrderMappingSystem mapping ||
+                !mapping.IsAiming)
+            {
+                return Entity.Null;
+            }
+
+            Entity hovered = ResolveHoveredEntity(engine);
+            if (hovered == Entity.Null)
+            {
+                return Entity.Null;
+            }
+
+            Entity selected = engine.GetService(CoreServiceKeys.SelectedEntity);
+            return selected == hovered ? Entity.Null : hovered;
+        }
+
+        private static Entity ResolveHoveredEntity(GameEngine engine)
+        {
+            if (!engine.GlobalContext.TryGetValue(CoreServiceKeys.HoveredEntity.Name, out var hoveredObj) ||
+                hoveredObj is not Entity hovered ||
+                hovered == Entity.Null ||
+                !engine.World.IsAlive(hovered))
             {
                 return Entity.Null;
             }
@@ -515,6 +558,20 @@ namespace ChampionSkillSandboxMod.Runtime
             {
                 Kind = PresentationCommandKind.DestroyPerformerScope,
                 IdA = ChampionSkillSandboxIds.HoverIndicatorScopeId,
+            });
+        }
+
+        private void DestroyAimHoverIndicator(GameEngine engine)
+        {
+            if (engine.GetService(CoreServiceKeys.PresentationCommandBuffer) is not PresentationCommandBuffer commands)
+            {
+                return;
+            }
+
+            commands.TryAdd(new PresentationCommand
+            {
+                Kind = PresentationCommandKind.DestroyPerformerScope,
+                IdA = ChampionSkillSandboxIds.AimHoverIndicatorScopeId,
             });
         }
 

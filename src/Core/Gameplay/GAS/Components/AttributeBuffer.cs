@@ -13,6 +13,7 @@ namespace Ludots.Core.Gameplay.GAS.Components
         public const int MAX_ATTRS = 64;
 
         public fixed float BaseValues[MAX_ATTRS];
+        public fixed float CapValues[MAX_ATTRS];
         public fixed float CurrentValues[MAX_ATTRS];
         
         // Modifiers could be aggregated here or calculated on the fly.
@@ -34,6 +35,12 @@ namespace Ludots.Core.Gameplay.GAS.Components
         public float GetBase(int attributeId)
         {
             if (attributeId < 0 || attributeId >= MAX_ATTRS) return 0f;
+            if (AttributeRegistry.TryGetConstraints(attributeId, out var constraints) &&
+                constraints.ClampCurrentToBase)
+            {
+                return CapValues[attributeId];
+            }
+
             return BaseValues[attributeId];
         }
 
@@ -45,6 +52,7 @@ namespace Ludots.Core.Gameplay.GAS.Components
         {
             if (attributeId < 0 || attributeId >= MAX_ATTRS) return;
             BaseValues[attributeId] = value;
+            CapValues[attributeId] = value;
             // Re-apply current value through constraints.
             // Uses the new base as default current (reset to base), then SetCurrent applies clamping.
             SetCurrent(attributeId, value);
@@ -52,10 +60,20 @@ namespace Ludots.Core.Gameplay.GAS.Components
 
         public void SetCurrent(int attributeId, float value)
         {
+            SetCurrentInternal(attributeId, value, clampToCapacity: true);
+        }
+
+        public void SetAggregatedCurrent(int attributeId, float value)
+        {
+            SetCurrentInternal(attributeId, value, clampToCapacity: false);
+        }
+
+        private void SetCurrentInternal(int attributeId, float value, bool clampToCapacity)
+        {
             if (attributeId < 0 || attributeId >= MAX_ATTRS) return;
             if (AttributeRegistry.TryGetConstraints(attributeId, out var constraints))
             {
-                if (constraints.ClampCurrentToBase)
+                if (clampToCapacity && constraints.ClampCurrentToBase)
                 {
                     float max = GetBase(attributeId);
                     if (value > max) value = max;

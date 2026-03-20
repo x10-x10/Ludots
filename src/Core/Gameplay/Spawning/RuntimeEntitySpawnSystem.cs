@@ -45,6 +45,7 @@ namespace Ludots.Core.Gameplay.Spawning
                 {
                     RuntimeEntitySpawnKind.UnitType => SpawnUnitType(request),
                     RuntimeEntitySpawnKind.Template => SpawnTemplate(request),
+                    RuntimeEntitySpawnKind.Assembly => SpawnAssembly(request),
                     _ => throw new InvalidOperationException($"Unsupported runtime spawn kind '{request.Kind}'."),
                 };
 
@@ -73,8 +74,11 @@ namespace Ludots.Core.Gameplay.Spawning
             }
 
             World.Add(entity, new Name { Value = "Unit:" + typeName });
+            TryApplyFacing(in request, entity);
             TryApplySourceTeam(in request, entity);
+            TryApplySourcePlayerOwner(in request, entity);
             TryApplyMapOwnership(in request, entity);
+            TryApplyParentLink(in request, entity);
             return entity;
         }
 
@@ -89,8 +93,33 @@ namespace Ludots.Core.Gameplay.Spawning
             var entity = _builder.UseTemplate(request.TemplateId).Build();
 
             ApplyWorldPosition(entity, request.WorldPositionCm);
+            TryApplyFacing(in request, entity);
             TryApplySourceTeam(in request, entity);
+            TryApplySourcePlayerOwner(in request, entity);
             TryApplyMapOwnership(in request, entity);
+            TryApplyParentLink(in request, entity);
+            return entity;
+        }
+
+        private Entity SpawnAssembly(in RuntimeEntitySpawnRequest request)
+        {
+            var entity = base.World.Create();
+
+            if (request.HasProjectileState != 0)
+            {
+                base.World.Add(entity, request.Projectile);
+            }
+
+            if (request.HasWorldPosition != 0)
+            {
+                ApplyWorldPosition(entity, request.WorldPositionCm);
+            }
+
+            TryApplyFacing(in request, entity);
+            TryApplySourceTeam(in request, entity);
+            TryApplySourcePlayerOwner(in request, entity);
+            TryApplyMapOwnership(in request, entity);
+            TryApplyParentLink(in request, entity);
             return entity;
         }
 
@@ -167,6 +196,47 @@ namespace Ludots.Core.Gameplay.Spawning
             }
         }
 
+        private void TryApplySourcePlayerOwner(in RuntimeEntitySpawnRequest request, Entity entity)
+        {
+            if (request.CopySourcePlayerOwner == 0)
+            {
+                return;
+            }
+
+            if (!World.IsAlive(request.Source) || !World.Has<PlayerOwner>(request.Source))
+            {
+                return;
+            }
+
+            var owner = World.Get<PlayerOwner>(request.Source);
+            if (World.Has<PlayerOwner>(entity))
+            {
+                World.Set(entity, owner);
+            }
+            else
+            {
+                World.Add(entity, owner);
+            }
+        }
+
+        private void TryApplyFacing(in RuntimeEntitySpawnRequest request, Entity entity)
+        {
+            if (request.HasFacing == 0)
+            {
+                return;
+            }
+
+            var facing = new FacingDirection { AngleRad = request.FacingAngleRad };
+            if (World.Has<FacingDirection>(entity))
+            {
+                World.Set(entity, facing);
+            }
+            else
+            {
+                World.Add(entity, facing);
+            }
+        }
+
         private void TryApplyMapOwnership(in RuntimeEntitySpawnRequest request, Entity entity)
         {
             var mapId = request.MapId;
@@ -191,6 +261,17 @@ namespace Ludots.Core.Gameplay.Spawning
             {
                 World.Add(entity, mapEntity);
             }
+        }
+
+        private void TryApplyParentLink(in RuntimeEntitySpawnRequest request, Entity entity)
+        {
+            Entity parent = request.LinkSourceAsParent != 0 ? request.Source : request.Parent;
+            if (!World.IsAlive(parent))
+            {
+                return;
+            }
+
+            RelationOps.SetParent(World, entity, parent);
         }
 
         private void PublishOnSpawnEffect(in RuntimeEntitySpawnRequest request, Entity spawned)

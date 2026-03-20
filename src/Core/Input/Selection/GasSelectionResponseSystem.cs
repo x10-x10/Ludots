@@ -50,18 +50,22 @@ namespace Ludots.Core.Input.Selection
         public void Update(in float dt)
         {
             if (!_globals.TryGetValue(CoreServiceKeys.AuthoritativeInput.Name, out var inputObj) || inputObj is not IInputActionReader input) return;
-            if (!_globals.TryGetValue(CoreServiceKeys.ScreenRayProvider.Name, out var rayObj) || rayObj is not IScreenRayProvider rayProvider) return;
             if (!_globals.TryGetValue(CoreServiceKeys.SelectionRequestQueue.Name, out var reqObj) || reqObj is not SelectionRequestQueue requests) return;
             if (!_globals.TryGetValue(CoreServiceKeys.SelectionResponseBuffer.Name, out var respObj) || respObj is not SelectionResponseBuffer responses) return;
-            if (!_globals.TryGetValue(CoreServiceKeys.WorldSizeSpec.Name, out var worldSizeObj) || worldSizeObj is not WorldSizeSpec worldSize) return;
             if (!requests.TryPeek(out var request)) return;
 
             var bindings = ResolveBindings();
             if (!input.PressedThisFrame(bindings.ConfirmActionId)) return;
 
-            var mouse = input.ReadAction<System.Numerics.Vector2>(bindings.PointerPositionActionId);
-            var ray = rayProvider.GetRay(mouse);
-            if (!GroundRaycastUtil.TryGetGroundWorldCmBounded(in ray, worldSize, out var worldCm)) return;
+            if (!AuthoritativeGroundPointerHelper.TryRead(input, out var worldCm))
+            {
+                if (!_globals.TryGetValue(CoreServiceKeys.ScreenRayProvider.Name, out var rayObj) || rayObj is not IScreenRayProvider rayProvider) return;
+                if (!_globals.TryGetValue(CoreServiceKeys.WorldSizeSpec.Name, out var worldSizeObj) || worldSizeObj is not WorldSizeSpec worldSize) return;
+
+                var mouse = input.ReadAction<System.Numerics.Vector2>(bindings.PointerPositionActionId);
+                var ray = rayProvider.GetRay(mouse);
+                if (!GroundRaycastUtil.TryGetGroundWorldCmBounded(in ray, worldSize, out worldCm)) return;
+            }
 
             OnSelectionTriggered?.Invoke(request, worldCm);
 

@@ -247,6 +247,7 @@ namespace EntityCommandPanelMod.Runtime
                     abilityDefinitions != null &&
                     abilityDefinitions.TryGet(effective.AbilityId, out var abilityDefinition))
                 {
+                    string abilityInteractionModeKey = ResolveAbilityInteractionModeKey(interactionModeKey, in abilityDefinition);
                     if (abilityDefinition.HasActivationBlockTags &&
                         IsBlocked(abilityDefinition.ActivationBlockTags, in actorTags, hasActorTags))
                     {
@@ -262,11 +263,11 @@ namespace EntityCommandPanelMod.Runtime
                     }
 
                     string fallbackLabel = ResolveFallbackLabel(effective.AbilityId, effective.TemplateEntityId);
-                    string fallbackDetail = BuildDefaultDetailLabel(actionId, interactionModeKey);
+                    string fallbackDetail = BuildDefaultDetailLabel(actionId, abilityInteractionModeKey);
                     if (abilityDefinition.HasPresentation && abilityDefinition.Presentation != null)
                     {
                         displayLabel = abilityDefinition.Presentation.ResolveDisplayName(fallbackLabel);
-                        detailLabel = abilityDefinition.Presentation.ResolveHintText(interactionModeKey, fallbackDetail);
+                        detailLabel = abilityDefinition.Presentation.ResolveHintText(abilityInteractionModeKey, fallbackDetail);
                     }
                     else
                     {
@@ -293,6 +294,17 @@ namespace EntityCommandPanelMod.Runtime
             }
 
             return count;
+        }
+
+        private static string ResolveAbilityInteractionModeKey(string interactionModeKey, in AbilityDefinition abilityDefinition)
+        {
+            if (abilityDefinition.HasInputBindingOverride &&
+                abilityDefinition.InputBindingOverride.HasCastModeOverride)
+            {
+                return abilityDefinition.InputBindingOverride.CastModeOverride.ToString();
+            }
+
+            return interactionModeKey;
         }
 
         public bool ActivateSlot(Entity target, int groupIndex, int slotIndex)

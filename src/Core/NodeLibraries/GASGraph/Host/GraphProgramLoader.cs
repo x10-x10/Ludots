@@ -90,6 +90,7 @@ namespace Ludots.Core.NodeLibraries.GASGraph.Host
                 {
                     case GraphNodeOp.QueryFilterTagAll:
                     case GraphNodeOp.SendEvent:
+                    case GraphNodeOp.HasTag:
                         ins.Imm = ResolveTag(symbols, ins.Imm);
                         break;
                     case GraphNodeOp.LoadAttribute:
@@ -97,6 +98,7 @@ namespace Ludots.Core.NodeLibraries.GASGraph.Host
                         ins.Imm = ResolveAttribute(symbols, ins.Imm);
                         break;
                     case GraphNodeOp.ApplyEffectTemplate:
+                    case GraphNodeOp.RemoveEffectTemplate:
                         ins.Imm = ResolveEffectTemplate(symbols, ins.Imm);
                         break;
                 }

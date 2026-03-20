@@ -138,6 +138,12 @@ namespace Ludots.Core.Gameplay.Camera
 
             runtime.FollowTarget = followTarget;
             runtime.PendingFollowSnap = snapToFollowTargetWhenAvailable;
+            runtime.ResolvedFollowTargetPositionCm = ResolveFollowTargetPosition(followTarget);
+            if (runtime.ResolvedFollowTargetPositionCm.HasValue && runtime.PendingFollowSnap)
+            {
+                runtime.RuntimeState.TargetCm = runtime.ResolvedFollowTargetPositionCm.Value;
+                runtime.PendingFollowSnap = false;
+            }
             return true;
         }
 

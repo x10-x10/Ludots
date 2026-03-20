@@ -174,7 +174,14 @@ namespace Ludots.Core.Gameplay.Camera
                 return false;
             }
 
-            return VirtualCameraBrain.SetFollowTarget(virtualCameraId, followTarget, snapToFollowTargetWhenAvailable);
+            bool updated = VirtualCameraBrain.SetFollowTarget(virtualCameraId, followTarget, snapToFollowTargetWhenAvailable);
+            if (updated &&
+                string.Equals(VirtualCameraBrain.ActiveCameraId, virtualCameraId, StringComparison.OrdinalIgnoreCase))
+            {
+                FollowTargetPositionCm = VirtualCameraBrain.ActiveFollowTargetPositionCm;
+            }
+
+            return updated;
         }
 
         /// <summary>

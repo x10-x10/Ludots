@@ -17,6 +17,7 @@ namespace Ludots.Core.Gameplay.GAS.Orders
 
     public sealed class OrderTypeConfig
     {
+        public string Key { get; set; } = string.Empty;
         public int OrderTypeId { get; set; }
         public string Label { get; set; } = string.Empty;
         public int MaxQueueSize { get; set; } = 3;

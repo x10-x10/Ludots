@@ -188,6 +188,34 @@ namespace Ludots.Core.NodeLibraries.GASGraph.Host
             _effectRequests.Publish(req);
         }
 
+        public void RemoveEffectTemplate(Entity target, int templateId)
+        {
+            if (!_world.IsAlive(target) || templateId <= 0 || !_world.Has<ActiveEffectContainer>(target))
+            {
+                return;
+            }
+
+            ref var container = ref _world.Get<ActiveEffectContainer>(target);
+            for (int i = 0; i < container.Count; i++)
+            {
+                Entity effectEntity = container.GetEntity(i);
+                if (!_world.IsAlive(effectEntity) ||
+                    !_world.Has<EffectTemplateRef>(effectEntity) ||
+                    !_world.Has<GameplayEffect>(effectEntity))
+                {
+                    continue;
+                }
+
+                if (_world.Get<EffectTemplateRef>(effectEntity).TemplateId != templateId)
+                {
+                    continue;
+                }
+
+                ref var gameplayEffect = ref _world.Get<GameplayEffect>(effectEntity);
+                gameplayEffect.CancelRequested = true;
+            }
+        }
+
         public void ModifyAttributeAdd(Entity caster, Entity target, int attributeId, float delta)
         {
             if (!_world.IsAlive(target) || !_world.Has<AttributeBuffer>(target)) return;
