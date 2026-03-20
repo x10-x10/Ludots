@@ -34,46 +34,38 @@ namespace AnimationAcceptanceMod.Runtime
             string summary,
             string layerSummary,
             string controllerKey,
-            AnimatorAuxLayerMode layerMode,
             Vector2 manualAnchorCm,
             int speedParameterIndex,
             int locomotionBoolParameterIndex,
             int fireTriggerParameterIndex,
-            int idleOverlayStateIndex,
-            int fireOverlayStateIndex,
             float fireOverlayDurationSeconds,
             string[] stateLabels,
             string[] stateDescriptions,
-            string[] overlayStateLabels,
+            string[] builtinClipDescriptions,
             string[] transitionDescriptions,
             AnimationAcceptanceParameterDefinition[] floatParameters,
             AnimationAcceptanceParameterDefinition[] boolParameters,
             AnimationAcceptanceParameterDefinition[] triggerParameters,
-            AnimationAcceptanceExampleProfile[] profiles,
-            AnimatorControllerDefinition controllerDefinition)
+            AnimationAcceptanceExampleProfile[] profiles)
         {
             RigId = rigId;
             DisplayName = displayName;
             Summary = summary;
             LayerSummary = layerSummary;
             ControllerKey = controllerKey;
-            LayerMode = layerMode;
             ManualAnchorCm = manualAnchorCm;
             SpeedParameterIndex = speedParameterIndex;
             LocomotionBoolParameterIndex = locomotionBoolParameterIndex;
             FireTriggerParameterIndex = fireTriggerParameterIndex;
-            IdleOverlayStateIndex = idleOverlayStateIndex;
-            FireOverlayStateIndex = fireOverlayStateIndex;
             FireOverlayDurationSeconds = fireOverlayDurationSeconds;
             StateLabels = stateLabels ?? Array.Empty<string>();
             StateDescriptions = stateDescriptions ?? Array.Empty<string>();
-            OverlayStateLabels = overlayStateLabels ?? Array.Empty<string>();
+            BuiltinClipDescriptions = builtinClipDescriptions ?? Array.Empty<string>();
             TransitionDescriptions = transitionDescriptions ?? Array.Empty<string>();
             FloatParameters = floatParameters ?? Array.Empty<AnimationAcceptanceParameterDefinition>();
             BoolParameters = boolParameters ?? Array.Empty<AnimationAcceptanceParameterDefinition>();
             TriggerParameters = triggerParameters ?? Array.Empty<AnimationAcceptanceParameterDefinition>();
             Profiles = profiles ?? Array.Empty<AnimationAcceptanceExampleProfile>();
-            ControllerDefinition = controllerDefinition ?? throw new ArgumentNullException(nameof(controllerDefinition));
         }
 
         public AnimationAcceptanceRigId RigId { get; }
@@ -81,23 +73,19 @@ namespace AnimationAcceptanceMod.Runtime
         public string Summary { get; }
         public string LayerSummary { get; }
         public string ControllerKey { get; }
-        public AnimatorAuxLayerMode LayerMode { get; }
         public Vector2 ManualAnchorCm { get; }
         public int SpeedParameterIndex { get; }
         public int LocomotionBoolParameterIndex { get; }
         public int FireTriggerParameterIndex { get; }
-        public int IdleOverlayStateIndex { get; }
-        public int FireOverlayStateIndex { get; }
         public float FireOverlayDurationSeconds { get; }
         public string[] StateLabels { get; }
         public string[] StateDescriptions { get; }
-        public string[] OverlayStateLabels { get; }
+        public string[] BuiltinClipDescriptions { get; }
         public string[] TransitionDescriptions { get; }
         public AnimationAcceptanceParameterDefinition[] FloatParameters { get; }
         public AnimationAcceptanceParameterDefinition[] BoolParameters { get; }
         public AnimationAcceptanceParameterDefinition[] TriggerParameters { get; }
         public AnimationAcceptanceExampleProfile[] Profiles { get; }
-        public AnimatorControllerDefinition ControllerDefinition { get; }
     }
 
     internal static class AnimationAcceptanceRigCatalog
@@ -142,13 +130,10 @@ namespace AnimationAcceptanceMod.Runtime
                 summary: "Lower-body chassis locomotion runs through the Core animator state machine. Turret yaw and recoil stay in the Raylib adapter prototype layer.",
                 layerSummary: "Case A: moving hull + independently aiming turret + recoil overlay.",
                 controllerKey: AnimationAcceptanceIds.TankControllerKey,
-                layerMode: AnimatorAuxLayerMode.TankTurret,
                 manualAnchorCm: new Vector2(1600f, 1500f),
                 speedParameterIndex: 0,
                 locomotionBoolParameterIndex: 1,
                 fireTriggerParameterIndex: 2,
-                idleOverlayStateIndex: 1,
-                fireOverlayStateIndex: 2,
                 fireOverlayDurationSeconds: 0.34f,
                 stateLabels:
                 [
@@ -162,11 +147,11 @@ namespace AnimationAcceptanceMod.Runtime
                     "Packed 32. Rolling chassis clip used whenever speed stays above the move threshold.",
                     "Packed 33. Short fire recovery clip triggered by the fire parameter.",
                 ],
-                overlayStateLabels:
+                builtinClipDescriptions:
                 [
-                    "OverlayNone",
-                    "TurretTrack",
-                    "TurretRecoil",
+                    "base: locomotion_cycle -> time=phase, weight=speed-driven stride pulse",
+                    "layer: aim_yaw_offset -> scalar0=aim yaw radians, weight=1.00",
+                    "overlay: recoil_pulse -> time=shot pulse, weight=1 during firing window",
                 ],
                 transitionDescriptions:
                 [
@@ -192,64 +177,7 @@ namespace AnimationAcceptanceMod.Runtime
                     new AnimationAcceptanceExampleProfile("tank_parked", "Parked Aim", "Idle hull with turret tracking only.", 0f, false, 0f, 0.35f, 1f, 0f, 0f, false),
                     new AnimationAcceptanceExampleProfile("tank_patrol", "Patrol Roll", "Cruising hull while the turret scans off-axis.", 0.7f, true, 0.3f, 0.75f, 1f, 0.18f, 0.1f, false),
                     new AnimationAcceptanceExampleProfile("tank_burst", "Burst Shot", "Move-state shot to validate trigger-driven fire recovery and recoil.", 0.55f, true, -0.15f, -0.9f, 1f, 0.42f, 0f, true),
-                ],
-                controllerDefinition: new AnimatorControllerDefinition
-                {
-                    DefaultStateIndex = 0,
-                    States =
-                    [
-                        new AnimatorStateDefinition { PackedStateIndex = 31, DurationSeconds = 1f, PlaybackSpeed = 1f, Loop = true },
-                        new AnimatorStateDefinition { PackedStateIndex = 32, DurationSeconds = 0.55f, PlaybackSpeed = 1f, Loop = true },
-                        new AnimatorStateDefinition { PackedStateIndex = 33, DurationSeconds = 0.32f, PlaybackSpeed = 1f, Loop = false },
-                    ],
-                    Transitions =
-                    [
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 0,
-                            ToStateIndex = 1,
-                            ConditionKind = AnimatorConditionKind.FloatGreaterOrEqual,
-                            ParameterIndex = 0,
-                            Threshold = 0.25f,
-                            DurationSeconds = 0.12f,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 1,
-                            ToStateIndex = 0,
-                            ConditionKind = AnimatorConditionKind.FloatLessOrEqual,
-                            ParameterIndex = 0,
-                            Threshold = 0.15f,
-                            DurationSeconds = 0.15f,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 0,
-                            ToStateIndex = 2,
-                            ConditionKind = AnimatorConditionKind.Trigger,
-                            ParameterIndex = 2,
-                            DurationSeconds = 0.03f,
-                            ConsumeTrigger = true,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 1,
-                            ToStateIndex = 2,
-                            ConditionKind = AnimatorConditionKind.Trigger,
-                            ParameterIndex = 2,
-                            DurationSeconds = 0.02f,
-                            ConsumeTrigger = true,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 2,
-                            ToStateIndex = 0,
-                            ConditionKind = AnimatorConditionKind.AutoOnNormalizedTime,
-                            Threshold = 0.92f,
-                            DurationSeconds = 0f,
-                        },
-                    ],
-                });
+                ]);
         }
 
         private static AnimationAcceptanceRigDefinition BuildHumanoidDefinition()
@@ -260,13 +188,10 @@ namespace AnimationAcceptanceMod.Runtime
                 summary: "Lower-body locomotion states stay in Core while upper-body aim and burst timing are driven as adapter-side overlay channels.",
                 layerSummary: "Case B: walk/run lower body + independently aiming, firing upper body.",
                 controllerKey: AnimationAcceptanceIds.HumanoidControllerKey,
-                layerMode: AnimatorAuxLayerMode.HumanoidUpperBody,
                 manualAnchorCm: new Vector2(3000f, 1800f),
                 speedParameterIndex: 0,
                 locomotionBoolParameterIndex: 3,
                 fireTriggerParameterIndex: 4,
-                idleOverlayStateIndex: 2,
-                fireOverlayStateIndex: 3,
                 fireOverlayDurationSeconds: 0.28f,
                 stateLabels:
                 [
@@ -282,12 +207,11 @@ namespace AnimationAcceptanceMod.Runtime
                     "Packed 43. Run cadence to prove multi-threshold transitions.",
                     "Packed 44. Brief fire recovery used to visualize trigger ownership.",
                 ],
-                overlayStateLabels:
+                builtinClipDescriptions:
                 [
-                    "OverlayNone",
-                    "UpperRelaxed",
-                    "UpperAimHold",
-                    "UpperBurstFire",
+                    "base: locomotion_cycle -> time=phase, scalar0=speed, weight=speed-driven gait",
+                    "layer: aim_yaw_offset -> scalar0=aim yaw radians, weight=overlay blend",
+                    "overlay: recoil_pulse -> time=burst pulse, weight=1 during fire trigger window",
                 ],
                 transitionDescriptions:
                 [
@@ -315,92 +239,7 @@ namespace AnimationAcceptanceMod.Runtime
                     new AnimationAcceptanceExampleProfile("humanoid_ready", "Ready Stance", "Idle lower body with upper-body aim hold.", 0f, false, 0.1f, 0.35f, 0.45f, 0.05f, 0.12f, false),
                     new AnimationAcceptanceExampleProfile("humanoid_strafe", "Strafe Aim", "Walking lower body while upper body keeps target lock.", 0.45f, true, 0.2f, 0.75f, 0.65f, 0.38f, 0.3f, false),
                     new AnimationAcceptanceExampleProfile("humanoid_burst", "Burst Fire", "Run-speed lower body with a one-shot fire trigger and upper-body recoil.", 0.92f, true, -0.05f, -1.0f, 1f, 0.62f, 0f, true),
-                ],
-                controllerDefinition: new AnimatorControllerDefinition
-                {
-                    DefaultStateIndex = 0,
-                    States =
-                    [
-                        new AnimatorStateDefinition { PackedStateIndex = 41, DurationSeconds = 1f, PlaybackSpeed = 1f, Loop = true },
-                        new AnimatorStateDefinition { PackedStateIndex = 42, DurationSeconds = 0.58f, PlaybackSpeed = 1f, Loop = true },
-                        new AnimatorStateDefinition { PackedStateIndex = 43, DurationSeconds = 0.42f, PlaybackSpeed = 1f, Loop = true },
-                        new AnimatorStateDefinition { PackedStateIndex = 44, DurationSeconds = 0.28f, PlaybackSpeed = 1f, Loop = false },
-                    ],
-                    Transitions =
-                    [
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 0,
-                            ToStateIndex = 1,
-                            ConditionKind = AnimatorConditionKind.FloatGreaterOrEqual,
-                            ParameterIndex = 0,
-                            Threshold = 0.20f,
-                            DurationSeconds = 0.08f,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 1,
-                            ToStateIndex = 0,
-                            ConditionKind = AnimatorConditionKind.FloatLessOrEqual,
-                            ParameterIndex = 0,
-                            Threshold = 0.10f,
-                            DurationSeconds = 0.08f,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 1,
-                            ToStateIndex = 2,
-                            ConditionKind = AnimatorConditionKind.FloatGreaterOrEqual,
-                            ParameterIndex = 0,
-                            Threshold = 0.75f,
-                            DurationSeconds = 0.06f,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 2,
-                            ToStateIndex = 1,
-                            ConditionKind = AnimatorConditionKind.FloatLessOrEqual,
-                            ParameterIndex = 0,
-                            Threshold = 0.55f,
-                            DurationSeconds = 0.06f,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 0,
-                            ToStateIndex = 3,
-                            ConditionKind = AnimatorConditionKind.Trigger,
-                            ParameterIndex = 4,
-                            DurationSeconds = 0.02f,
-                            ConsumeTrigger = true,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 1,
-                            ToStateIndex = 3,
-                            ConditionKind = AnimatorConditionKind.Trigger,
-                            ParameterIndex = 4,
-                            DurationSeconds = 0.02f,
-                            ConsumeTrigger = true,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 2,
-                            ToStateIndex = 3,
-                            ConditionKind = AnimatorConditionKind.Trigger,
-                            ParameterIndex = 4,
-                            DurationSeconds = 0.02f,
-                            ConsumeTrigger = true,
-                        },
-                        new AnimatorTransitionDefinition
-                        {
-                            FromStateIndex = 3,
-                            ToStateIndex = 0,
-                            ConditionKind = AnimatorConditionKind.AutoOnNormalizedTime,
-                            Threshold = 0.92f,
-                            DurationSeconds = 0f,
-                        },
-                    ],
-                });
+                ]);
         }
     }
 }
