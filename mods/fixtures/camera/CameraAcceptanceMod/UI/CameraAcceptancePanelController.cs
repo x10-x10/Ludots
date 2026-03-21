@@ -170,6 +170,12 @@ namespace CameraAcceptanceMod.UI
                     Ui.Text(state.ControlsDescription).FontSize(12f).Color("#8EA2BD").WhiteSpace(UiWhiteSpace.Normal)
                 };
 
+                if (!string.IsNullOrWhiteSpace(state.ReturnButtonLabel))
+                {
+                    children.Add(Ui.Text("Return").FontSize(12f).Bold().Color("#F4C77D"));
+                    children.Add(BuildReturnToMenuButton(state.ReturnButtonLabel));
+                }
+
                 if (string.Equals(state.MapId, CameraAcceptanceIds.HotpathMapId, StringComparison.OrdinalIgnoreCase))
                 {
                     children.Add(BuildHotpathControls(state));
@@ -601,6 +607,15 @@ namespace CameraAcceptanceMod.UI
                 .Color(active ? "#F7FAFF" : "#C7D3E1");
         }
 
+        private UiElementBuilder BuildReturnToMenuButton(string buttonLabel)
+        {
+            return Ui.Button(buttonLabel, _ => ReturnToPreviousMap())
+                .Padding(10f, 8f)
+                .Radius(10f)
+                .Background("#E6A93D")
+                .Color("#11151A");
+        }
+
         private bool ApplyStateSnapshot(GameEngine engine)
         {
             CameraAcceptancePanelState next = CaptureState(engine);
@@ -633,6 +648,7 @@ namespace CameraAcceptanceMod.UI
             RenderDebugState? renderDebug = engine.GetService(CoreServiceKeys.RenderDebugState);
             Vector2 viewport = ResolveViewportSize(engine);
             string[] diagnosticsLines = BuildDiagnosticsLines(engine, mapId, diagnostics, renderDebug);
+            bool canReturnToPreviousMap = engine.MapSessions != null && engine.MapSessions.All.Count > 1;
             return new CameraAcceptancePanelState(
                 mapId,
                 CameraAcceptanceIds.DescribeMap(mapId),
@@ -647,6 +663,7 @@ namespace CameraAcceptanceMod.UI
                 CameraAcceptanceRuntime.ResolveProjectionSpawnCount(engine),
                 BuildVisibleEntitySummary(visibleEntityRows),
                 visibleEntityRows,
+                canReturnToPreviousMap ? "Back To Previous Map" : string.Empty,
                 viewport.X,
                 viewport.Y,
                 ComputeDiagnosticsCardLeft(viewport.X, diagnosticsLines),
@@ -848,6 +865,24 @@ namespace CameraAcceptanceMod.UI
             }
 
             engine.LoadMap(mapId);
+            SyncMountedRoot();
+        }
+
+        private void ReturnToPreviousMap()
+        {
+            GameEngine engine = RequireEngine();
+            string? currentMapId = engine.CurrentMapSession?.MapId.Value;
+            if (string.IsNullOrWhiteSpace(currentMapId))
+            {
+                return;
+            }
+
+            if (engine.MapSessions == null || engine.MapSessions.All.Count <= 1)
+            {
+                return;
+            }
+
+            engine.UnloadMap(currentMapId);
             SyncMountedRoot();
         }
 
@@ -1088,6 +1123,7 @@ namespace CameraAcceptanceMod.UI
                 !string.Equals(left.ActiveBlendCameraId, right.ActiveBlendCameraId, StringComparison.Ordinal) ||
                 left.ProjectionSpawnCount != right.ProjectionSpawnCount ||
                 !string.Equals(left.VisibleEntitySummary, right.VisibleEntitySummary, StringComparison.Ordinal) ||
+                !string.Equals(left.ReturnButtonLabel, right.ReturnButtonLabel, StringComparison.Ordinal) ||
                 left.ViewportWidth != right.ViewportWidth ||
                 left.ViewportHeight != right.ViewportHeight ||
                 left.DiagnosticsCardLeft != right.DiagnosticsCardLeft ||
@@ -1419,6 +1455,7 @@ namespace CameraAcceptanceMod.UI
             int ProjectionSpawnCount,
             string VisibleEntitySummary,
             string[] VisibleEntityRows,
+            string ReturnButtonLabel,
             float ViewportWidth,
             float ViewportHeight,
             float DiagnosticsCardLeft,
@@ -1447,6 +1484,7 @@ namespace CameraAcceptanceMod.UI
                 CameraAcceptanceIds.ProjectionSpawnCountDefault,
                 "Visible on screen: 0",
                 Array.Empty<string>(),
+                string.Empty,
                 1920f,
                 1080f,
                 16f,

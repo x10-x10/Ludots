@@ -1,16 +1,10 @@
 using System.Numerics;
+using Ludots.Core.Gameplay.Camera;
+using Ludots.Core.Presentation.Camera;
 using Ludots.Platform.Abstractions;
 
 namespace Ludots.Adapter.UE5
 {
-    /// <summary>
-    /// UE5 平台屏幕射线提供者（对标 RaylibScreenRayProvider）。
-    ///
-    /// 复用 Raylib 侧完全相同的纯 CPU unproject 算法，
-    /// 从 <see cref="UE5SharedCameraState"/> 读取相机矩阵与视口尺寸，
-    /// 将屏幕像素坐标反投影为世界空间射线，
-    /// 供 Ludots 选中/鼠标拾取系统使用。
-    /// </summary>
     public sealed class UE5ScreenRayProvider : IScreenRayProvider
     {
         private readonly UE5SharedCameraState _state;
@@ -22,36 +16,51 @@ namespace Ludots.Adapter.UE5
             float w = _state.ViewportWidth;
             float h = _state.ViewportHeight;
             if (w <= 0f || h <= 0f)
+            {
                 return new ScreenRay(Vector3.Zero, Vector3.UnitZ);
-
-            float ndcX =  (screenPosition.X / w) * 2f - 1f;
-            float ndcY = 1f - (screenPosition.Y / h) * 2f;
+            }
 
             var cam = _state.ReadCameraState();
+            if (!_IsRenderableCamera(cam))
+            {
+                float fallbackFov = float.IsFinite(_state.FovYDeg) && _state.FovYDeg > 1f
+                    ? _state.FovYDeg
+                    : 60f;
+                cam = new CameraRenderState3D(Vector3.Zero, Vector3.UnitZ, Vector3.UnitY, fallbackFov);
+            }
 
-            var view = Matrix4x4.CreateLookAt(cam.Position, cam.Target, cam.Up);
-            float aspect = w / h;
-            float fovRad = cam.FovYDeg * (MathF.PI / 180f);
-            var projection = Matrix4x4.CreatePerspectiveFieldOfView(fovRad, aspect, 0.01f, 1000f);
+            return CameraViewportUtil.ScreenToRay(
+                screenPosition,
+                cam,
+                new Vector2(w, h),
+                w / MathF.Max(1f, h));
+        }
 
-            var viewProj = view * projection;
-            if (!Matrix4x4.Invert(viewProj, out var inv))
-                return new ScreenRay(cam.Position, Vector3.Normalize(cam.Target - cam.Position));
+        private static bool _IsRenderableCamera(in CameraRenderState3D state)
+        {
+            if (!float.IsFinite(state.FovYDeg) || state.FovYDeg <= 1f || state.FovYDeg >= 179f)
+            {
+                return false;
+            }
 
-            var nearClip = Vector4.Transform(new Vector4(ndcX, ndcY, 0f, 1f), inv);
-            var farClip  = Vector4.Transform(new Vector4(ndcX, ndcY, 1f, 1f), inv);
+            if (!_IsFiniteVector(state.Position) || !_IsFiniteVector(state.Target) || !_IsFiniteVector(state.Up))
+            {
+                return false;
+            }
 
-            if (MathF.Abs(nearClip.W) < 1e-6f || MathF.Abs(farClip.W) < 1e-6f)
-                return new ScreenRay(cam.Position, Vector3.Normalize(cam.Target - cam.Position));
+            if (Vector3.DistanceSquared(state.Position, state.Target) < 1e-6f)
+            {
+                return false;
+            }
 
-            nearClip /= nearClip.W;
-            farClip  /= farClip.W;
+            return state.Up.LengthSquared() >= 1e-6f;
+        }
 
-            var origin = new Vector3(nearClip.X, nearClip.Y, nearClip.Z);
-            var dir    = Vector3.Normalize(new Vector3(farClip.X - nearClip.X,
-                                                       farClip.Y - nearClip.Y,
-                                                       farClip.Z - nearClip.Z));
-            return new ScreenRay(origin, dir);
+        private static bool _IsFiniteVector(in Vector3 value)
+        {
+            return float.IsFinite(value.X)
+                && float.IsFinite(value.Y)
+                && float.IsFinite(value.Z);
         }
     }
 }
