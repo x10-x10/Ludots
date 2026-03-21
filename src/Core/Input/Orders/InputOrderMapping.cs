@@ -306,6 +306,20 @@ namespace Ludots.Core.Input.Orders
         /// Only meaningful when <see cref="AutoTargetPolicy"/> is not None.
         /// </summary>
         public int AutoTargetRangeCm { get; set; } = 0;
+
+        /// <summary>
+        /// Cursor-centric entity resolution policy for position / direction casts when
+        /// screen-space hover is missing or unstable.
+        /// The spatial query is centered on the resolved cursor ground point, not on the actor.
+        /// </summary>
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public AutoTargetPolicy CursorTargetPolicy { get; set; } = AutoTargetPolicy.None;
+
+        /// <summary>
+        /// Range (in world cm) for cursor-centric spatial target resolution.
+        /// Only meaningful when <see cref="CursorTargetPolicy"/> is not None.
+        /// </summary>
+        public int CursorTargetRangeCm { get; set; } = 0;
     }
     
     /// <summary>

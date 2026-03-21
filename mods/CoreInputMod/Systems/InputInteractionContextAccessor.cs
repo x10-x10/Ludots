@@ -56,19 +56,20 @@ namespace CoreInputMod.Systems
         public bool TryGetGroundWorldCm(out WorldCmInt2 worldCm)
         {
             worldCm = default;
-            if (!_globals.TryGetValue(CoreServiceKeys.ScreenRayProvider.Name, out var rayProviderObj) ||
-                rayProviderObj is not IScreenRayProvider rayProvider)
-            {
-                return false;
-            }
-
             if (!_globals.TryGetValue(CoreServiceKeys.AuthoritativeInput.Name, out var inputObj) ||
                 inputObj is not IInputActionReader input)
             {
                 return false;
             }
 
-            if (!_globals.TryGetValue(CoreServiceKeys.WorldSizeSpec.Name, out var worldSizeObj) ||
+            if (AuthoritativeGroundPointerHelper.TryRead(input, out worldCm))
+            {
+                return true;
+            }
+
+            if (!_globals.TryGetValue(CoreServiceKeys.ScreenRayProvider.Name, out var rayProviderObj) ||
+                rayProviderObj is not IScreenRayProvider rayProvider ||
+                !_globals.TryGetValue(CoreServiceKeys.WorldSizeSpec.Name, out var worldSizeObj) ||
                 worldSizeObj is not WorldSizeSpec worldSize)
             {
                 return false;

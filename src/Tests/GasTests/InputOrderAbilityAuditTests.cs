@@ -478,6 +478,66 @@ namespace Ludots.Tests.GAS
         }
 
         [Test]
+        public void AbilityExecSystem_ValidCast_PublishesCastCommittedPresentationEvent()
+        {
+            using var world = World.Create();
+            const int castAbilityOrderTypeId = 100;
+            const int abilityId = 9003;
+
+            var actor = world.Create(
+                OrderBuffer.CreateEmpty(),
+                new BlackboardIntBuffer(),
+                new BlackboardEntityBuffer(),
+                new AbilityStateBuffer());
+
+            ref var abilities = ref world.Get<AbilityStateBuffer>(actor);
+            abilities.AddAbility(abilityId);
+
+            ref var orderBuffer = ref world.Get<OrderBuffer>(actor);
+            var order = new Order
+            {
+                OrderId = 10,
+                Actor = actor,
+                OrderTypeId = castAbilityOrderTypeId,
+                Args = new OrderArgs { I0 = 0 }
+            };
+            orderBuffer.SetActiveDirect(in order, priority: 100);
+
+            ref var bbI = ref world.Get<BlackboardIntBuffer>(actor);
+            bbI.Set(OrderBlackboardKeys.Cast_SlotIndex, 0);
+
+            var defs = new AbilityDefinitionRegistry();
+            var def = new AbilityDefinition();
+            defs.Register(abilityId, in def);
+
+            var presentationEvents = new GasPresentationEventBuffer();
+            var system = new AbilityExecSystem(
+                world,
+                new DiscreteClock(),
+                new InputRequestQueue(),
+                new InputResponseBuffer(),
+                new SelectionRequestQueue(),
+                new SelectionResponseBuffer(),
+                new EffectRequestQueue(),
+                defs,
+                castAbilityOrderTypeId: castAbilityOrderTypeId,
+                presentationEvents: presentationEvents,
+                orderTypeRegistry: new OrderTypeRegistry());
+            system.MaxWorkUnitsPerSlice = 1;
+
+            bool completed = system.UpdateSlice(0f, int.MaxValue);
+
+            That(completed, Is.False, "Budget should stop after Phase 1 so activation events can be inspected.");
+            var events = presentationEvents.Events;
+            That(events.Length, Is.EqualTo(2));
+            That(events[0].Kind, Is.EqualTo(GasPresentationEventKind.CastStarted));
+            That(events[1].Kind, Is.EqualTo(GasPresentationEventKind.CastCommitted));
+            That(events[1].Actor, Is.EqualTo(actor));
+            That(events[1].AbilitySlot, Is.EqualTo(0));
+            That(events[1].AbilityId, Is.EqualTo(abilityId));
+        }
+
+        [Test]
         public void AbilityExecSystem_ToggleDeactivate_BypassesBlockedAnyCooldown_AndClearsTagCount()
         {
             using var world = World.Create();

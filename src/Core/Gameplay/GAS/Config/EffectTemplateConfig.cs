@@ -172,15 +172,30 @@ namespace Ludots.Core.Gameplay.GAS.Config
         public int Range { get; set; }
         public int ArcHeight { get; set; }
         public string ImpactEffect { get; set; }
+        public string HitEffect { get; set; }
+        public string PresentationEffect { get; set; }
+        public string TravelMode { get; set; }
+        public string ImpactPolicy { get; set; }
+        public int CollisionHalfWidth { get; set; }
+        public string CollisionRelationFilter { get; set; }
+        public bool CollisionExcludeSource { get; set; } = true;
+        public int MaxHitCount { get; set; }
     }
 
     /// <summary>Unit creation component configuration.</summary>
     public sealed class UnitCreationConfig
     {
+        public string PlacementPattern { get; set; }
+        public string FacingPattern { get; set; }
         public string UnitType { get; set; }
+        public string TemplateId { get; set; }
         public int Count { get; set; } = 1;
         public int OffsetRadius { get; set; }
+        public int PlacementRadiusCm { get; set; }
+        public int PlacementStartAngleDeg { get; set; }
         public string OnSpawnEffect { get; set; }
+        public bool CopySourcePlayerOwner { get; set; }
+        public bool LinkSourceAsParent { get; set; }
     }
 
     /// <summary>Displacement component configuration.</summary>

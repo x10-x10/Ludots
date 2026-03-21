@@ -18,6 +18,7 @@ namespace Ludots.Core.Presentation.Rendering
     {
         private TransientMarker[] _buffer;
         private int _count;
+        private int _nextStableId = 1;
 
         public int Count => _count;
         public int Capacity => _buffer.Length;
@@ -37,6 +38,7 @@ namespace Ludots.Core.Presentation.Rendering
             if (lifetimeSeconds <= 0f) lifetimeSeconds = 0.15f;
             _buffer[_count++] = new TransientMarker
             {
+                StableId = AllocateStableId(),
                 MeshAssetId = meshAssetId,
                 Position = position,
                 Scale = scale,
@@ -59,6 +61,7 @@ namespace Ludots.Core.Presentation.Rendering
             if (lifetimeSeconds <= 0f) lifetimeSeconds = 0.15f;
             _buffer[_count++] = new TransientMarker
             {
+                StableId = AllocateStableId(),
                 MeshAssetId = meshAssetId,
                 Position = anchorOffset, // 初始位置用 offset，Tick 时用锚点更新
                 Scale = scale,
@@ -76,6 +79,12 @@ namespace Ludots.Core.Presentation.Rendering
         /// </summary>
         public void TickAndEmit(PrimitiveDrawBuffer draw, float dt, World world)
         {
+            TickAndEmit(new PresentationVisualProxyEmitter(draw), dt, world);
+        }
+
+        public void TickAndEmit(PresentationVisualProxyEmitter emitter, float dt, World world)
+        {
+            ArgumentNullException.ThrowIfNull(emitter);
             float delta = dt <= 0f ? 0.016666668f : dt;
             for (int i = 0; i < _count;)
             {
@@ -103,13 +112,18 @@ namespace Ludots.Core.Presentation.Rendering
                 var c = m.Color;
                 c.W *= alpha;
 
-                draw.TryAdd(new PrimitiveDrawItem
+                emitter.Emit(new PresentationVisualProxy
                 {
+                    ProxyKind = PresentationVisualProxyKind.Performer,
                     MeshAssetId = m.MeshAssetId,
                     Position = pos,
                     Rotation = Quaternion.Identity,
                     Scale = m.Scale,
                     Color = c,
+                    StableId = m.StableId,
+                    RenderPath = VisualRenderPath.StaticMesh,
+                    Mobility = VisualMobility.Movable,
+                    Flags = VisualRuntimeFlags.Visible,
                     Visibility = VisualVisibility.Visible,
                 });
 
@@ -117,8 +131,14 @@ namespace Ludots.Core.Presentation.Rendering
             }
         }
 
+        private int AllocateStableId()
+        {
+            return TransientMarkerIdentity.ComposeStableId(_nextStableId++);
+        }
+
         public struct TransientMarker
         {
+            public int StableId;
             public int MeshAssetId;
             public Vector3 Position;
             public Vector3 Scale;

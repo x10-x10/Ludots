@@ -336,6 +336,36 @@ namespace Ludots.Tests.Presentation
         }
 
         [Test]
+        public void PerformerDefinitionConfigLoader_ParsesFacingRadiansBinding()
+        {
+            WriteFile("Core", "config_catalog.json",
+                @"[{ ""Path"": ""Presentation/performers.json"", ""Policy"": ""ArrayById"", ""IdField"": ""id"" }]");
+            WriteFile("Core", "Presentation/performers.json",
+                @"[
+  {
+    ""id"": ""line_overlay"",
+    ""visualKind"": ""GroundOverlay"",
+    ""bindings"": [
+      { ""paramKey"": 3, ""source"": ""facingradians"" }
+    ]
+  }
+]");
+
+            var (_, _, pipeline, catalog) = BuildPipeline(_root);
+            var registry = new PerformerDefinitionRegistry();
+            var loader = new PerformerDefinitionConfigLoader(pipeline, registry);
+
+            loader.Load(catalog);
+
+            int defId = registry.GetId("line_overlay");
+            Assert.That(defId, Is.GreaterThan(0));
+            Assert.That(registry.TryGet(defId, out var def), Is.True);
+            Assert.That(def.Bindings.Length, Is.EqualTo(1));
+            Assert.That(def.Bindings[0].ParamKey, Is.EqualTo(3));
+            Assert.That(def.Bindings[0].Value.Source, Is.EqualTo(ValueSourceKind.FacingRadians));
+        }
+
+        [Test]
         public void WorldHudStringTable_BridgesStaticTokens_WithoutCollidingWithLegacyRegistrations()
         {
             WriteFile("Core", "config_catalog.json",

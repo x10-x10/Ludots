@@ -226,11 +226,12 @@ namespace Ludots.Tests.GAS
             public int QueryHexNeighbors(Ludots.Core.Mathematics.IntVector2 center, System.Span<Arch.Core.Entity> buffer) => 0;
             public int GetTeamId(Arch.Core.Entity entity) => 0;
             public uint GetEntityLayerCategory(Arch.Core.Entity entity) => 0;
-            public int GetRelationship(int teamA, int teamB) => 0;
-            public void ApplyEffectTemplate(Arch.Core.Entity caster, Arch.Core.Entity target, int templateId) { }
-            public void ApplyEffectTemplate(Arch.Core.Entity caster, Arch.Core.Entity target, int templateId, in EffectArgs args) { }
-            public void ModifyAttributeAdd(Arch.Core.Entity caster, Arch.Core.Entity target, int attributeId, float delta) { }
-            public void SendEvent(Arch.Core.Entity caster, Arch.Core.Entity target, int eventTagId, float magnitude) { }
+        public int GetRelationship(int teamA, int teamB) => 0;
+        public void ApplyEffectTemplate(Arch.Core.Entity caster, Arch.Core.Entity target, int templateId) { }
+        public void ApplyEffectTemplate(Arch.Core.Entity caster, Arch.Core.Entity target, int templateId, in EffectArgs args) { }
+        public void RemoveEffectTemplate(Arch.Core.Entity target, int templateId) { }
+        public void ModifyAttributeAdd(Arch.Core.Entity caster, Arch.Core.Entity target, int attributeId, float delta) { }
+        public void SendEvent(Arch.Core.Entity caster, Arch.Core.Entity target, int eventTagId, float magnitude) { }
             public bool TryReadBlackboardFloat(Arch.Core.Entity entity, int keyId, out float value) { value = 0f; return false; }
             public bool TryReadBlackboardInt(Arch.Core.Entity entity, int keyId, out int value) { value = 0; return false; }
             public bool TryReadBlackboardEntity(Arch.Core.Entity entity, int keyId, out Arch.Core.Entity value) { value = default; return false; }

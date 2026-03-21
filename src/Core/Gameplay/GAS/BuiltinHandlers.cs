@@ -176,6 +176,12 @@ namespace Ludots.Core.Gameplay.GAS
         {
             if (!world.IsAlive(context.Source)) return;
 
+            var runtime = BuiltinHandlerRuntimeScope.Current;
+            if (runtime?.SpawnRequests == null)
+            {
+                throw new InvalidOperationException("CreateProjectile requires RuntimeEntitySpawnQueue in BuiltinHandlerExecutionContext.");
+            }
+
             ref readonly var proj = ref templateData.Projectile;
             if (proj.Speed <= 0) return;
 
@@ -184,25 +190,56 @@ namespace Ludots.Core.Gameplay.GAS
                 ? world.Get<WorldPositionCm>(context.Source).Value
                 : Fix64Vec2.Zero;
             bool hasTargetPoint = TryResolveProjectileTargetPoint(world, in context, in mergedParams, out var targetPointCm);
+            bool hasDirection = TryResolveProjectileDirection(
+                world,
+                context.Source,
+                context.Target,
+                hasLaunchOrigin,
+                launchOrigin,
+                hasTargetPoint,
+                targetPointCm,
+                out var direction);
 
-            Entity projectile = EntityCreationHelper.CreateProjectile(world,
-                new ProjectileState
+            var request = new RuntimeEntitySpawnRequest
+            {
+                Kind = RuntimeEntitySpawnKind.Assembly,
+                Source = context.Source,
+                TargetContext = context.TargetContext,
+                Projectile = new ProjectileState
                 {
                     Speed = Fix64.FromInt(proj.Speed),
                     Range = proj.Range,
                     ArcHeight = proj.ArcHeight,
                     ImpactEffectTemplateId = proj.ImpactEffectTemplateId,
+                    HitEffectTemplateId = proj.HitEffectTemplateId,
+                    PresentationEffectTemplateId = proj.PresentationEffectTemplateId,
+                    TravelMode = proj.TravelMode,
+                    ImpactPolicy = proj.ImpactPolicy,
+                    CollisionHalfWidthCm = proj.CollisionHalfWidthCm,
+                    CollisionRelationFilter = proj.CollisionRelationFilter,
+                    CollisionExcludeSource = (byte)(proj.CollisionExcludeSource ? 1 : 0),
+                    MaxHitCount = proj.MaxHitCount,
                     Source = context.Source,
                     Target = context.Target,
                     LaunchOriginCm = launchOrigin,
                     HasLaunchOrigin = (byte)(hasLaunchOrigin ? 1 : 0),
                     TargetPointCm = targetPointCm,
                     HasTargetPoint = (byte)(hasTargetPoint ? 1 : 0),
-                });
+                    Direction = direction,
+                    HasDirection = (byte)(hasDirection ? 1 : 0),
+                },
+                HasProjectileState = 1,
+            };
+
             if (hasLaunchOrigin)
             {
-                world.Add(projectile, new WorldPositionCm { Value = launchOrigin });
-                world.Add(projectile, new PreviousWorldPositionCm { Value = launchOrigin });
+                request.WorldPositionCm = launchOrigin;
+                request.HasWorldPosition = 1;
+            }
+
+            if (!runtime.SpawnRequests.TryEnqueue(request))
+            {
+                throw new InvalidOperationException("RuntimeEntitySpawnQueue capacity exceeded while handling CreateProjectile.");
             }
         }
 
@@ -228,15 +265,30 @@ namespace Ludots.Core.Gameplay.GAS
 
             for (int i = 0; i < unit.Count; i++)
             {
+                ComputeUnitCreationPlacement(
+                    in unit,
+                    context.Source,
+                    unit.UnitTypeId,
+                    i,
+                    out Fix64Vec2 offsetCm,
+                    out float facingAngleRad,
+                    out bool hasFacing);
+
                 var request = new RuntimeEntitySpawnRequest
                 {
-                    Kind = RuntimeEntitySpawnKind.UnitType,
+                    Kind = unit.UseTemplateSpawn ? RuntimeEntitySpawnKind.Template : RuntimeEntitySpawnKind.UnitType,
                     Source = context.Source,
                     TargetContext = context.TargetContext,
-                    WorldPositionCm = origin + ComputeScatterOffsetCm(context.Source, unit.UnitTypeId, i, unit.OffsetRadius),
+                    WorldPositionCm = origin + offsetCm,
+                    HasWorldPosition = 1,
+                    FacingAngleRad = facingAngleRad,
+                    HasFacing = (byte)(hasFacing ? 1 : 0),
                     UnitTypeId = unit.UnitTypeId,
+                    TemplateId = unit.TemplateId,
                     OnSpawnEffectTemplateId = unit.OnSpawnEffectTemplateId,
                     CopySourceTeam = 1,
+                    CopySourcePlayerOwner = (byte)(unit.CopySourcePlayerOwner ? 1 : 0),
+                    LinkSourceAsParent = (byte)(unit.LinkSourceAsParent ? 1 : 0),
                 };
 
                 if (!runtime.SpawnRequests.TryEnqueue(request))
@@ -364,6 +416,48 @@ namespace Ludots.Core.Gameplay.GAS
             return false;
         }
 
+        private static bool TryResolveProjectileDirection(
+            World world,
+            Entity source,
+            Entity target,
+            bool hasLaunchOrigin,
+            in Fix64Vec2 launchOrigin,
+            bool hasTargetPoint,
+            in Fix64Vec2 targetPointCm,
+            out Fix64Vec2 direction)
+        {
+            if (hasLaunchOrigin && world.IsAlive(target) && world.Has<WorldPositionCm>(target))
+            {
+                var delta = world.Get<WorldPositionCm>(target).Value - launchOrigin;
+                if (delta.LengthSquared() > Fix64.OneValue)
+                {
+                    direction = delta.Normalized();
+                    return true;
+                }
+            }
+
+            if (hasLaunchOrigin && hasTargetPoint)
+            {
+                var delta = targetPointCm - launchOrigin;
+                if (delta.LengthSquared() > Fix64.OneValue)
+                {
+                    direction = delta.Normalized();
+                    return true;
+                }
+            }
+
+            if (world.IsAlive(source) && world.Has<FacingDirection>(source))
+            {
+                float angle = world.Get<FacingDirection>(source).AngleRad;
+                var angleFix = Fix64.FromFloat(angle);
+                direction = new Fix64Vec2(Fix64Math.Cos(angleFix), Fix64Math.Sin(angleFix));
+                return true;
+            }
+
+            direction = Fix64Vec2.UnitX;
+            return false;
+        }
+
         private static Fix64Vec2 ComputeScatterOffsetCm(Entity source, int unitTypeId, int index, int radiusCm)
         {
             if (radiusCm <= 0)
@@ -394,30 +488,60 @@ namespace Ludots.Core.Gameplay.GAS
                     radius * Fix64Math.Sin(angleRad));
             }
         }
-    }
 
-    public struct ProjectileState
-    {
-        public Fix64 Speed;
-        public int Range;
-        public int ArcHeight;
-        public int ImpactEffectTemplateId;
-        public Entity Source;
-        public Entity Target;
-        public Fix64Vec2 LaunchOriginCm;
-        public byte HasLaunchOrigin;
-        public Fix64Vec2 TargetPointCm;
-        public byte HasTargetPoint;
-        public Fix64 TraveledCm;
+        private static void ComputeUnitCreationPlacement(
+            in UnitCreationDescriptor unit,
+            Entity source,
+            int unitTypeId,
+            int index,
+            out Fix64Vec2 offsetCm,
+            out float facingAngleRad,
+            out bool hasFacing)
+        {
+            switch (unit.PlacementPattern)
+            {
+                case UnitCreationPlacementPattern.Circle:
+                    ComputeCirclePlacement(in unit, index, out offsetCm, out facingAngleRad, out hasFacing);
+                    return;
+                default:
+                    offsetCm = ComputeScatterOffsetCm(source, unitTypeId, index, unit.OffsetRadius);
+                    facingAngleRad = 0f;
+                    hasFacing = false;
+                    return;
+            }
+        }
+
+        private static void ComputeCirclePlacement(
+            in UnitCreationDescriptor unit,
+            int index,
+            out Fix64Vec2 offsetCm,
+            out float facingAngleRad,
+            out bool hasFacing)
+        {
+            int count = unit.Count <= 0 ? 1 : unit.Count;
+            Fix64 radius = Fix64.FromInt(unit.PlacementRadiusCm > 0 ? unit.PlacementRadiusCm : unit.OffsetRadius);
+            Fix64 angleStep = Fix64.FromInt(360) / Fix64.FromInt(count);
+            Fix64 angleDeg = Fix64.FromInt(unit.PlacementStartAngleDeg) + angleStep * Fix64.FromInt(index);
+            Fix64 angleRad = angleDeg * Fix64.Deg2Rad;
+
+            offsetCm = new Fix64Vec2(
+                radius * Fix64Math.Cos(angleRad),
+                radius * Fix64Math.Sin(angleRad));
+
+            hasFacing = unit.FacingPattern != UnitCreationFacingPattern.PreserveTemplate;
+            Fix64 quarterTurn = Fix64.Pi / Fix64.FromInt(2);
+            facingAngleRad = unit.FacingPattern switch
+            {
+                UnitCreationFacingPattern.RadialOutward => angleRad.ToFloat(),
+                UnitCreationFacingPattern.TangentClockwise => (angleRad - quarterTurn).ToFloat(),
+                UnitCreationFacingPattern.TangentCounterClockwise => (angleRad + quarterTurn).ToFloat(),
+                _ => 0f
+            };
+        }
     }
 
     public static class EntityCreationHelper
     {
-        public static Entity CreateProjectile(World world, in ProjectileState state)
-        {
-            return world.Create(state);
-        }
-
         public static Entity CreateDisplacement(World world, in DisplacementState state)
         {
             return world.Create(state);

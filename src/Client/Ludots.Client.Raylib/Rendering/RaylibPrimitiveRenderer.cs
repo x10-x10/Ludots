@@ -59,10 +59,21 @@ namespace Ludots.Client.Raylib.Rendering
 
         public void Draw(PrimitiveDrawBuffer draw, Camera3D camera, MeshAssetRegistry meshes, float scaleMul = 1f)
         {
-            Draw(draw, camera, snapshot: null, meshes, scaleMul);
+            Draw(draw, camera, snapshot: null, skinnedBatch: null, meshes, scaleMul);
         }
 
         public void Draw(PrimitiveDrawBuffer draw, Camera3D camera, PrimitiveDrawBuffer? snapshot, MeshAssetRegistry meshes, float scaleMul = 1f)
+        {
+            Draw(draw, camera, snapshot, skinnedBatch: null, meshes, scaleMul);
+        }
+
+        public void Draw(
+            PrimitiveDrawBuffer draw,
+            Camera3D camera,
+            PrimitiveDrawBuffer? snapshot,
+            SkinnedVisualBatchBuffer? skinnedBatch,
+            MeshAssetRegistry meshes,
+            float scaleMul = 1f)
         {
             if (draw == null) throw new ArgumentNullException(nameof(draw));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
@@ -82,7 +93,12 @@ namespace Ludots.Client.Raylib.Rendering
                 LastPersistentUpdates = _persistentStaticLaneSync.LastUpdateCount;
                 LastPersistentRemoves = _persistentStaticLaneSync.LastRemoveCount;
                 DrawPersistentStaticLanes(camera, meshes, scaleMul);
-                DrawImmediateWithDescriptors(span, camera, meshes, scaleMul, persistentStaticLanesActive: true);
+                if (skinnedBatch != null)
+                {
+                    DrawSkinnedBatch(skinnedBatch, camera, meshes, scaleMul);
+                }
+
+                DrawImmediateWithDescriptors(span, camera, meshes, scaleMul, persistentStaticLanesActive: true, skinnedBatchActive: skinnedBatch != null);
                 return;
             }
 
@@ -92,7 +108,7 @@ namespace Ludots.Client.Raylib.Rendering
                 return;
             }
 
-            DrawImmediateWithDescriptors(span, camera, meshes, scaleMul, persistentStaticLanesActive: false);
+            DrawImmediateWithDescriptors(span, camera, meshes, scaleMul, persistentStaticLanesActive: false, skinnedBatchActive: false);
         }
 
         private void DrawPersistentStaticLanes(Camera3D camera, MeshAssetRegistry meshes, float scaleMul)
@@ -117,14 +133,28 @@ namespace Ludots.Client.Raylib.Rendering
             }
         }
 
-        private void DrawImmediateWithDescriptors(ReadOnlySpan<PrimitiveDrawItem> span, Camera3D camera, MeshAssetRegistry meshes, float scaleMul, bool persistentStaticLanesActive)
+        private void DrawImmediateWithDescriptors(
+            ReadOnlySpan<PrimitiveDrawItem> span,
+            Camera3D camera,
+            MeshAssetRegistry meshes,
+            float scaleMul,
+            bool persistentStaticLanesActive,
+            bool skinnedBatchActive)
         {
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly var item = ref span[i];
-                if (persistentStaticLanesActive &&
-                    item.StableId > 0 &&
-                    StaticMeshLaneKey.Supports(item.RenderPath))
+                if (skinnedBatchActive && item.RenderPath.IsSkinnedLane())
+                {
+                    continue;
+                }
+
+                if (ShouldSkipImmediateDraw(item, persistentStaticLanesActive))
+                {
+                    continue;
+                }
+
+                if (TryDrawPrototypeSkinned(item, meshes, scaleMul))
                 {
                     continue;
                 }
@@ -137,6 +167,18 @@ namespace Ludots.Client.Raylib.Rendering
             }
         }
 
+        internal bool ShouldSkipImmediateDraw(in PrimitiveDrawItem item, bool persistentStaticLanesActive)
+        {
+            if (!persistentStaticLanesActive ||
+                item.StableId <= 0 ||
+                !StaticMeshLaneKey.Supports(item.RenderPath))
+            {
+                return false;
+            }
+
+            return _persistentStaticLaneSync.TryGetBinding(item.StableId, out _);
+        }
+
         private void DrawHybridInstanced(ReadOnlySpan<PrimitiveDrawItem> span, Camera3D camera, MeshAssetRegistry meshes, float scaleMul)
         {
             EnsureInitialized();
@@ -144,6 +186,11 @@ namespace Ludots.Client.Raylib.Rendering
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly var item = ref span[i];
+                if (TryDrawPrototypeSkinned(item, meshes, scaleMul))
+                {
+                    continue;
+                }
+
                 SubmitAssetRecursive(
                     item.MeshAssetId,
                     item.Position,
@@ -216,6 +263,89 @@ namespace Ludots.Client.Raylib.Rendering
             DrawPrimitive(kind, position, scale, color);
         }
 
+        private bool TryDrawPrototypeSkinned(in PrimitiveDrawItem item, MeshAssetRegistry meshes, float scaleMul)
+        {
+            if (!item.RenderPath.IsSkinnedLane() ||
+                !item.AnimationOverlay.HasAnyClip ||
+                !meshes.TryGetDescriptor(item.MeshAssetId, out var descriptor) ||
+                descriptor.Type != MeshAssetType.Primitive)
+            {
+                return false;
+            }
+
+            Vector3 scale = item.Scale * scaleMul;
+            float baseYaw = ExtractYawRad(item.Rotation);
+
+            switch (descriptor.PrimitiveKind)
+            {
+                case PrimitiveMeshKind.Cube:
+                    DrawTankPrototype(item.Position, scale, item.Color, baseYaw, item.AnimationOverlay);
+                    return true;
+
+                case PrimitiveMeshKind.Sphere:
+                    DrawHumanoidPrototype(item.Position, scale, item.Color, baseYaw, item.AnimationOverlay);
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private void DrawSkinnedBatch(SkinnedVisualBatchBuffer skinnedBatch, Camera3D camera, MeshAssetRegistry meshes, float scaleMul)
+        {
+            var span = skinnedBatch.GetSpan();
+            for (int i = 0; i < span.Length; i++)
+            {
+                ref readonly var item = ref span[i];
+                if (item.Visibility != VisualVisibility.Visible)
+                {
+                    continue;
+                }
+
+                if (TryDrawPrototypeSkinned(item, meshes, scaleMul))
+                {
+                    continue;
+                }
+
+                DrawAssetRecursive(
+                    item.MeshAssetId,
+                    item.Position,
+                    item.Scale * scaleMul,
+                    item.Color,
+                    camera,
+                    meshes,
+                    0);
+            }
+        }
+
+        private bool TryDrawPrototypeSkinned(in SkinnedVisualBatchItem item, MeshAssetRegistry meshes, float scaleMul)
+        {
+            if (!item.RenderPath.IsSkinnedLane() ||
+                !item.AnimationOverlay.HasAnyClip ||
+                !meshes.TryGetDescriptor(item.MeshAssetId, out var descriptor) ||
+                descriptor.Type != MeshAssetType.Primitive)
+            {
+                return false;
+            }
+
+            Vector3 scale = item.Scale * scaleMul;
+            float baseYaw = ExtractYawRad(item.Rotation);
+
+            switch (descriptor.PrimitiveKind)
+            {
+                case PrimitiveMeshKind.Cube:
+                    DrawTankPrototype(item.Position, scale, item.Color, baseYaw, item.AnimationOverlay);
+                    return true;
+
+                case PrimitiveMeshKind.Sphere:
+                    DrawHumanoidPrototype(item.Position, scale, item.Color, baseYaw, item.AnimationOverlay);
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
         private void DrawAssetRecursive(int meshAssetId, Vector3 position, Vector3 scale, Vector4 color, Camera3D camera, MeshAssetRegistry meshes, int depth)
         {
             if (depth > MaxPrefabDepth) return;
@@ -267,6 +397,208 @@ namespace Ludots.Client.Raylib.Rendering
                 float r = MathF.Max(scale.X, MathF.Max(scale.Y, scale.Z)) * 0.5f;
                 Rl.DrawSphere(position, r, c);
             }
+        }
+
+        private void DrawTankPrototype(Vector3 position, Vector3 scale, Vector4 color, float baseYaw, in AnimationOverlayRequest overlay)
+        {
+            float unit = MathF.Max(0.12f, MathF.Max(scale.X, MathF.Max(scale.Y, scale.Z)) * 0.45f);
+            float locomotionPhase = ResolveClipTime01(overlay.BaseClip, AnimatorBuiltinClipId.LocomotionCycle);
+            float locomotionWeight = ResolveClipWeight01(overlay.BaseClip, AnimatorBuiltinClipId.LocomotionCycle);
+            float aimYaw = ResolveClipScalar0(overlay.LayerClip, AnimatorBuiltinClipId.AimYawOffset) * ResolveClipWeight01(overlay.LayerClip, AnimatorBuiltinClipId.AimYawOffset);
+            float recoilPulse = ResolvePulse(overlay.OverlayClip, AnimatorBuiltinClipId.RecoilPulse);
+            float treadBob = MathF.Sin(locomotionPhase * MathF.Tau) * unit * (0.03f + locomotionWeight * 0.08f);
+            float turretYaw = baseYaw + aimYaw;
+            float recoil = recoilPulse * unit * 0.35f;
+
+            Vector4 hullColor = MultiplyColor(color, 0.72f, 0.78f, 0.84f, 1f);
+            Vector4 turretColor = MultiplyColor(color, 0.95f, 0.95f, 0.82f, 1f);
+            Vector4 accentColor = recoilPulse > 0.01f
+                ? new Vector4(1f, 0.45f, 0.2f, 1f)
+                : new Vector4(0.95f, 0.9f, 0.4f, 1f);
+
+            DrawOrientedCube(
+                TransformLocal(position, baseYaw, new Vector3(0f, unit * 0.52f + treadBob, 0f)),
+                new Vector3(unit * 2.2f, unit * 0.7f, unit * 3.0f),
+                baseYaw,
+                hullColor);
+
+            DrawOrientedCube(
+                TransformLocal(position, baseYaw, new Vector3(unit * 0.92f, unit * 0.26f + treadBob, 0f)),
+                new Vector3(unit * 0.38f, unit * 0.25f, unit * 2.7f),
+                baseYaw,
+                MultiplyColor(hullColor, 0.8f, 0.8f, 0.8f, 1f));
+
+            DrawOrientedCube(
+                TransformLocal(position, baseYaw, new Vector3(-unit * 0.92f, unit * 0.26f + treadBob, 0f)),
+                new Vector3(unit * 0.38f, unit * 0.25f, unit * 2.7f),
+                baseYaw,
+                MultiplyColor(hullColor, 0.8f, 0.8f, 0.8f, 1f));
+
+            Vector3 turretCenter = TransformLocal(position, baseYaw, new Vector3(0f, unit * 1.0f, 0f));
+            DrawOrientedCube(
+                turretCenter,
+                new Vector3(unit * 1.1f, unit * 0.42f, unit * 1.3f),
+                turretYaw,
+                turretColor);
+
+            DrawOrientedCube(
+                TransformLocal(turretCenter, turretYaw, new Vector3(0f, unit * 0.02f, unit * 1.15f - recoil)),
+                new Vector3(unit * 0.18f, unit * 0.18f, unit * 2.25f),
+                turretYaw,
+                accentColor);
+
+            DrawPrototypeSphere(
+                TransformLocal(turretCenter, turretYaw, new Vector3(0f, unit * 0.18f, unit * 2.15f - recoil)),
+                unit * (0.1f + recoilPulse * 0.1f),
+                accentColor);
+        }
+
+        private void DrawHumanoidPrototype(Vector3 position, Vector3 scale, Vector4 color, float baseYaw, in AnimationOverlayRequest overlay)
+        {
+            float unit = MathF.Max(0.1f, MathF.Max(scale.X, MathF.Max(scale.Y, scale.Z)) * 0.42f);
+            float locomotionPhase = ResolveClipTime01(overlay.BaseClip, AnimatorBuiltinClipId.LocomotionCycle);
+            float locomotionWeight = ResolveClipWeight01(overlay.BaseClip, AnimatorBuiltinClipId.LocomotionCycle);
+            float lowerPhase = locomotionPhase * MathF.Tau;
+            float stride = MathF.Sin(lowerPhase) * unit * (0.08f + locomotionWeight * 0.34f);
+            float aimWeight = ResolveClipWeight01(overlay.LayerClip, AnimatorBuiltinClipId.AimYawOffset);
+            float upperYaw = baseYaw + ResolveClipScalar0(overlay.LayerClip, AnimatorBuiltinClipId.AimYawOffset) * aimWeight;
+            float recoilPulse = ResolvePulse(overlay.OverlayClip, AnimatorBuiltinClipId.RecoilPulse);
+            float chestLift = recoilPulse * unit * 0.08f;
+
+            Vector4 legColor = MultiplyColor(color, 0.72f, 0.85f, 1f, 1f);
+            Vector4 torsoColor = LerpColor(
+                MultiplyColor(color, 0.95f, 0.8f, 0.75f, 1f),
+                new Vector4(1f, 0.45f, 0.25f, 1f),
+                Math.Clamp(aimWeight * 0.6f, 0f, 1f));
+            Vector4 weaponColor = recoilPulse > 0.01f
+                ? new Vector4(1f, 0.5f, 0.25f, 1f)
+                : new Vector4(0.9f, 0.9f, 0.95f, 1f);
+
+            DrawOrientedCube(
+                TransformLocal(position, baseYaw, new Vector3(0f, unit * 0.55f, 0f)),
+                new Vector3(unit * 0.75f, unit * 0.55f, unit * 0.45f),
+                baseYaw,
+                legColor);
+
+            DrawOrientedCube(
+                TransformLocal(position, baseYaw, new Vector3(unit * 0.2f, unit * 0.18f, stride)),
+                new Vector3(unit * 0.2f, unit * 0.78f, unit * 0.2f),
+                baseYaw,
+                legColor);
+
+            DrawOrientedCube(
+                TransformLocal(position, baseYaw, new Vector3(-unit * 0.2f, unit * 0.18f, -stride)),
+                new Vector3(unit * 0.2f, unit * 0.78f, unit * 0.2f),
+                baseYaw,
+                legColor);
+
+            Vector3 chestCenter = TransformLocal(position, upperYaw, new Vector3(0f, unit * 1.3f + chestLift, 0f));
+            DrawOrientedCube(
+                chestCenter,
+                new Vector3(unit * 0.82f, unit * 0.92f, unit * 0.4f),
+                upperYaw,
+                torsoColor);
+
+            DrawPrototypeSphere(
+                TransformLocal(chestCenter, upperYaw, new Vector3(0f, unit * 0.82f, 0f)),
+                unit * 0.28f,
+                MultiplyColor(color, 1f, 0.92f, 0.86f, 1f));
+
+            DrawOrientedCube(
+                TransformLocal(chestCenter, upperYaw, new Vector3(-unit * 0.48f, unit * 0.05f, unit * 0.05f)),
+                new Vector3(unit * 0.16f, unit * 0.75f, unit * 0.16f),
+                upperYaw - aimWeight * 0.15f,
+                torsoColor);
+
+            DrawOrientedCube(
+                TransformLocal(chestCenter, upperYaw, new Vector3(unit * 0.5f, unit * 0.02f, unit * (0.18f + aimWeight * 0.25f))),
+                new Vector3(unit * 0.16f, unit * 0.7f, unit * 0.16f),
+                upperYaw + aimWeight * 0.35f,
+                torsoColor);
+
+            Vector3 weaponCenter = TransformLocal(chestCenter, upperYaw, new Vector3(unit * 0.18f, -unit * 0.02f, unit * 0.7f));
+            DrawOrientedCube(
+                weaponCenter,
+                new Vector3(unit * 0.14f, unit * 0.14f, unit * 0.95f),
+                upperYaw,
+                weaponColor);
+
+            if (recoilPulse > 0.01f)
+            {
+                DrawPrototypeSphere(
+                    TransformLocal(weaponCenter, upperYaw, new Vector3(0f, 0f, unit * 0.68f)),
+                    unit * 0.14f,
+                    new Vector4(1f, 0.62f, 0.2f, 1f));
+            }
+        }
+
+        private static float ResolveClipTime01(in AnimatorBuiltinClipState clip, AnimatorBuiltinClipId expectedId)
+        {
+            return clip.ClipId == expectedId ? clip.NormalizedTime01 : 0f;
+        }
+
+        private static float ResolveClipWeight01(in AnimatorBuiltinClipState clip, AnimatorBuiltinClipId expectedId)
+        {
+            return clip.ClipId == expectedId ? clip.Weight01 : 0f;
+        }
+
+        private static float ResolveClipScalar0(in AnimatorBuiltinClipState clip, AnimatorBuiltinClipId expectedId)
+        {
+            return clip.ClipId == expectedId ? clip.Scalar0 : 0f;
+        }
+
+        private static float ResolvePulse(in AnimatorBuiltinClipState clip, AnimatorBuiltinClipId expectedId)
+        {
+            if (clip.ClipId != expectedId || clip.Weight01 <= 0.001f)
+            {
+                return 0f;
+            }
+
+            return MathF.Sin(clip.NormalizedTime01 * MathF.PI) * clip.Weight01;
+        }
+
+        private void DrawOrientedCube(Vector3 center, Vector3 size, float yawRad, Vector4 color)
+        {
+            DrawWireBox(center, size, yawRad, color);
+        }
+
+        private static void DrawPrototypeSphere(Vector3 center, float radius, Vector4 color)
+        {
+            Rl.DrawSphere(center, radius, ToRaylibColor(color));
+        }
+
+        private static Vector3 TransformLocal(Vector3 origin, float yawRad, Vector3 local)
+        {
+            Vector3 right = new Vector3(MathF.Sin(yawRad), 0f, MathF.Cos(yawRad));
+            Vector3 forward = new Vector3(MathF.Cos(yawRad), 0f, -MathF.Sin(yawRad));
+            return origin + right * local.X + Vector3.UnitY * local.Y + forward * local.Z;
+        }
+
+        private static float ExtractYawRad(Quaternion rotation)
+        {
+            Quaternion normalized = Quaternion.Normalize(rotation);
+            float sinyCosp = 2f * (normalized.W * normalized.Y + normalized.X * normalized.Z);
+            float cosyCosp = 1f - 2f * (normalized.Y * normalized.Y + normalized.Z * normalized.Z);
+            return MathF.Atan2(sinyCosp, cosyCosp);
+        }
+
+        private static Vector4 MultiplyColor(Vector4 color, float r, float g, float b, float a)
+        {
+            return new Vector4(
+                Math.Clamp(color.X * r, 0f, 1f),
+                Math.Clamp(color.Y * g, 0f, 1f),
+                Math.Clamp(color.Z * b, 0f, 1f),
+                Math.Clamp(color.W * a, 0f, 1f));
+        }
+
+        private static Vector4 LerpColor(Vector4 from, Vector4 to, float t)
+        {
+            t = Math.Clamp(t, 0f, 1f);
+            return new Vector4(
+                from.X + (to.X - from.X) * t,
+                from.Y + (to.Y - from.Y) * t,
+                from.Z + (to.Z - from.Z) * t,
+                from.W + (to.W - from.W) * t);
         }
 
         private void DrawModel(int meshAssetId, in MeshAssetDescriptor desc, Vector3 position, Vector3 scale, Vector4 color)
@@ -432,6 +764,44 @@ namespace Ludots.Client.Raylib.Rendering
             float s = MathF.Max(scale.X, MathF.Max(scale.Y, scale.Z)) * 0.3f;
             if (s < 0.05f) s = 0.3f;
             Rl.DrawCube(position, s, s, s, new Color(255, 0, 255, 255));
+        }
+
+        private static void DrawWireBox(Vector3 center, Vector3 size, float yawRad, Vector4 color)
+        {
+            Vector3 half = size * 0.5f;
+            Span<Vector3> corners = stackalloc Vector3[8];
+            corners[0] = TransformLocal(center, yawRad, new Vector3(-half.X, -half.Y, -half.Z));
+            corners[1] = TransformLocal(center, yawRad, new Vector3(half.X, -half.Y, -half.Z));
+            corners[2] = TransformLocal(center, yawRad, new Vector3(half.X, -half.Y, half.Z));
+            corners[3] = TransformLocal(center, yawRad, new Vector3(-half.X, -half.Y, half.Z));
+            corners[4] = TransformLocal(center, yawRad, new Vector3(-half.X, half.Y, -half.Z));
+            corners[5] = TransformLocal(center, yawRad, new Vector3(half.X, half.Y, -half.Z));
+            corners[6] = TransformLocal(center, yawRad, new Vector3(half.X, half.Y, half.Z));
+            corners[7] = TransformLocal(center, yawRad, new Vector3(-half.X, half.Y, half.Z));
+
+            var lineColor = ToRaylibColor(color);
+            DrawWireEdge(corners, 0, 1, lineColor);
+            DrawWireEdge(corners, 1, 2, lineColor);
+            DrawWireEdge(corners, 2, 3, lineColor);
+            DrawWireEdge(corners, 3, 0, lineColor);
+
+            DrawWireEdge(corners, 4, 5, lineColor);
+            DrawWireEdge(corners, 5, 6, lineColor);
+            DrawWireEdge(corners, 6, 7, lineColor);
+            DrawWireEdge(corners, 7, 4, lineColor);
+
+            DrawWireEdge(corners, 0, 4, lineColor);
+            DrawWireEdge(corners, 1, 5, lineColor);
+            DrawWireEdge(corners, 2, 6, lineColor);
+            DrawWireEdge(corners, 3, 7, lineColor);
+
+            // Mark the forward-facing top edge so layer orientation is easy to inspect in motion.
+            DrawWireEdge(corners, 6, 7, ToRaylibColor(MultiplyColor(color, 1.2f, 1.2f, 0.8f, 1f)));
+        }
+
+        private static void DrawWireEdge(ReadOnlySpan<Vector3> corners, int start, int end, Color color)
+        {
+            Rl.DrawLine3D(corners[start], corners[end], color);
         }
 
         // ── Instanced rendering (unchanged from original) ──

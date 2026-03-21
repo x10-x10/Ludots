@@ -78,6 +78,205 @@
     }
   },
   {
+    "id": "champion_skill_sandbox_geomancer",
+    "components": {
+      "Name": { "Value": "Geomancer" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 185, "Shield": 0, "MoveSpeed": 335, "Armor": 7 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Champion.Geomancer.RunicBeacon",
+          "Ability.Champion.Geomancer.RuneField",
+          "Ability.Champion.Geomancer.StonePillar",
+          "Ability.Champion.Geomancer.PrismaticBeam"
+        ]
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_spell_engineer",
+    "components": {
+      "Name": { "Value": "Spell Engineer" },
+      "Team": { "Id": 1 },
+      "SelectionSelectableTag": {},
+      "WorldPositionCm": { "Value": { "X": 0, "Y": 0 } },
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": { "visualTemplateId": "core.character.hero_skinned" },
+      "AttributeBuffer": { "base": { "Health": 180, "Shield": 0, "MoveSpeed": 330, "Armor": 6 } },
+      "AbilityStateBuffer": {
+        "abilityIds": [
+          "Ability.Champion.SpellEngineer.SpellBeacon",
+          "Ability.Champion.SpellEngineer.GravityWell",
+          "Ability.Champion.SpellEngineer.CataclysmRing",
+          "Ability.Champion.SpellEngineer.GuidedLaser"
+        ]
+      },
+      "AbilityExecAimSync": {
+        "abilitySlot": 3,
+        "syncFacing": true
+      },
+      "GameplayTagContainer": {},
+      "OrderBuffer": {},
+      "BlackboardSpatialBuffer": {},
+      "BlackboardEntityBuffer": {},
+      "BlackboardIntBuffer": {}
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_runic_beacon",
+    "components": {
+      "Name": { "Value": "Runic Beacon" },
+      "SelectionSelectableTag": {},
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": {
+        "visualTemplateId": "core.prop.dummy_static",
+        "startupPerformerIds": [
+          "champion_skill_sandbox.manifestation.runic_beacon"
+        ]
+      },
+      "VisualTransform": {
+        "Position": { "X": 0.0, "Y": 0.0, "Z": 0.0 },
+        "Rotation": { "X": 0.0, "Y": 0.0, "Z": 0.0, "W": 1.0 },
+        "Scale": { "X": 0.72, "Y": 1.38, "Z": 0.72 }
+      },
+      "AttributeBuffer": { "base": { "Health": 60, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "GameplayTagContainer": {}
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_rune_field",
+    "components": {
+      "Name": { "Value": "Rune Field" },
+      "SelectionSelectableTag": {},
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": {
+        "visualTemplateId": "core.prop.dummy_static",
+        "startupPerformerIds": [
+          "champion_skill_sandbox.manifestation.rune_field"
+        ]
+      },
+      "VisualTransform": {
+        "Position": { "X": 0.0, "Y": 0.0, "Z": 0.0 },
+        "Rotation": { "X": 0.0, "Y": 0.0, "Z": 0.0, "W": 1.0 },
+        "Scale": { "X": 2.35, "Y": 0.14, "Z": 2.35 }
+      },
+      "AttributeBuffer": { "base": { "Health": 1, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "GameplayTagContainer": {}
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_stone_pillar",
+    "components": {
+      "Name": { "Value": "Stone Pillar" },
+      "SelectionSelectableTag": {},
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": {
+        "visualTemplateId": "core.prop.dummy_static",
+        "startupPerformerIds": [
+          "champion_skill_sandbox.manifestation.stone_pillar"
+        ]
+      },
+      "VisualTransform": {
+        "Position": { "X": 0.0, "Y": 0.0, "Z": 0.0 },
+        "Rotation": { "X": 0.0, "Y": 0.0, "Z": 0.0, "W": 1.0 },
+        "Scale": { "X": 1.08, "Y": 2.16, "Z": 1.08 }
+      },
+      "AttributeBuffer": { "base": { "Health": 120, "Shield": 0, "MoveSpeed": 0, "Armor": 8 } },
+      "GameplayTagContainer": {},
+      "ManifestationObstacleIntent2D": {
+        "shape": "Circle",
+        "radiusCm": 120,
+        "sinkPhysicsCollider": true,
+        "sinkNavigationObstacle": true,
+        "navRadiusCm": 120
+      }
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_spell_beacon",
+    "components": {
+      "Name": { "Value": "Spell Beacon" },
+      "SelectionSelectableTag": {},
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": {
+        "startupPerformerIds": [
+          "champion_skill_sandbox.manifestation.spell_beacon"
+        ]
+      },
+      "AttributeBuffer": { "base": { "Health": 48, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "GameplayTagContainer": {}
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_gravity_well",
+    "components": {
+      "Name": { "Value": "Gravity Well" },
+      "SelectionSelectableTag": {},
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": {
+        "startupPerformerIds": [
+          "champion_skill_sandbox.manifestation.gravity_well"
+        ]
+      },
+      "AttributeBuffer": { "base": { "Health": 1, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "GameplayTagContainer": {}
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_barrier_segment",
+    "components": {
+      "Name": { "Value": "Barrier Segment" },
+      "SelectionSelectableTag": {},
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": {
+        "startupPerformerIds": [
+          "champion_skill_sandbox.manifestation.barrier_segment"
+        ]
+      },
+      "AttributeBuffer": { "base": { "Health": 90, "Shield": 0, "MoveSpeed": 0, "Armor": 10 } },
+      "GameplayTagContainer": {},
+      "ManifestationObstacleIntent2D": {
+        "shape": "Box",
+        "halfWidthCm": 92,
+        "halfHeightCm": 20,
+        "sinkPhysicsCollider": true,
+        "sinkNavigationObstacle": true,
+        "navRadiusCm": 94
+      },
+      "DestroyWhenParentExecutionEnds": {}
+    }
+  },
+  {
+    "id": "champion_skill_sandbox_guided_laser",
+    "components": {
+      "Name": { "Value": "Guided Laser" },
+      "SelectionSelectableTag": {},
+      "FacingDirection": { "AngleRad": 0.0 },
+      "Presentation": {
+        "startupPerformerIds": [
+          "champion_skill_sandbox.manifestation.guided_laser"
+        ]
+      },
+      "AttributeBuffer": { "base": { "Health": 1, "Shield": 0, "MoveSpeed": 0, "Armor": 0 } },
+      "GameplayTagContainer": {},
+      "ManifestationMotion2D": {
+        "followParentPosition": true,
+        "facingSource": "ParentExecutionTarget",
+        "forwardOffsetCm": 450
+      },
+      "DestroyWhenParentExecutionEnds": {}
+    }
+  },
+  {
     "id": "champion_skill_sandbox_enemy_dummy",
     "components": {
       "Name": { "Value": "EnemyDummy" },

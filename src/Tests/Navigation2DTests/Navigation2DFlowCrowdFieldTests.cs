@@ -84,6 +84,42 @@ namespace Ludots.Tests.Navigation2D
             Assert.That(System.MathF.Abs(desired.Y), Is.GreaterThan(10f));
         }
 
+        [Test]
+        public void CrowdSurface_SplatObstacleOrientedBox_BlocksWallExtentWithoutRoundHalo()
+        {
+            var surface = new CrowdSurface2D(Fix64.FromInt(CellSizeCm), TileSizeCells, initialTileCapacity: 4);
+
+            surface.SplatObstacleOrientedBox(
+                centerCm: new Vector2(450f, 250f),
+                halfWidthCm: 240f,
+                halfHeightCm: 30f,
+                rotationRad: 0f);
+
+            Assert.That(surface.IsBlockedCell(3, 2), Is.True);
+            Assert.That(surface.IsBlockedCell(4, 2), Is.True);
+            Assert.That(surface.IsBlockedCell(5, 2), Is.True);
+            Assert.That(surface.IsBlockedCell(4, 4), Is.False,
+                "Long wall blockers must not collapse into a circle-like obstacle halo.");
+        }
+
+        [Test]
+        public void CrowdSurface_SplatObstaclePolygon_BlocksCellsInsideTriangle()
+        {
+            var surface = new CrowdSurface2D(Fix64.FromInt(CellSizeCm), TileSizeCells, initialTileCapacity: 4);
+            Vector2[] triangle =
+            {
+                new Vector2(100f, 100f),
+                new Vector2(400f, 100f),
+                new Vector2(250f, 400f)
+            };
+
+            surface.SplatObstaclePolygon(triangle);
+
+            Assert.That(surface.IsBlockedCell(2, 1), Is.True);
+            Assert.That(surface.IsBlockedCell(2, 3), Is.True);
+            Assert.That(surface.IsBlockedCell(4, 3), Is.False);
+        }
+
         private static Fix64Vec2 CellCenterCm(int cellX, int cellY)
         {
             return Fix64Vec2.FromInt(cellX * CellSizeCm + (CellSizeCm / 2), cellY * CellSizeCm + (CellSizeCm / 2));

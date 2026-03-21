@@ -12,9 +12,11 @@ using Ludots.Core.Input.Selection;
 using Ludots.Core.Input.Runtime;
 using Ludots.Core.Input.Interaction;
 using Ludots.Core.Input.Systems;
+using Ludots.Core.Mathematics;
 using Ludots.Core.Presentation.Camera;
 using Ludots.Core.Registry;
 using Ludots.Core.Scripting;
+using Ludots.Core.Spatial;
 using Ludots.Platform.Abstractions;
 using NUnit.Framework;
 
@@ -201,6 +203,30 @@ namespace Ludots.Tests.GAS
             Assert.That(session.Camera.State.TargetCm.Length(), Is.GreaterThan(0.01f));
         }
 
+        [Test]
+        public void InputRuntimeSystem_CapturesGroundPointerIntoAuthoritativeSnapshot()
+        {
+            var (backend, handler) = BuildCameraHandler();
+            var accumulator = new AuthoritativeInputAccumulator();
+            var snapshot = new FrozenInputActionReader();
+            backend.MousePosition = new Vector2(12.5f, 34.75f);
+
+            var globals = new Dictionary<string, object>
+            {
+                [CoreServiceKeys.InputHandler.Name] = handler,
+                [CoreServiceKeys.ScreenRayProvider.Name] = new VerticalScreenRayProvider(),
+                [CoreServiceKeys.WorldSizeSpec.Name] = new WorldSizeSpec(new WorldAabbCm(-100000, -100000, 200000, 200000), 100),
+            };
+
+            var system = new InputRuntimeSystem(globals, accumulator);
+            system.Update(1f / 60f);
+            accumulator.BuildTickSnapshot(snapshot);
+
+            Assert.That(AuthoritativeGroundPointerHelper.TryRead(snapshot, out var worldCm), Is.True);
+            Assert.That(worldCm.X, Is.EqualTo(1250));
+            Assert.That(worldCm.Y, Is.EqualTo(3475));
+        }
+
         private static (TestInputBackend backend, PlayerInputHandler handler) BuildHandler()
         {
             var backend = new TestInputBackend();
@@ -278,6 +304,16 @@ namespace Ludots.Tests.GAS
             public Vector2 Resolution { get; } = new Vector2(1920f, 1080f);
             public float Fov => 60f;
             public float AspectRatio => Resolution.X / Resolution.Y;
+        }
+
+        private sealed class VerticalScreenRayProvider : IScreenRayProvider
+        {
+            public ScreenRay GetRay(Vector2 screenPosition)
+            {
+                return new ScreenRay(
+                    new Vector3(screenPosition.X, 10f, screenPosition.Y),
+                    new Vector3(0f, -1f, 0f));
+            }
         }
     }
 }

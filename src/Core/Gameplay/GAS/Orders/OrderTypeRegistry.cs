@@ -9,11 +9,13 @@ namespace Ludots.Core.Gameplay.GAS.Orders
 
         private readonly OrderTypeConfig?[] _configs = new OrderTypeConfig?[MaxOrderTypes];
         private readonly ulong[] _hasBits = new ulong[MaxOrderTypes >> 6];
+        private readonly Dictionary<string, int> _idsByKey = new(StringComparer.Ordinal);
 
         public void Clear()
         {
             Array.Clear(_configs, 0, _configs.Length);
             Array.Clear(_hasBits, 0, _hasBits.Length);
+            _idsByKey.Clear();
         }
 
         public void Register(OrderTypeConfig config)
@@ -28,6 +30,10 @@ namespace Ludots.Core.Gameplay.GAS.Orders
             int word = config.OrderTypeId >> 6;
             int bit = config.OrderTypeId & 63;
             _hasBits[word] |= 1UL << bit;
+            if (!string.IsNullOrWhiteSpace(config.Key))
+            {
+                _idsByKey[config.Key] = config.OrderTypeId;
+            }
         }
 
         public void RegisterAll(IEnumerable<OrderTypeConfig> configs)
@@ -74,6 +80,27 @@ namespace Ludots.Core.Gameplay.GAS.Orders
             int word = orderTypeId >> 6;
             int bit = orderTypeId & 63;
             return (_hasBits[word] & (1UL << bit)) != 0;
+        }
+
+        public bool TryGetId(string key, out int orderTypeId)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                orderTypeId = 0;
+                return false;
+            }
+
+            return _idsByKey.TryGetValue(key, out orderTypeId);
+        }
+
+        public int GetId(string key)
+        {
+            if (!TryGetId(key, out int orderTypeId))
+            {
+                throw new KeyNotFoundException($"OrderTypeRegistry: order type key '{key}' is not registered.");
+            }
+
+            return orderTypeId;
         }
 
         public IEnumerable<int> GetRegisteredIds()

@@ -37,6 +37,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly TagOps _tagOps;
 
         private readonly int _castAbilityOrderTypeId;
+        private readonly int _castAbilityStartOrderTypeId;
 
         private static readonly QueryDescription _execQuery = new QueryDescription()
             .WithAll<AbilityExecInstance, AbilityStateBuffer>();
@@ -64,6 +65,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             AbilityDefinitionRegistry abilityDefinitions = null,
             GameplayEventBus eventBus = null,
             int castAbilityOrderTypeId = 0,
+            int castAbilityStartOrderTypeId = 0,
             GasPresentationEventBuffer presentationEvents = null,
             EffectPhaseExecutor phaseExecutor = null,
             GraphProgramRegistry graphPrograms = null,
@@ -81,6 +83,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _abilityDefinitions = abilityDefinitions;
             _eventBus = eventBus;
             _castAbilityOrderTypeId = castAbilityOrderTypeId;
+            _castAbilityStartOrderTypeId = castAbilityStartOrderTypeId;
             _presentationEvents = presentationEvents;
             _phaseExecutor = phaseExecutor;
             _graphPrograms = graphPrograms;
@@ -105,7 +108,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             // a one-frame delay between ability completion and the next queued ability starting.
             for (int rescan = 0; rescan < MaxRescanIterations; rescan++)
             {
-                if (_castAbilityOrderTypeId <= 0) break;
+                if (!HasAbilityActivationOrderType) break;
                 int newCount = World.CountEntities(in _newOrderQuery);
                 if (newCount == 0) break;
                 while (!UpdateSlice(dt, int.MaxValue)) { }
@@ -117,7 +120,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             int workUnits = 0;
 
             // 鈹€鈹€ Phase 1: Query entities with active CastAbility order + Blackboard (no AbilityExecInstance yet) 鈹€鈹€
-            if (_castAbilityOrderTypeId > 0)
+            if (HasAbilityActivationOrderType)
             {
                 int newCount = World.CountEntities(in _newOrderQuery);
                 if (newCount > _execEntities.Length)
@@ -131,7 +134,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     if (!World.IsAlive(actor)) continue;
                     
                     ref var orderBuffer = ref World.Get<OrderBuffer>(actor);
-                    if (!orderBuffer.HasActive || orderBuffer.ActiveOrder.Order.OrderTypeId != _castAbilityOrderTypeId) continue;
+                    if (!orderBuffer.HasActive || !IsAbilityActivationOrderType(orderBuffer.ActiveOrder.Order.OrderTypeId)) continue;
 
                     ref var actorTags = ref World.TryGetRef<GameplayTagContainer>(actor, out bool hasActorTags);
                     
@@ -356,14 +359,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                     exec.WaitRequestId = 0;
                     exec.ActiveClockId = defaultClockId;
 
-                    _presentationEvents?.Publish(new GasPresentationEvent
-                    {
-                        Kind = GasPresentationEventKind.CastStarted,
-                        Actor = actor,
-                        Target = targetEntity,
-                        AbilitySlot = slotIndex,
-                        AbilityId = slot.AbilityId
-                    });
+                    PublishCastStartedAndCommitted(actor, targetEntity, slotIndex, slot.AbilityId);
                     workUnits++;
                 }
             }
@@ -508,6 +504,14 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             _execEntityCount = 0;
         }
 
+        private bool HasAbilityActivationOrderType => _castAbilityOrderTypeId > 0 || _castAbilityStartOrderTypeId > 0;
+
+        private bool IsAbilityActivationOrderType(int orderTypeId)
+        {
+            return orderTypeId == _castAbilityOrderTypeId ||
+                   (_castAbilityStartOrderTypeId > 0 && orderTypeId == _castAbilityStartOrderTypeId);
+        }
+
         // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ Item processing 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
         private void AdvanceItems(Entity actor, ref AbilityExecSpec spec,
@@ -616,9 +620,9 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             byte cpIdx = spec.GetCallerParamsIdx(idx);
             bool hasCp = hasCallerPool && cpIdx != 0xFF && cpIdx < callerPool.Count;
 
-            Entity target = World.IsAlive(inst.Target) ? inst.Target : actor;
+            var dispatchTarget = (ExecEffectDispatchTarget)spec.GetPayloadA(idx);
 
-            if (inst.MultiTargetCount > 0)
+            if (inst.MultiTargetCount > 0 && dispatchTarget == ExecEffectDispatchTarget.Default)
             {
                 // Multi-target: dispatch to each
                 unsafe
@@ -639,9 +643,22 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             }
             else
             {
+                Entity target = ResolveEffectDispatchTarget(actor, dispatchTarget, in inst);
                 PublishEffectRequest(actor, target, inst.TargetContext, templateId,
                     hasCp ? callerPool.Get(cpIdx) : default, hasCp, in inst);
             }
+        }
+
+        private Entity ResolveEffectDispatchTarget(Entity actor, ExecEffectDispatchTarget dispatchTarget, in AbilityExecInstance inst)
+        {
+            return dispatchTarget switch
+            {
+                ExecEffectDispatchTarget.Source => actor,
+                ExecEffectDispatchTarget.TargetContext when World.IsAlive(inst.TargetContext) => inst.TargetContext,
+                ExecEffectDispatchTarget.Target when World.IsAlive(inst.Target) => inst.Target,
+                ExecEffectDispatchTarget.Default when World.IsAlive(inst.Target) => inst.Target,
+                _ => actor,
+            };
         }
 
         private void PublishEffectRequest(Entity source, Entity target, Entity targetContext,
@@ -1006,14 +1023,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 exec.ActiveClockId = toggleSpec.DeactivateExecSpec.ClockId;
                 exec.IsToggleDeactivating = true;
                 
-                _presentationEvents?.Publish(new GasPresentationEvent
-                {
-                    Kind = GasPresentationEventKind.CastStarted,
-                    Actor = actor,
-                    Target = targetEntity,
-                    AbilitySlot = slotIndex,
-                    AbilityId = abilityId
-                });
+                PublishCastStartedAndCommitted(actor, targetEntity, slotIndex, abilityId);
             }
             else
             {
@@ -1041,6 +1051,26 @@ namespace Ludots.Core.Gameplay.GAS.Systems
             if (!World.Has<GameplayTagContainer>(actor)) World.Add(actor, new GameplayTagContainer());
             if (!World.Has<TagCountContainer>(actor)) World.Add(actor, new TagCountContainer());
             if (!World.Has<TimedTagBuffer>(actor)) World.Add(actor, new TimedTagBuffer());
+        }
+
+        private void PublishCastStartedAndCommitted(Entity actor, Entity targetEntity, int slotIndex, int abilityId)
+        {
+            _presentationEvents?.Publish(new GasPresentationEvent
+            {
+                Kind = GasPresentationEventKind.CastStarted,
+                Actor = actor,
+                Target = targetEntity,
+                AbilitySlot = slotIndex,
+                AbilityId = abilityId
+            });
+            _presentationEvents?.Publish(new GasPresentationEvent
+            {
+                Kind = GasPresentationEventKind.CastCommitted,
+                Actor = actor,
+                Target = targetEntity,
+                AbilitySlot = slotIndex,
+                AbilityId = abilityId
+            });
         }
 
         private struct CollectExecJob : IForEachWithEntity<AbilityExecInstance>

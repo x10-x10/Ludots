@@ -18,6 +18,42 @@
       "intArg0BlackboardKey": 110,
       "validationGraphId": 0
     },
+    "castAbility.Start": {
+      "orderTypeId": 104,
+      "label": "Cast Ability Start",
+      "maxQueueSize": 3,
+      "sameTypePolicy": "Queue",
+      "queueFullPolicy": "DropOldest",
+      "priority": 100,
+      "bufferWindowMs": 500,
+      "pendingBufferWindowMs": 400,
+      "canInterruptSelf": false,
+      "queuedModeMaxSize": 8,
+      "allowQueuedMode": true,
+      "clearQueueOnActivate": true,
+      "spatialBlackboardKey": 112,
+      "entityBlackboardKey": 111,
+      "intArg0BlackboardKey": 110,
+      "validationGraphId": 0
+    },
+    "castAbility.End": {
+      "orderTypeId": 105,
+      "label": "Cast Ability End",
+      "maxQueueSize": 1,
+      "sameTypePolicy": "Replace",
+      "queueFullPolicy": "DropOldest",
+      "priority": 200,
+      "bufferWindowMs": 0,
+      "pendingBufferWindowMs": 400,
+      "canInterruptSelf": false,
+      "queuedModeMaxSize": 1,
+      "allowQueuedMode": false,
+      "clearQueueOnActivate": true,
+      "spatialBlackboardKey": -1,
+      "entityBlackboardKey": -1,
+      "intArg0BlackboardKey": 110,
+      "validationGraphId": 0
+    },
     "moveTo": {
       "orderTypeId": 101,
       "label": "Move To",
@@ -133,6 +169,21 @@
       "blockedActiveOrderTypeIds": [],
       "interruptsActiveOrderTypeIds": [
         101
+      ]
+    },
+    "castAbility.Start": {
+      "orderTypeId": 104,
+      "blockedActiveOrderTypeIds": [],
+      "interruptsActiveOrderTypeIds": [
+        101
+      ]
+    },
+    "castAbility.End": {
+      "orderTypeId": 105,
+      "blockedActiveOrderTypeIds": [],
+      "interruptsActiveOrderTypeIds": [
+        100,
+        104
       ]
     },
     "moveTo": {

@@ -1,6 +1,8 @@
 using Arch.Core;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
+using Ludots.Core.Gameplay.GAS.Registry;
+using Ludots.Core.Gameplay.GAS.Systems;
 using NUnit.Framework;
 using static NUnit.Framework.Assert;
 
@@ -118,6 +120,58 @@ namespace Ludots.Tests.GAS
             var mods = new EffectModifiers();
             That(EffectModifiers.CAPACITY, Is.EqualTo(8),
                 "EffectModifiers should support 8 entries per effect");
+        }
+
+        [Test]
+        public unsafe void ClampToBaseAttribute_PreservesCurrentAcrossAggregation()
+        {
+            int healthId = EnsureAttribute("Health");
+            AttributeRegistry.SetConstraints(healthId, AttributeRegistry.AttributeConstraints.ClampToBase());
+
+            using var world = World.Create();
+            var entity = world.Create(new AttributeBuffer(), new ActiveEffectContainer());
+            ref var attr = ref world.Get<AttributeBuffer>(entity);
+            attr.SetBase(healthId, 100f);
+            attr.SetCurrent(healthId, 70f);
+
+            var aggregator = new AttributeAggregatorSystem(world);
+            aggregator.Update(0f);
+
+            That(attr.GetCurrent(healthId), Is.EqualTo(70f));
+            That(attr.GetBase(healthId), Is.EqualTo(100f));
+        }
+
+        [Test]
+        public unsafe void ClampToBaseAttribute_TracksAggregatedCapWithoutResettingCurrent()
+        {
+            int healthId = EnsureAttribute("Health");
+            AttributeRegistry.SetConstraints(healthId, AttributeRegistry.AttributeConstraints.ClampToBase());
+
+            using var world = World.Create();
+            var entity = world.Create(new AttributeBuffer(), new ActiveEffectContainer());
+            ref var attr = ref world.Get<AttributeBuffer>(entity);
+            attr.SetBase(healthId, 100f);
+            attr.SetCurrent(healthId, 70f);
+
+            var effect = world.Create();
+            world.Add(effect, new EffectModifiers());
+            ref var modifiers = ref world.Get<EffectModifiers>(effect);
+            modifiers.Add(healthId, ModifierOp.Add, 25f);
+
+            ref var container = ref world.Get<ActiveEffectContainer>(entity);
+            That(container.Add(effect), Is.True);
+
+            var aggregator = new AttributeAggregatorSystem(world);
+            aggregator.Update(0f);
+
+            That(attr.GetCurrent(healthId), Is.EqualTo(70f));
+            That(attr.GetBase(healthId), Is.EqualTo(125f));
+        }
+
+        private static int EnsureAttribute(string name)
+        {
+            int id = AttributeRegistry.GetId(name);
+            return id != AttributeRegistry.InvalidId ? id : AttributeRegistry.Register(name);
         }
     }
 }

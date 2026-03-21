@@ -29,7 +29,7 @@ GAS 提供 8 个基建能力，覆盖所有战斗场景：
 *   属性聚合：`src/Core/Gameplay/GAS/Systems/AttributeAggregatorSystem.cs`
 *   Preset 枚举：`src/Core/Gameplay/GAS/EffectTemplateRegistry.cs`
 
-其中 `CreateUnit` 的运行时语义已经收敛到统一的 spawn 基建：builtin handler 只负责生成 `RuntimeEntitySpawnRequest`，真正的实体物化由 `RuntimeEntitySpawnSystem` 完成。完整链路见 [运行时实体生成链路](runtime_entity_spawn_flow.md)。
+其中 `CreateUnit` 与 `LaunchProjectile` 的运行时语义已经收敛到统一的 spawn 基建：builtin handler 只负责生成 `RuntimeEntitySpawnRequest`，真正的实体物化由 `RuntimeEntitySpawnSystem` 完成。`Projectile` 现在只是一种 runtime behavior component，不再是绕过 spawn contract 的特例。完整链路见 [运行时实体生成链路](runtime_entity_spawn_flow.md)。
 
 ## 2 伤害管线（Damage Pipeline）
 
@@ -329,4 +329,47 @@ References:
 *   ECS 开发实践：`docs/architecture/ecs_soa.md`
 *   GAS 分层架构：`docs/architecture/gas_layered_architecture.md`
 *   Trigger 开发指南：`docs/architecture/trigger_guide.md`
+
+## 10 运行时具现体、召唤物与阻挡体
+
+在当前收敛版本里，`Projectile`、`Summon`、`Zone`、`Wall` 都不再被视为需要各自独立 runtime 栈的顶层类型。
+
+统一原则如下：
+
+* `Projectile` 是一种 runtime behavior component，不是特殊 entity kind。
+* `Summon` 是统一 spawn contract 的结果，owner / player owner / parent relation 通过 `RuntimeEntitySpawnRequest` 传播。
+* 法阵、持续 zone、beam、spline 飞弹，本质上都是不同的 runtime manifestation recipe。
+* 只有跨 tick 状态、命中计数、运动或持续采样不可避免时，才生成 runtime entity。
+
+### 10.1 墙体、柱子、竞技场边界的职责归属
+
+墙体、Ornn 柱子、Anivia 墙、Jarvan R 场地边界这类技能，如果会真实影响碰撞或寻路，就不应该停留在“高层 spell 语义”。
+
+当前做法是：
+
+* Core authoring 用 `ManifestationObstacleIntent2D` 声明“这是一个阻挡型具现体”。
+* `Ludots.Physics2D` 用 `ManifestationObstacleBridge2DSystem` 把该意图下沉为 `Collider2D`、`NavObstacle2D`、`NavKinematics2D`。
+* `Navigation2DSteeringSystem2D` 与 `CrowdSurface2D` 负责真实的 flow obstacle stamping。
+
+因此：
+
+* 墙体是不是“法术”由 GAS / spawn / recipe 决定。
+* 它怎么阻挡角色和导航，由 physics / nav 决定。
+* 不新增 `WallSystem`、`ArenaSystem`、`PillarSystem` 这类 feature-local system。
+
+### 10.2 可插拔空间后端约束
+
+这轮只实现了 continuous-space blocker sink，但 authoring 合同没有绑定到底层空间实现：
+
+* continuous-space 版本由 `Ludots.Physics2D` bridge 提供。
+* `Hex / Grid` 后端未来若需 blocker manifestation，应实现自己的 sink system。
+* 不允许在 GAS handler 或 effect authoring 中写后端特判。
+
+参考：
+
+* `src/Core/Gameplay/Spawning/RuntimeEntitySpawnQueue.cs`
+* `src/Core/Gameplay/Spawning/RuntimeEntitySpawnSystem.cs`
+* `src/Core/Gameplay/Spawning/ManifestationObstacleIntent2D.cs`
+* `src/Core/Ludots.Physics2D/Systems/ManifestationObstacleBridge2DSystem.cs`
+* `src/Core/Navigation2D/Components/NavObstacle2D.cs`
 

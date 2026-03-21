@@ -39,7 +39,7 @@ namespace Ludots.Core.Presentation.Systems
         private readonly PerformerInstanceBuffer _instances;
         private readonly PerformerDefinitionRegistry _definitions;
         private readonly GroundOverlayBuffer _groundOverlays;
-        private readonly PrimitiveDrawBuffer _primitives;
+        private readonly PresentationVisualProxyEmitter _proxyEmitter;
         private readonly WorldHudBatchBuffer _worldHud;
         private readonly GraphProgramRegistry _programs;
         private readonly IGraphRuntimeApi _graphApi;
@@ -78,13 +78,16 @@ namespace Ludots.Core.Presentation.Systems
             GraphProgramRegistry programs,
             IGraphRuntimeApi graphApi,
             Dictionary<string, object> globals,
-            EntityColorResolver entityColorResolver = null)
+            EntityColorResolver entityColorResolver = null,
+            PrimitiveDrawBuffer? snapshotBuffer = null,
+            PresentationVisualProxyBuffer? proxyBuffer = null,
+            SkinnedVisualBatchBuffer? skinnedBatchBuffer = null)
             : base(world)
         {
             _instances = instances;
             _definitions = definitions;
             _groundOverlays = groundOverlays;
-            _primitives = primitives;
+            _proxyEmitter = new PresentationVisualProxyEmitter(primitives, snapshotBuffer, proxyBuffer, skinnedBatchBuffer);
             _worldHud = worldHud;
             _programs = programs;
             _graphApi = graphApi;
@@ -371,6 +374,10 @@ namespace Ludots.Core.Presentation.Systems
                     return EvaluateGraphFloat(vr.SourceId, owner);
                 case ValueSourceKind.EntityColor:
                     return ResolveEntityColorChannel(owner, vr.SourceId);
+                case ValueSourceKind.FacingRadians:
+                    return ResolveFacingRadians(owner);
+                case ValueSourceKind.FacingDegrees:
+                    return ResolveFacingDegrees(owner);
                 default:
                     return 0f;
             }
@@ -388,6 +395,21 @@ namespace Ludots.Core.Presentation.Systems
                 3 => c.W,
                 _ => 1f,
             };
+        }
+
+        private float ResolveFacingRadians(Entity owner)
+        {
+            if (!World.IsAlive(owner) || !World.Has<Ludots.Core.Components.FacingDirection>(owner))
+            {
+                return 0f;
+            }
+
+            return World.Get<Ludots.Core.Components.FacingDirection>(owner).AngleRad;
+        }
+
+        private float ResolveFacingDegrees(Entity owner)
+        {
+            return ResolveFacingRadians(owner) * (180f / MathF.PI);
         }
 
         private float ResolveAttributeRatio(Entity owner, int attributeId)
@@ -440,12 +462,11 @@ namespace Ludots.Core.Presentation.Systems
             float sz = ResolveParam(handle, def, owner, 3, scaleUniform);
             var color = ResolveColor(handle, def, owner, 4, 5, 6, 7, def.DefaultColor);
             color.W *= alphaMod;
-            int stableId = 0;
-            if (handle >= 0 && _instances.IsActive(handle))
-                stableId = _instances.Get(handle).StableId;
+            int stableId = ResolveMarkerStableId(handle, def.Id, owner);
 
-            _primitives.TryAdd(new PrimitiveDrawItem
+            _proxyEmitter.Emit(new PresentationVisualProxy
             {
+                ProxyKind = PresentationVisualProxyKind.Performer,
                 MeshAssetId = def.MeshOrShapeId,
                 Position = pos,
                 Rotation = Quaternion.Identity,
@@ -457,6 +478,26 @@ namespace Ludots.Core.Presentation.Systems
                 Flags = VisualRuntimeFlags.Visible,
                 Visibility = VisualVisibility.Visible,
             });
+        }
+
+        private int ResolveMarkerStableId(int handle, int definitionId, Entity owner)
+        {
+            if (handle >= 0 && _instances.IsActive(handle))
+            {
+                return _instances.Get(handle).StableId;
+            }
+
+            if (World.IsAlive(owner) && World.Has<PresentationStableId>(owner))
+            {
+                int ownerStableId = World.Get<PresentationStableId>(owner).Value;
+                if (ownerStableId > 0)
+                {
+                    return PerformerVisualIdentity.ComposeStableId(ownerStableId, PerformerVisualKind.Marker3D, definitionId);
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"Entity-scoped Marker3D performer '{_definitions.GetName(definitionId)}' requires a positive PresentationStableId on its owner.");
         }
 
         private void EmitWorldBar(int handle, int definitionId, PerformerDefinition def, Entity owner, Vector3 pos, float alphaMod)

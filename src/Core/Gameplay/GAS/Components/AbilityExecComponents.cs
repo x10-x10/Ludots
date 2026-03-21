@@ -49,6 +49,19 @@ namespace Ludots.Core.Gameplay.GAS.Components
     }
 
     /// <summary>
+    /// Controls which execution context entity receives an EffectClip/EffectSignal.
+    /// Default preserves current behavior: use resolved multi-targets when present,
+    /// otherwise use the primary target and finally fall back to the actor.
+    /// </summary>
+    public enum ExecEffectDispatchTarget : byte
+    {
+        Default = 0,
+        Source = 1,
+        Target = 2,
+        TargetContext = 3,
+    }
+
+    /// <summary>
     /// Runtime state of an ability execution instance.
     /// </summary>
     public enum AbilityExecRunState : byte

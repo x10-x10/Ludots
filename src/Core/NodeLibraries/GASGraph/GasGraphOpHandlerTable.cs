@@ -101,6 +101,7 @@ namespace Ludots.Core.NodeLibraries.GASGraph
             h[(ushort)GraphNodeOp.TargetListGet] = HandleTargetListGet;
             h[(ushort)GraphNodeOp.ApplyEffectTemplate] = HandleApplyEffectTemplate;
             h[(ushort)GraphNodeOp.FanOutApplyEffect] = HandleFanOutApplyEffect;
+            h[(ushort)GraphNodeOp.RemoveEffectTemplate] = HandleRemoveEffectTemplate;
             h[(ushort)GraphNodeOp.ModifyAttributeAdd] = HandleModifyAttributeAdd;
             h[(ushort)GraphNodeOp.SendEvent] = HandleSendEvent;
 
@@ -327,6 +328,15 @@ namespace Ludots.Core.NodeLibraries.GASGraph
             if (s.World.IsAlive(target))
             {
                 s.Api.ModifyAttributeAdd(s.Caster, target, ins.Imm, s.F[ins.B]);
+            }
+        }
+
+        private static void HandleRemoveEffectTemplate(ref GraphExecutionState s, in GraphInstruction ins, ref int pc)
+        {
+            var target = s.E[ins.A];
+            if (s.World.IsAlive(target))
+            {
+                s.Api.RemoveEffectTemplate(target, ins.Imm);
             }
         }
 

@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Ludots.Core.Config;
 using Ludots.Core.Gameplay.GAS.Components;
 using Ludots.Core.Gameplay.GAS.Registry;
+using Ludots.Core.Input.Orders;
 using Ludots.Core.NodeLibraries.GASGraph.Host;
 
 namespace Ludots.Core.Gameplay.GAS.Config
@@ -160,6 +161,12 @@ namespace Ludots.Core.Gameplay.GAS.Config
                 def.HasPresentation = def.Presentation != null;
             }
 
+            if (obj["input"] is JsonObject inputObj)
+            {
+                def.InputBindingOverride = CompileInputBindingOverride(inputObj, id, path);
+                def.HasInputBindingOverride = true;
+            }
+
             return def;
         }
 
@@ -256,6 +263,13 @@ namespace Ludots.Core.Gameplay.GAS.Config
 
             int payloadA = itemObj["payloadA"]?.GetValue<int>() ?? 0;
 
+            if ((kind == ExecItemKind.EffectClip || kind == ExecItemKind.EffectSignal) &&
+                itemObj["dispatchTarget"] is JsonValue dispatchTargetNode)
+            {
+                string rawDispatchTarget = dispatchTargetNode.GetValue<string>();
+                payloadA = (int)ParseExecEffectDispatchTarget(rawDispatchTarget, id, idx, path);
+            }
+
             // For GraphSignal, "graph" field maps to payloadA via GraphIdRegistry
             if (kind == ExecItemKind.GraphSignal)
             {
@@ -267,6 +281,18 @@ namespace Ludots.Core.Gameplay.GAS.Config
             }
 
             spec.SetItem(idx, kind, tick, durationTicks, clockId, tagId, templateId, callerParamsIdx, payloadA);
+        }
+
+        private static ExecEffectDispatchTarget ParseExecEffectDispatchTarget(string rawValue, string abilityId, int itemIndex, string path)
+        {
+            if (Enum.TryParse(rawValue, ignoreCase: true, out ExecEffectDispatchTarget parsed))
+            {
+                return parsed;
+            }
+
+            throw new InvalidOperationException(
+                $"Ability '{abilityId}' item[{itemIndex}] in '{path}' uses unsupported dispatchTarget '{rawValue}'. " +
+                "Supported values: Default, Source, Target, TargetContext.");
         }
 
         // ──────────────── CallerParamsPool ────────────────
@@ -455,6 +481,82 @@ namespace Ludots.Core.Gameplay.GAS.Config
             }
 
             return config;
+        }
+
+        private static AbilityInputBindingOverride CompileInputBindingOverride(JsonObject inputObj, string id, string path)
+        {
+            var result = new AbilityInputBindingOverride();
+            bool hasAny = false;
+
+            if (inputObj["trigger"] is JsonValue triggerNode)
+            {
+                string rawTrigger = triggerNode.GetValue<string>();
+                if (!Enum.TryParse(rawTrigger, ignoreCase: true, out InputTriggerType trigger))
+                {
+                    throw new InvalidOperationException(
+                        $"Ability '{id}' in '{path}' input.trigger uses unsupported value '{rawTrigger}'.");
+                }
+
+                result.Trigger = trigger;
+                result.HasTrigger = true;
+                hasAny = true;
+            }
+
+            if (inputObj["heldPolicy"] is JsonValue heldPolicyNode)
+            {
+                string rawHeldPolicy = heldPolicyNode.GetValue<string>();
+                if (!Enum.TryParse(rawHeldPolicy, ignoreCase: true, out HeldPolicy heldPolicy))
+                {
+                    throw new InvalidOperationException(
+                        $"Ability '{id}' in '{path}' input.heldPolicy uses unsupported value '{rawHeldPolicy}'.");
+                }
+
+                result.HeldPolicy = heldPolicy;
+                result.HasHeldPolicy = true;
+                hasAny = true;
+            }
+
+            if (inputObj["castModeOverride"] is JsonValue castModeNode)
+            {
+                string rawCastMode = castModeNode.GetValue<string>();
+                if (!Enum.TryParse(rawCastMode, ignoreCase: true, out InteractionModeType castMode))
+                {
+                    throw new InvalidOperationException(
+                        $"Ability '{id}' in '{path}' input.castModeOverride uses unsupported value '{rawCastMode}'.");
+                }
+
+                result.CastModeOverride = castMode;
+                result.HasCastModeOverride = true;
+                hasAny = true;
+            }
+
+            if (inputObj["autoTargetPolicy"] is JsonValue autoTargetPolicyNode)
+            {
+                string rawAutoTargetPolicy = autoTargetPolicyNode.GetValue<string>();
+                if (!Enum.TryParse(rawAutoTargetPolicy, ignoreCase: true, out AutoTargetPolicy autoTargetPolicy))
+                {
+                    throw new InvalidOperationException(
+                        $"Ability '{id}' in '{path}' input.autoTargetPolicy uses unsupported value '{rawAutoTargetPolicy}'.");
+                }
+
+                result.AutoTargetPolicy = autoTargetPolicy;
+                result.HasAutoTargetPolicy = true;
+                hasAny = true;
+            }
+
+            if (inputObj["autoTargetRangeCm"] is JsonValue autoTargetRangeNode)
+            {
+                result.AutoTargetRangeCm = autoTargetRangeNode.GetValue<int>();
+                result.HasAutoTargetRangeCm = true;
+                hasAny = true;
+            }
+
+            if (!hasAny)
+            {
+                throw new InvalidOperationException($"Ability '{id}' in '{path}' input must declare at least one override field.");
+            }
+
+            return result;
         }
 
         private static TargetShape ParseTargetShape(string value, string id, string path)

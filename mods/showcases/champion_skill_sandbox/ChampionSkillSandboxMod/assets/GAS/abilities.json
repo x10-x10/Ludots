@@ -5,17 +5,22 @@
       "clockId": "FixedFrame",
       "items": [
         { "kind": "TagClip", "tick": 0, "duration": 72, "tag": "Cooldown.Champion.Ezreal.E" },
-        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.ArcaneShift" },
-        { "kind": "End", "tick": 0 }
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Ezreal.ArcaneShift", "dispatchTarget": "Source" },
+        { "kind": "EffectSignal", "tick": 5, "template": "Effect.Champion.Ezreal.ArcaneShiftBolt" },
+        { "kind": "End", "tick": 5 }
       ]
     },
     "indicator": { "shape": "Circle", "range": 440, "radius": 120, "showRangeCircle": true, "validColor": "#4FD7F077", "invalidColor": "#E2575788" },
     "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.E"] },
+    "input": {
+      "autoTargetPolicy": "NearestEnemyInRange",
+      "autoTargetRangeCm": 760
+    },
     "presentation": {
       "displayName": "Arcane Shift",
       "iconGlyph": "E",
       "accentColor": "#44C2F0",
-      "hintText": "Blink to cursor",
+      "hintText": "Blink, then fire a magic bolt",
       "modeHints": {
         "SmartCastWithIndicator": "Hold to preview blink",
         "PressReleaseAimCast": "Release key, then confirm blink"
@@ -32,16 +37,16 @@
         { "kind": "End", "tick": 0 }
       ]
     },
-    "indicator": { "shape": "Circle", "range": 760, "radius": 150, "showRangeCircle": true, "validColor": "#F0C35A77", "invalidColor": "#E2575788" },
+    "indicator": { "shape": "Line", "range": 760, "radius": 85, "showRangeCircle": true, "validColor": "#F0C35A77", "invalidColor": "#E2575788" },
     "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.W"] },
     "presentation": {
       "displayName": "Essence Flux",
       "iconGlyph": "W",
       "accentColor": "#F0C35A",
-      "hintText": "Zone mark at cursor",
+      "hintText": "Projectile mark that can be detonated",
       "modeHints": {
-        "SmartCastWithIndicator": "Hold to preview zone",
-        "PressReleaseAimCast": "Release key, then confirm zone"
+        "SmartCastWithIndicator": "Hold to preview mark shot",
+        "PressReleaseAimCast": "Release key, then confirm mark shot"
       }
     }
   },
@@ -61,7 +66,7 @@
       "displayName": "Mystic Shot",
       "iconGlyph": "Q",
       "accentColor": "#61C3FF",
-      "hintText": "Line shot to cursor",
+      "hintText": "Projectile that stops on first enemy",
       "modeHints": {
         "SmartCastWithIndicator": "Hold to preview line shot",
         "PressReleaseAimCast": "Release key, then confirm line shot"
@@ -78,16 +83,16 @@
         { "kind": "End", "tick": 0 }
       ]
     },
-    "indicator": { "shape": "Line", "range": 1200, "radius": 120, "showRangeCircle": true, "validColor": "#9BE0FF77", "invalidColor": "#E2575788" },
+    "indicator": { "shape": "Line", "range": 2200, "radius": 120, "showRangeCircle": true, "validColor": "#9BE0FF77", "invalidColor": "#E2575788" },
     "blockTags": { "blockedAny": ["Cooldown.Champion.Ezreal.R"] },
     "presentation": {
       "displayName": "Trueshot Barrage",
       "iconGlyph": "R",
       "accentColor": "#9BE0FF",
-      "hintText": "Long line blast",
+      "hintText": "Global projectile fired by direction",
       "modeHints": {
-        "SmartCastWithIndicator": "Hold to preview barrage",
-        "PressReleaseAimCast": "Release key, then confirm barrage"
+        "SmartCastWithIndicator": "Hold to preview barrage direction",
+        "PressReleaseAimCast": "Release key, then confirm barrage direction"
       }
     }
   },
@@ -189,6 +194,98 @@
       "modeHints": {
         "SmartCastWithIndicator": "Hold to preview spin radius",
         "PressReleaseAimCast": "Release key, then confirm spin"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Geomancer.RunicBeacon",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 42, "tag": "Cooldown.Champion.Geomancer.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.RunicBeacon" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 720, "radius": 110, "showRangeCircle": true, "validColor": "#86E2A977", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.Q"] },
+    "presentation": {
+      "displayName": "Runic Beacon",
+      "iconGlyph": "Q",
+      "accentColor": "#86E2A9",
+      "hintText": "Summon a tethered beacon",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview beacon landing",
+        "PressReleaseAimCast": "Release key, then confirm beacon"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Geomancer.RuneField",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 54, "tag": "Cooldown.Champion.Geomancer.W" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.RuneField" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 720, "radius": 220, "showRangeCircle": true, "validColor": "#D7F08B77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.W"] },
+    "presentation": {
+      "displayName": "Rune Field",
+      "iconGlyph": "W",
+      "accentColor": "#D7F08B",
+      "hintText": "Place a persistent damaging circle",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview rune field",
+        "PressReleaseAimCast": "Release key, then confirm rune field"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Geomancer.StonePillar",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 66, "tag": "Cooldown.Champion.Geomancer.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.StonePillar" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 720, "radius": 140, "showRangeCircle": true, "validColor": "#F0B36C77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.E"] },
+    "presentation": {
+      "displayName": "Stone Pillar",
+      "iconGlyph": "E",
+      "accentColor": "#F0B36C",
+      "hintText": "Raise a blocker manifestation",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview pillar placement",
+        "PressReleaseAimCast": "Release key, then confirm pillar"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.Geomancer.PrismaticBeam",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 96, "tag": "Cooldown.Champion.Geomancer.R" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.Geomancer.PrismaticBeam" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 920, "radius": 80, "showRangeCircle": true, "validColor": "#78E2FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.Geomancer.R"] },
+    "presentation": {
+      "displayName": "Prismatic Beam",
+      "iconGlyph": "R",
+      "accentColor": "#78E2FF",
+      "hintText": "Fire a direct beam to cursor",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview beam",
+        "PressReleaseAimCast": "Release key, then confirm beam"
       }
     }
   },
@@ -481,6 +578,104 @@
       "modeHints": {
         "SmartCastWithIndicator": "Hold to preview heal range",
         "PressReleaseAimCast": "Release key, then confirm heal"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.SpellBeacon",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 48, "tag": "Cooldown.Champion.SpellEngineer.Q" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.SpellBeacon" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 760, "radius": 110, "showRangeCircle": true, "validColor": "#73E1FF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.Q"] },
+    "presentation": {
+      "displayName": "Spell Beacon",
+      "iconGlyph": "Q",
+      "accentColor": "#73E1FF",
+      "hintText": "Deploy a forward scout beacon",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview beacon landing",
+        "PressReleaseAimCast": "Release key, then confirm beacon"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.GravityWell",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 60, "tag": "Cooldown.Champion.SpellEngineer.W" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.GravityWell" },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 760, "radius": 240, "showRangeCircle": true, "validColor": "#78AFFF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.W"] },
+    "presentation": {
+      "displayName": "Gravity Well",
+      "iconGlyph": "W",
+      "accentColor": "#78AFFF",
+      "hintText": "Place a damaging control zone",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview well radius",
+        "PressReleaseAimCast": "Release key, then confirm well"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.CataclysmRing",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 90, "tag": "Cooldown.Champion.SpellEngineer.E" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.CataclysmRing" },
+        { "kind": "EventGate", "tick": 0, "payloadA": 180 },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Circle", "range": 700, "radius": 300, "showRangeCircle": true, "validColor": "#FF9D6F77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.E"] },
+    "presentation": {
+      "displayName": "Cataclysm Ring",
+      "iconGlyph": "E",
+      "accentColor": "#FF9D6F",
+      "hintText": "Raise a temporary arena wall",
+      "modeHints": {
+        "SmartCastWithIndicator": "Hold to preview arena center",
+        "PressReleaseAimCast": "Release key, then confirm arena"
+      }
+    }
+  },
+  {
+    "id": "Ability.Champion.SpellEngineer.GuidedLaser",
+    "exec": {
+      "clockId": "FixedFrame",
+      "items": [
+        { "kind": "TagClip", "tick": 0, "duration": 132, "tag": "Cooldown.Champion.SpellEngineer.R" },
+        { "kind": "EffectSignal", "tick": 0, "template": "Effect.Champion.SpellEngineer.GuidedLaser" },
+        { "kind": "EventGate", "tick": 0, "payloadA": 210 },
+        { "kind": "End", "tick": 0 }
+      ]
+    },
+    "indicator": { "shape": "Line", "range": 1050, "radius": 75, "showRangeCircle": true, "validColor": "#B07CFF77", "invalidColor": "#E2575788" },
+    "blockTags": { "blockedAny": ["Cooldown.Champion.SpellEngineer.R"] },
+    "input": {
+      "trigger": "Held",
+      "heldPolicy": "StartEnd",
+      "castModeOverride": "SmartCast"
+    },
+    "presentation": {
+      "displayName": "Guided Laser",
+      "iconGlyph": "R",
+      "accentColor": "#B07CFF",
+      "hintText": "Hold to channel steerable beam, release to stop",
+      "modeHints": {
+        "SmartCast": "Hold to channel steerable beam, release to stop"
       }
     }
   }

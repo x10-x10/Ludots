@@ -9,6 +9,7 @@ using Ludots.Core.Navigation2D.Avoidance;
 using Ludots.Core.Navigation2D.Components;
 using Ludots.Core.Navigation2D.Config;
 using Ludots.Core.Navigation2D.Runtime;
+using Ludots.Core.Physics2D;
 using Ludots.Core.Physics;
 using Ludots.Core.Physics2D.Components;
 
@@ -1603,27 +1604,113 @@ namespace Ludots.Core.Physics2D.Systems
 
             foreach (ref var chunk in World.Query(in _flowObstacleQuery))
             {
+                ref var entityFirst = ref chunk.Entity(0);
                 var positions = chunk.GetSpan<Position2D>();
+                var obstacles = chunk.GetSpan<NavObstacle2D>();
                 var kinematics = chunk.GetSpan<NavKinematics2D>();
                 foreach (var index in chunk)
                 {
-                    _runtime.Surface.SplatObstacleCircle(
-                        positions[index].Value.ToVector2(),
-                        kinematics[index].RadiusCm.ToFloat(),
-                        createTilesIfMissing: false);
+                    var entity = System.Runtime.CompilerServices.Unsafe.Add(ref entityFirst, index);
+                    float haloCenterRadiusCm = StampFlowObstacleShape(entity, positions[index], obstacles[index]);
 
                     var discomfort = _runtime.Config.FlowCrowd.Discomfort;
                     if (discomfort.Enabled && discomfort.ObstacleHaloRadiusCm > 0 && discomfort.ObstacleHaloValue > 0f)
                     {
                         _runtime.Surface.SplatDiscomfortCircle(
                             positions[index].Value.ToVector2(),
-                            kinematics[index].RadiusCm.ToFloat() + discomfort.ObstacleHaloRadiusCm,
+                            MathF.Max(haloCenterRadiusCm, kinematics[index].RadiusCm.ToFloat()) + discomfort.ObstacleHaloRadiusCm,
                             discomfort.ObstacleHaloValue,
                             discomfort.ObstacleHaloEdgeValue,
                             createTilesIfMissing: false);
                     }
                 }
             }
+        }
+
+        private float StampFlowObstacleShape(Entity entity, in Position2D position, in NavObstacle2D obstacle)
+        {
+            var rotation = World.TryGet(entity, out Rotation2D obstacleRotation) ? obstacleRotation : Rotation2D.Identity;
+
+            switch (obstacle.Shape)
+            {
+                case NavObstacleShape2D.Circle:
+                    if (ShapeDataStorage2D.TryGetCircle(obstacle.ShapeDataIndex, out var circle))
+                    {
+                        Vector2 center = (position.Value + circle.LocalCenter).ToVector2();
+                        float radiusCm = circle.Radius.ToFloat();
+                        _runtime.Surface.SplatObstacleCircle(center, radiusCm, createTilesIfMissing: false);
+                        return radiusCm;
+                    }
+                    break;
+
+                case NavObstacleShape2D.Box:
+                    if (ShapeDataStorage2D.TryGetBox(obstacle.ShapeDataIndex, out var box))
+                    {
+                        Vector2 center = (position.Value + box.LocalCenter).ToVector2();
+                        _runtime.Surface.SplatObstacleOrientedBox(
+                            center,
+                            box.HalfWidth.ToFloat(),
+                            box.HalfHeight.ToFloat(),
+                            rotation.Value.ToFloat(),
+                            createTilesIfMissing: false);
+                        return MathF.Sqrt((box.HalfWidth * box.HalfWidth + box.HalfHeight * box.HalfHeight).ToFloat());
+                    }
+                    break;
+
+                case NavObstacleShape2D.Polygon:
+                    if (ShapeDataStorage2D.TryGetPolygon(obstacle.ShapeDataIndex, out var polygon) &&
+                        polygon.Vertices != null &&
+                        polygon.VertexCount >= 3)
+                    {
+                        Span<Vector2> vertices = stackalloc Vector2[polygon.VertexCount];
+                        FillPolygonWorldVertices(position.Value, rotation.Value, polygon, vertices);
+                        _runtime.Surface.SplatObstaclePolygon(vertices.Slice(0, polygon.VertexCount), createTilesIfMissing: false);
+                        return ComputePolygonBoundingRadiusCm(polygon);
+                    }
+                    break;
+            }
+
+            return 0f;
+        }
+
+        private static void FillPolygonWorldVertices(Fix64Vec2 worldPosition, Fix64 rotation, in PolygonShapeData polygon, Span<Vector2> destination)
+        {
+            Fix64 sin = Fix64.Zero;
+            Fix64 cos = Fix64.OneValue;
+            if (rotation != Fix64.Zero)
+            {
+                sin = Fix64Math.Sin(rotation);
+                cos = Fix64Math.Cos(rotation);
+            }
+
+            for (int i = 0; i < polygon.VertexCount; i++)
+            {
+                Fix64Vec2 local = polygon.Vertices[i] - polygon.LocalCenter;
+                if (rotation != Fix64.Zero)
+                {
+                    local = new Fix64Vec2(
+                        (cos * local.X) - (sin * local.Y),
+                        (sin * local.X) + (cos * local.Y));
+                }
+
+                destination[i] = (worldPosition + local).ToVector2();
+            }
+        }
+
+        private static float ComputePolygonBoundingRadiusCm(in PolygonShapeData polygon)
+        {
+            float maxDistanceSq = 0f;
+            for (int i = 0; i < polygon.VertexCount; i++)
+            {
+                Vector2 delta = (polygon.Vertices[i] - polygon.LocalCenter).ToVector2();
+                float distanceSq = delta.LengthSquared();
+                if (distanceSq > maxDistanceSq)
+                {
+                    maxDistanceSq = distanceSq;
+                }
+            }
+
+            return maxDistanceSq > 0f ? MathF.Sqrt(maxDistanceSq) : 0f;
         }
 
         private void StampFlowCrowdDensity(ReadOnlySpan<Vector2> positions, ReadOnlySpan<Vector2> velocities)

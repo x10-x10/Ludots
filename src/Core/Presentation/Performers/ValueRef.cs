@@ -33,6 +33,17 @@ namespace Ludots.Core.Presentation.Performers
         /// If no resolver is injected, returns the DefaultColor channel.
         /// </summary>
         EntityColor = 5,
+
+        /// <summary>
+        /// Read <see cref="Components.FacingDirection.AngleRad"/> from the owner.
+        /// </summary>
+        FacingRadians = 6,
+
+        /// <summary>
+        /// Read <see cref="Components.FacingDirection.AngleRad"/> from the owner and
+        /// convert it to degrees.
+        /// </summary>
+        FacingDegrees = 7,
     }
 
     /// <summary>
@@ -91,6 +102,16 @@ namespace Ludots.Core.Presentation.Performers
         {
             Source = ValueSourceKind.EntityColor,
             SourceId = channelIndex
+        };
+
+        public static ValueRef FromFacingRadians() => new()
+        {
+            Source = ValueSourceKind.FacingRadians
+        };
+
+        public static ValueRef FromFacingDegrees() => new()
+        {
+            Source = ValueSourceKind.FacingDegrees
         };
     }
 }

@@ -105,19 +105,21 @@ namespace Ludots.Core.Gameplay.GAS.Systems
         private readonly GasPresentationEventBuffer _presentationEvents;
         private readonly EffectTemplateRegistry _templates;
         private readonly ISpatialQueryService _spatialQueries;
+        private readonly TagOps _tagOps;
 
         // ── Phase Graph execution (optional) ──
         private readonly EffectPhaseExecutor _phaseExecutor;
         private readonly Ludots.Core.NodeLibraries.GASGraph.IGraphRuntimeApi _graphApi;
         private readonly Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi _graphApiHost;
 
-        public EffectApplicationSystem(World world, EffectRequestQueue effectRequests = null, GasBudget budget = null, GasPresentationEventBuffer presentationEvents = null, EffectTemplateRegistry templates = null, ISpatialQueryService spatialQueries = null, RuntimeEntitySpawnQueue spawnRequests = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null) : base(world)
+        public EffectApplicationSystem(World world, EffectRequestQueue effectRequests = null, GasBudget budget = null, GasPresentationEventBuffer presentationEvents = null, EffectTemplateRegistry templates = null, ISpatialQueryService spatialQueries = null, RuntimeEntitySpawnQueue spawnRequests = null, EffectPhaseExecutor phaseExecutor = null, Ludots.Core.NodeLibraries.GASGraph.Host.GasGraphRuntimeApi graphApi = null, TagOps tagOps = null) : base(world)
         {
             _effectRequests = effectRequests;
             _budget = budget;
             _presentationEvents = presentationEvents;
             _templates = templates;
             _spatialQueries = spatialQueries;
+            _tagOps = tagOps ?? new TagOps();
             _phaseExecutor = phaseExecutor;
             _graphApiHost = graphApi;
             _graphApi = graphApi;
@@ -152,6 +154,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                 _onApplyCallbacks.Clear();
                 _fanOutCommands.Clear();
                 _pendingEffects.Clear();
+                _pendingListenerRegistrations.Clear();
                 _onApplyCreateBudget.NextFrame();
                 _onApplyDropped = 0;
                 _fanOutDropped = 0;
@@ -187,17 +190,16 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                         var effectEntity = _pendingEffects[_cursor].Effect;
                         _cursor++;
                         if (!World.IsAlive(effectEntity)) continue;
+                        ref var effect = ref World.Get<GameplayEffect>(effectEntity);
 
-                        if (World.Has<EffectCancelled>(effectEntity))
+                        if (World.Has<EffectCancelled>(effectEntity) || effect.CancelRequested)
                         {
-                            ref var cancelledEffect = ref World.Get<GameplayEffect>(effectEntity);
-                            cancelledEffect.State = EffectState.Committed;
+                            effect.State = EffectState.Committed;
                             _effectsToDestroy.Add(effectEntity);
                             workUnits++;
                             continue;
                         }
 
-                        ref var effect = ref World.Get<GameplayEffect>(effectEntity);
                         ref var context = ref World.Get<EffectContext>(effectEntity);
                         ref var modifiers = ref World.Get<EffectModifiers>(effectEntity);
 
@@ -237,7 +239,7 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                                 EffectModifierOps.Apply(in modifiers, ref attrBuffer);
                                 float after = primaryAttrId >= 0 ? attrBuffer.GetCurrent(primaryAttrId) : 0f;
                                 float delta = after - before;
-                                if (_presentationEvents != null && delta != 0f)
+                                if (_presentationEvents != null)
                                 {
                                     _presentationEvents.Publish(new GasPresentationEvent
                                     {
@@ -390,16 +392,27 @@ namespace Ludots.Core.Gameplay.GAS.Systems
                             ref var context = ref World.Get<EffectContext>(e);
                             ref var effectForActivate = ref World.Get<GameplayEffect>(e);
                             effectForActivate.State = EffectState.Committed;
+                            int templateId = World.Has<EffectTemplateRef>(e)
+                                ? World.Get<EffectTemplateRef>(e).TemplateId
+                                : 0;
 
                             // Grant tags to target entity based on EffectGrantedTags component
                             if (World.Has<EffectGrantedTags>(e) && World.IsAlive(context.Target))
                             {
                                 ref readonly var grantedTags = ref World.Get<EffectGrantedTags>(e);
-                                if (!World.Has<TagCountContainer>(context.Target))
-                                    World.Add(context.Target, new TagCountContainer());
-                                ref var tagCounts = ref World.Get<TagCountContainer>(context.Target);
                                 int stackCount = World.Has<EffectStack>(e) ? World.Get<EffectStack>(e).Count : 1;
-                                EffectTagContributionHelper.Grant(in grantedTags, ref tagCounts, stackCount, _budget);
+                                EffectTagContributionHelper.GrantToEntity(World, context.Target, in grantedTags, stackCount, _tagOps, _budget);
+                            }
+
+                            if (_presentationEvents != null && templateId > 0)
+                            {
+                                _presentationEvents.Publish(new GasPresentationEvent
+                                {
+                                    Kind = GasPresentationEventKind.EffectActivated,
+                                    Actor = context.Source,
+                                    Target = context.Target,
+                                    EffectTemplateId = templateId
+                                });
                             }
                         }
                         workUnits++;

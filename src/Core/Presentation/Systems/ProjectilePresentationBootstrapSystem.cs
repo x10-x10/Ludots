@@ -39,7 +39,10 @@ namespace Ludots.Core.Presentation.Systems
                     World.Add(entity, new ProjectilePresentationBootstrapState());
 
                     ref readonly var projectile = ref projectiles[i];
-                    if (!_bindings.TryGet(projectile.ImpactEffectTemplateId, out var binding))
+                    int bindingEffectId = projectile.PresentationEffectTemplateId > 0
+                        ? projectile.PresentationEffectTemplateId
+                        : projectile.ImpactEffectTemplateId;
+                    if (!_bindings.TryGet(bindingEffectId, out var binding))
                     {
                         continue;
                     }

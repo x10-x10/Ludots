@@ -22,10 +22,11 @@ namespace Ludots.Core.Presentation.Systems
     {
         private readonly PrefabRegistry _prefabs;
         private readonly PresentationCommandBuffer _commands;
-        private readonly PrimitiveDrawBuffer _draw;
+        private readonly PresentationVisualProxyEmitter _proxyEmitter;
         private readonly TransientMarkerBuffer _markers;
         private readonly PerformerInstanceBuffer _instances;
         private readonly PresentationStableIdAllocator _stableIds;
+        private readonly PerformerDefinitionRegistry _definitions;
 
         public PerformerRuntimeSystem(
             World world,
@@ -34,19 +35,26 @@ namespace Ludots.Core.Presentation.Systems
             PrimitiveDrawBuffer draw,
             TransientMarkerBuffer markers,
             PerformerInstanceBuffer instances,
-            PresentationStableIdAllocator stableIds)
+            PresentationStableIdAllocator stableIds,
+            PerformerDefinitionRegistry definitions,
+            PrimitiveDrawBuffer? snapshotBuffer = null,
+            PresentationVisualProxyBuffer? proxyBuffer = null,
+            SkinnedVisualBatchBuffer? skinnedBatchBuffer = null)
             : base(world)
         {
             _prefabs = prefabs ?? throw new ArgumentNullException(nameof(prefabs));
             _commands = commands ?? throw new ArgumentNullException(nameof(commands));
-            _draw = draw ?? throw new ArgumentNullException(nameof(draw));
+            _proxyEmitter = new PresentationVisualProxyEmitter(draw ?? throw new ArgumentNullException(nameof(draw)), snapshotBuffer, proxyBuffer, skinnedBatchBuffer);
             _markers = markers ?? throw new ArgumentNullException(nameof(markers));
             _instances = instances ?? throw new ArgumentNullException(nameof(instances));
             _stableIds = stableIds ?? throw new ArgumentNullException(nameof(stableIds));
+            _definitions = definitions ?? throw new ArgumentNullException(nameof(definitions));
         }
 
         public override void Update(in float dt)
         {
+            _instances.ReleaseDeadEntityAnchors(World);
+
             // 1. Process all commands
             var cmdSpan = _commands.GetSpan();
             for (int i = 0; i < cmdSpan.Length; i++)
@@ -81,7 +89,7 @@ namespace Ludots.Core.Presentation.Systems
             _commands.Clear();
 
             // 2. Tick transient markers and emit to PrimitiveDrawBuffer
-            _markers.TickAndEmit(_draw, dt, World);
+            _markers.TickAndEmit(_proxyEmitter, dt, World);
         }
 
         private void HandlePlayOneShot(in PresentationCommand cmd)
@@ -106,6 +114,16 @@ namespace Ludots.Core.Presentation.Systems
         private void HandleCreatePerformer(in PresentationCommand cmd)
         {
             // IdA = PerformerDefinitionId, IdB = ScopeId, Source = Owner
+            if (!_definitions.TryGet(cmd.IdA, out var definition))
+            {
+                throw new InvalidOperationException($"Performer definition id={cmd.IdA} is not registered.");
+            }
+
+            if (ShouldSkipDuplicatePersistentScopedCreate(in cmd, definition))
+            {
+                return;
+            }
+
             if (!_instances.TryAllocate(
                     cmd.IdA,
                     cmd.Source,
@@ -115,8 +133,28 @@ namespace Ludots.Core.Presentation.Systems
                     _stableIds.Allocate(),
                     out _))
             {
-                throw new InvalidOperationException("PerformerInstanceBuffer is full while creating a performer instance.");
+                string performerKey = _definitions.GetName(cmd.IdA);
+                string ownerText = cmd.Source == Entity.Null
+                    ? "Entity.Null"
+                    : $"Entity(Id={cmd.Source.Id},World={cmd.Source.WorldId},Ver={cmd.Source.Version})";
+                throw new InvalidOperationException(
+                    $"PerformerInstanceBuffer is full while creating performer '{performerKey}' (defId={cmd.IdA}, scopeId={cmd.IdB}, owner={ownerText}, active={_instances.ActiveCount}, capacity={_instances.Capacity}).");
             }
+        }
+
+        private bool ShouldSkipDuplicatePersistentScopedCreate(in PresentationCommand cmd, PerformerDefinition definition)
+        {
+            if (definition.DefaultLifetime > 0f || cmd.IdB <= 0)
+            {
+                return false;
+            }
+
+            return _instances.HasActiveScopedInstance(
+                cmd.IdA,
+                cmd.Source,
+                cmd.IdB,
+                cmd.AnchorKind,
+                cmd.Position);
         }
     }
 }
