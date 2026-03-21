@@ -171,12 +171,12 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Entity captain = FindEntityByName(engine.World, CameraShowcaseIds.CaptainName);
             Assert.That(captain, Is.Not.EqualTo(Entity.Null));
 
-            SetCompatSelectedEntity(engine, captain);
+            SetAmbientSelection(engine, captain);
             TickCamera(engine, 3);
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(3400f, 2200f)));
             Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(3400f, 2200f)));
 
-            ClearCompatSelectedEntity(engine);
+            ClearAmbientSelection(engine);
             TickCamera(engine, 3);
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.Null);
             Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
@@ -311,31 +311,14 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 ?? throw new InvalidOperationException("SelectionRuntime is missing.");
             Entity local = GetLocalPlayer(engine);
             Assert.That(selection.ReplaceSelection(local, SelectionSetKeys.Ambient, entities), Is.True);
-            engine.GlobalContext[CoreServiceKeys.SelectionViewOwnerEntity.Name] = local;
-            engine.GlobalContext[CoreServiceKeys.SelectionViewSetKey.Name] = SelectionSetKeys.Ambient;
-            if (entities.Length > 0 && entities[0] != Entity.Null)
-            {
-                engine.GlobalContext[CoreServiceKeys.SelectedEntity.Name] = entities[0];
-            }
-            else
-            {
-                engine.GlobalContext.Remove(CoreServiceKeys.SelectedEntity.Name);
-            }
+            selection.TryBindView(local, SelectionViewKeys.Primary, local, SelectionSetKeys.Ambient);
+            engine.GlobalContext[CoreServiceKeys.SelectionViewViewerEntity.Name] = local;
+            engine.GlobalContext[CoreServiceKeys.SelectionViewKey.Name] = SelectionViewKeys.Primary;
         }
 
         private static void ClearAmbientSelection(GameEngine engine)
         {
             SetAmbientSelection(engine);
-        }
-
-        private static void SetCompatSelectedEntity(GameEngine engine, Entity entity)
-        {
-            engine.GlobalContext[CoreServiceKeys.SelectedEntity.Name] = entity;
-        }
-
-        private static void ClearCompatSelectedEntity(GameEngine engine)
-        {
-            engine.GlobalContext.Remove(CoreServiceKeys.SelectedEntity.Name);
         }
 
         private static string FindRepoRoot()
