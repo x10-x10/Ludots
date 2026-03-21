@@ -10,6 +10,7 @@ using Ludots.Core.Gameplay.Camera;
 using Ludots.Core.Gameplay.Components;
 using Ludots.Core.Gameplay.GAS;
 using Ludots.Core.Gameplay.GAS.Components;
+using Ludots.Core.Gameplay.GAS.Orders;
 using Ludots.Core.Gameplay.GAS.Registry;
 using Ludots.Core.Gameplay.Spawning;
 using Ludots.Core.Gameplay.GAS.Systems;
@@ -230,9 +231,8 @@ namespace Ludots.Tests.GAS.Production
             AssertEntityHasTag(engine.World, "Garen Courage", "State.Champion.Garen.Courage");
             AssertEntityHasTag(engine.World, "Jayce Hammer", "State.Champion.Jayce.Hammer");
 
-            Entity selected = engine.GlobalContext.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var selectedObj) &&
-                              selectedObj is Entity typedSelected
-                ? typedSelected
+            Entity selected = SelectionContextRuntime.TryGetCurrentPrimary(engine.World, engine.GlobalContext, out Entity currentPrimary)
+                ? currentPrimary
                 : Entity.Null;
             Assert.That(ReadEntityName(engine.World, selected), Is.EqualTo("Ezreal Alpha"), "Sandbox runtime should seed an initial controllable selection.");
             var performerRegistry = engine.GetService(CoreServiceKeys.PerformerDefinitionRegistry)
@@ -370,11 +370,12 @@ namespace Ludots.Tests.GAS.Production
             Entity localPlayer = engine.GetService(CoreServiceKeys.LocalPlayerEntity);
             Entity ezrealCooldown = FindEntityByName(engine.World, "Ezreal Cooldown");
             Entity garenAlpha = FindEntityByName(engine.World, "Garen Alpha");
-            ref var selection = ref engine.World.Get<SelectionBuffer>(localPlayer);
-            selection.Clear();
-            selection.Add(ezreal);
-            selection.Add(garenAlpha);
-            engine.World.Set(localPlayer, selection);
+            var selection = engine.GetService(CoreServiceKeys.SelectionRuntime)
+                ?? throw new InvalidOperationException("SelectionRuntime missing.");
+            selection.ReplaceSelection(localPlayer, SelectionSetKeys.LivePrimary, new[] { ezreal, garenAlpha });
+            selection.TryBindView(localPlayer, SelectionViewKeys.Primary, localPlayer, SelectionSetKeys.LivePrimary);
+            engine.GlobalContext[CoreServiceKeys.SelectionViewViewerEntity.Name] = localPlayer;
+            engine.GlobalContext[CoreServiceKeys.SelectionViewKey.Name] = SelectionViewKeys.Primary;
 
             engine.World.Add(ezreal, new CameraFollowWeight { Value = 1f });
             engine.World.Add(garenAlpha, new CameraFollowWeight { Value = 3f });
@@ -446,16 +447,22 @@ namespace Ludots.Tests.GAS.Production
                 Is.True,
                 "Stress showcase should reuse DiagnosticsOverlayMod runtime HUD for FPS/performance readout.");
 
-            var buttons = new EntityCommandPanelToolbarButtonView[16];
+            var buttons = new EntityCommandPanelToolbarButtonView[20];
             int buttonCount = toolbar.CopyButtons(buttons);
-            Assert.That(buttonCount, Is.EqualTo(14));
-            Assert.That(buttons[7].ButtonId, Is.EqualTo("ChampionSkillSandbox.Stress.TeamA.Decrease"));
-            Assert.That(buttons[8].ButtonId, Is.EqualTo(StressTeamAIncreaseToolbarButtonId));
-            Assert.That(buttons[9].ButtonId, Is.EqualTo("ChampionSkillSandbox.Stress.TeamB.Decrease"));
-            Assert.That(buttons[10].ButtonId, Is.EqualTo(StressTeamBIncreaseToolbarButtonId));
-            Assert.That(buttons[11].ButtonId, Is.EqualTo(StressHudBarToggleToolbarButtonId));
-            Assert.That(buttons[12].ButtonId, Is.EqualTo(StressHudTextToggleToolbarButtonId));
-            Assert.That(buttons[13].ButtonId, Is.EqualTo(StressCombatTextToggleToolbarButtonId));
+            Assert.That(buttonCount, Is.EqualTo(19));
+            string[] buttonIds = buttons[..buttonCount].Select(button => button.ButtonId).ToArray();
+            Assert.That(buttonIds, Does.Contain("ChampionSkillSandbox.Stress.TeamA.Decrease"));
+            Assert.That(buttonIds, Does.Contain(StressTeamAIncreaseToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain("ChampionSkillSandbox.Stress.TeamB.Decrease"));
+            Assert.That(buttonIds, Does.Contain(StressTeamBIncreaseToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(StressHudBarToggleToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(StressHudTextToggleToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(StressCombatTextToggleToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(PlayerSelectionToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(PlayerFormationToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(AiTargetToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(AiFormationToolbarButtonId));
+            Assert.That(buttonIds, Does.Contain(CommandSnapshotToolbarButtonId));
 
             TickUntil(engine, () =>
             {

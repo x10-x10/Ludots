@@ -32,10 +32,10 @@ namespace CameraAcceptanceMod.UI
         private const string DiagnosticsCardId = "camera-diagnostics-card";
         private const int DiagnosticsRefreshIntervalTicks = 6;
         private const float PanelWidth = 500f;
-        private const float SelectionBufferHeight = 180f;
+        private const float SelectionViewHeight = 180f;
         private const float SelectionRowHeight = 22f;
         private const int DefaultSelectionRowPoolSize = 1;
-        private const string SelectionBufferHostId = "camera-selection-buffer-list";
+        private const string SelectionViewHostId = "camera-selection-view-list";
         private const float VisibleEntityBufferHeight = 220f;
         private const float VisibleEntityRowHeight = 20f;
         private const string VisibleEntityBufferHostId = "camera-visible-entity-list";
@@ -371,10 +371,10 @@ namespace CameraAcceptanceMod.UI
         {
             int rowPoolSize = ResolveSelectionRowPoolSize(selectedIds.Count);
             UiVirtualWindow window = context.GetVerticalVirtualWindow(
-                SelectionBufferHostId,
+                SelectionViewHostId,
                 rowPoolSize,
                 SelectionRowHeight,
-                SelectionBufferHeight,
+                SelectionViewHeight,
                 overscan: 2);
 
             var rows = new List<UiElementBuilder>();
@@ -396,10 +396,10 @@ namespace CameraAcceptanceMod.UI
 
             return Ui.Column(
                     Ui.Text("Selection View").FontSize(12f).Bold().Color("#F4C77D"),
-                    Ui.Text($"Selected Entries: {selectedIds.Count} | Virtual Rows: {rowPoolSize} | Visible: {FormatVisibleRange(window)}").Id("camera-selection-buffer-summary").FontSize(11f).Color("#8EA2BD"),
+                    Ui.Text($"Selected Entries: {selectedIds.Count} | Virtual Rows: {rowPoolSize} | Visible: {FormatVisibleRange(window)}").Id("camera-selection-view-summary").FontSize(11f).Color("#8EA2BD"),
                     Ui.ScrollView(rows.ToArray())
-                        .Id(SelectionBufferHostId)
-                        .Height(SelectionBufferHeight)
+                        .Id(SelectionViewHostId)
+                        .Height(SelectionViewHeight)
                         .Padding(8f)
                         .Gap(4f)
                         .Radius(12f)
