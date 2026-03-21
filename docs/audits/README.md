@@ -5,6 +5,7 @@
 ## 1 目录
 
 * [Projection Marker 恢复审计](camera_acceptance_projection_marker_recovery.md)
+* [Chunked Large-World Graph Runtime Gap Audit](chunked_large_world_graph_runtime_gap.md)
 * [端到端验收测试记录](e2e_acceptance_tests.md)
 * [Phase 1 / Phase 2A 审计报告](phase1_phase2a_audit_report.md)
 * [Presentation Hotpath Harness 优化验证](presentation_hotpath_harness_optimization_validation.md)
