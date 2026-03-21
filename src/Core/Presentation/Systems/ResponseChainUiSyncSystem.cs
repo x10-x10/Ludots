@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Arch.System;
 using Ludots.Core.Gameplay.GAS.Orders;
+using Ludots.Core.Input.Interaction;
 using Ludots.Core.Presentation.Hud;
 using Ludots.Core.Scripting;
 using System.Numerics;
@@ -9,6 +10,8 @@ namespace Ludots.Core.Presentation.Systems
 {
     public sealed class ResponseChainUiSyncSystem : ISystem<float>
     {
+        private static readonly InteractionActionBindings DefaultBindings = new();
+
         private readonly Dictionary<string, object> _globals;
         private readonly ResponseChainUiState _ui;
         private readonly OrderTypeRegistry _orderTypeRegistry;
@@ -43,6 +46,7 @@ namespace Ludots.Core.Presentation.Systems
             Vector4 title = new(1f, 0.92f, 0.35f, 1f);
             Vector4 text = new(1f, 1f, 1f, 0.95f);
             Vector4 hint = new(0.72f, 0.82f, 0.95f, 0.9f);
+            var bindings = ResolveBindings();
 
             int x = 12;
             int y = 12;
@@ -71,12 +75,28 @@ namespace Ludots.Core.Presentation.Systems
                 lineY += lineHeight;
             }
 
-            overlay.AddText(x + padding, lineY + 4, "Space=Pass  N=Negate  1=Chain", 13, hint);
+            overlay.AddText(
+                x + padding,
+                lineY + 4,
+                $"Pass={bindings.ResponseChainPassActionId}  Negate={bindings.ResponseChainNegateActionId}  Activate={bindings.ResponseChainActivateActionId}",
+                13,
+                hint);
 
             if (_ui.Dirty)
             {
                 _ui.MarkClean();
             }
+        }
+
+        private InteractionActionBindings ResolveBindings()
+        {
+            if (_globals.TryGetValue(CoreServiceKeys.InteractionActionBindings.Name, out var obj) &&
+                obj is InteractionActionBindings bindings)
+            {
+                return bindings;
+            }
+
+            return DefaultBindings;
         }
  
         public void BeforeUpdate(in float dt) { }

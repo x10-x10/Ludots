@@ -43,6 +43,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
     public sealed class CameraAcceptanceModTests
     {
         private const int BlendSettleFrames = 40;
+        private const int LargeSelectionCount = 128;
         private const string CameraAcceptanceDiagnosticsServiceName = "CameraAcceptance.DiagnosticsState";
 
         private static readonly string[] AcceptanceMods =
@@ -496,14 +497,14 @@ namespace Ludots.Tests.ThreeC.Acceptance
             TickWithHudProjection(engine, hudProjection, 1);
 
             Entity local = GetLocalPlayer(engine);
-            ref var selection = ref engine.World.Get<SelectionBuffer>(local);
-            Assert.That(selection.Count, Is.EqualTo(3));
-            Assert.That(selection.Contains(hero), Is.True);
-            Assert.That(selection.Contains(scout), Is.True);
-            Assert.That(selection.Contains(captain), Is.True);
-            Assert.That(engine.World.Has<SelectedTag>(hero), Is.True);
-            Assert.That(engine.World.Has<SelectedTag>(scout), Is.True);
-            Assert.That(engine.World.Has<SelectedTag>(captain), Is.True);
+            Entity[] selection = ReadLiveSelection(engine, local);
+            Assert.That(selection.Length, Is.EqualTo(3));
+            Assert.That(selection, Does.Contain(hero));
+            Assert.That(selection, Does.Contain(scout));
+            Assert.That(selection, Does.Contain(captain));
+            Assert.That(IsInLiveSelection(engine, local, hero), Is.True);
+            Assert.That(IsInLiveSelection(engine, local, scout), Is.True);
+            Assert.That(IsInLiveSelection(engine, local, captain), Is.True);
 
             var overlay = engine.GetService(CoreServiceKeys.ScreenOverlayBuffer);
             var screenHud = engine.GetService(CoreServiceKeys.PresentationScreenHudBuffer);
@@ -561,12 +562,12 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 reapplyVisualOverrides);
 
             Entity local = GetLocalPlayer(engine);
-            ref var selection = ref engine.World.Get<SelectionBuffer>(local);
-            Assert.That(selection.Count, Is.EqualTo(1));
-            Assert.That(selection.Contains(scout), Is.True);
-            Assert.That(selection.Contains(hero), Is.False);
-            Assert.That(engine.World.Has<SelectedTag>(scout), Is.True);
-            Assert.That(engine.World.Has<SelectedTag>(hero), Is.False);
+            Entity[] selection = ReadLiveSelection(engine, local);
+            Assert.That(selection.Length, Is.EqualTo(1));
+            Assert.That(selection, Does.Contain(scout));
+            Assert.That(selection, Does.Not.Contain(hero));
+            Assert.That(IsInLiveSelection(engine, local, scout), Is.True);
+            Assert.That(IsInLiveSelection(engine, local, hero), Is.False);
         }
 
         [Test]
@@ -669,7 +670,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Entity hero = FindEntityByName(engine.World, CameraAcceptanceIds.HeroName);
             Entity scout = FindEntityByName(engine.World, CameraAcceptanceIds.ScoutName);
             Entity captain = FindEntityByName(engine.World, CameraAcceptanceIds.CaptainName);
-            SetSelectionBuffer(engine, hero, scout, captain);
+            SetViewedSelection(engine, hero, scout, captain);
             Tick(engine, 1);
 
             Assert.That(ReferenceEquals(scene, uiRoot.Scene), Is.True,
@@ -678,7 +679,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 "Selection changes should advance the reactive panel scene version.");
 
             string sceneText = ExtractUiSceneText(scene);
-            Assert.That(sceneText, Does.Contain("Selection Buffer"));
+            Assert.That(sceneText, Does.Contain("Selection View"));
             Assert.That(sceneText, Does.Contain($"#{hero.Id}"));
             Assert.That(sceneText, Does.Contain($"#{scout.Id}"));
             Assert.That(sceneText, Does.Contain($"#{captain.Id}"));
@@ -700,32 +701,31 @@ namespace Ludots.Tests.ThreeC.Acceptance
 
             UiScene scene = uiRoot.Scene ?? throw new InvalidOperationException("Acceptance panel should mount when a UIRoot service is present.");
             var diagnostics = GetCameraAcceptanceDiagnostics(engine);
-            Assert.That(scene.FindByElementId("camera-selection-buffer-list"), Is.Not.Null);
-            Assert.That(scene.TryGetVirtualWindow("camera-selection-buffer-list", out UiVirtualWindow initialWindow), Is.True);
-            Assert.That(initialWindow.TotalCount, Is.EqualTo(SelectionBuffer.CAPACITY));
+            Assert.That(scene.FindByElementId("camera-selection-view-list"), Is.Not.Null);
+            Assert.That(scene.TryGetVirtualWindow("camera-selection-view-list", out UiVirtualWindow initialWindow), Is.True);
+            Assert.That(initialWindow.TotalCount, Is.GreaterThan(0));
             Assert.That(initialWindow.VisibleCount, Is.GreaterThan(0));
-            Assert.That(initialWindow.VisibleCount, Is.LessThan(initialWindow.TotalCount));
             Assert.That(scene.LastReactiveUpdateMetrics.VirtualizedWindowCount, Is.EqualTo(1));
-            Assert.That(scene.LastReactiveUpdateMetrics.VirtualizedTotalItems, Is.EqualTo(SelectionBuffer.CAPACITY));
+            Assert.That(scene.LastReactiveUpdateMetrics.VirtualizedTotalItems, Is.EqualTo(initialWindow.TotalCount));
             Assert.That(scene.LastReactiveUpdateMetrics.VirtualizedComposedItems, Is.EqualTo(initialWindow.VisibleCount));
 
             UiReactiveUpdateMetrics before = scene.LastReactiveUpdateMetrics;
-            Entity[] selection = CreateAliveEntities(engine.World, SelectionBuffer.CAPACITY);
-            SetSelectionBuffer(engine, selection);
+            Entity[] selection = CreateAliveEntities(engine.World, LargeSelectionCount);
+            SetViewedSelection(engine, selection);
 
             Tick(engine, 1);
 
             UiReactiveUpdateMetrics after = scene.LastReactiveUpdateMetrics;
-            Assert.That(scene.TryGetVirtualWindow("camera-selection-buffer-list", out UiVirtualWindow selectionWindow), Is.True);
+            Assert.That(scene.TryGetVirtualWindow("camera-selection-view-list", out UiVirtualWindow selectionWindow), Is.True);
             Assert.That(after.SceneVersion, Is.GreaterThan(before.SceneVersion));
             Assert.That(after.FullRemount, Is.False,
                 "Large selection updates should stay on the retained incremental patch path instead of remounting the whole scene.");
             Assert.That(after.PatchedNodes, Is.GreaterThan(0));
             Assert.That(after.ReusedNodes, Is.GreaterThan(after.PatchedNodes));
             Assert.That(after.VirtualizedWindowCount, Is.EqualTo(1));
-            Assert.That(after.VirtualizedTotalItems, Is.EqualTo(SelectionBuffer.CAPACITY));
+            Assert.That(after.VirtualizedTotalItems, Is.EqualTo(LargeSelectionCount));
             Assert.That(after.VirtualizedComposedItems, Is.EqualTo(selectionWindow.VisibleCount));
-            Assert.That(after.VirtualizedComposedItems, Is.LessThan(SelectionBuffer.CAPACITY),
+            Assert.That(after.VirtualizedComposedItems, Is.LessThan(LargeSelectionCount),
                 "The reactive panel should compose only the visible slice of a large selection list.");
 
             string sceneText = ExtractUiSceneText(scene);
@@ -733,7 +733,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Assert.That(sceneText, Does.Contain($"#{selection[0].Id}"));
 
             scene.Layout(1920f, 1080f);
-            UiNode scrollHost = scene.FindByElementId("camera-selection-buffer-list") ?? throw new InvalidOperationException("Selection buffer host should exist.");
+            UiNode scrollHost = scene.FindByElementId("camera-selection-view-list") ?? throw new InvalidOperationException("Selection view host should exist.");
             long incrementalBeforeScroll = diagnostics.PanelIncrementalPatchCount;
             bool handledScroll = uiRoot.HandleInput(new PointerEvent
             {
@@ -745,14 +745,14 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 DeltaY = 120f
             });
 
-            Assert.That(handledScroll, Is.True, "The selection buffer should consume scroll input while the pointer is inside the list viewport.");
+            Assert.That(handledScroll, Is.True, "The selection view should consume scroll input while the pointer is inside the list viewport.");
 
             Tick(engine, 1);
 
             Assert.That(scene.LastReactiveUpdateMetrics.Reason, Is.EqualTo(UiReactiveUpdateReason.RuntimeWindowChange));
             Assert.That(diagnostics.PanelLastSelectionRowsTouched, Is.EqualTo(0));
             Assert.That(diagnostics.PanelIncrementalPatchCount, Is.EqualTo(incrementalBeforeScroll + 1));
-            Assert.That(scene.TryGetVirtualWindow("camera-selection-buffer-list", out UiVirtualWindow scrolledWindow), Is.True);
+            Assert.That(scene.TryGetVirtualWindow("camera-selection-view-list", out UiVirtualWindow scrolledWindow), Is.True);
             Assert.That(scrolledWindow.StartIndex, Is.GreaterThan(0));
         }
 
@@ -926,8 +926,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Entity hero = FindEntityByName(engine.World, CameraAcceptanceIds.HeroName);
             Assert.That(hero, Is.Not.EqualTo(Entity.Null));
 
-            SetSelectionBuffer(engine, hero);
-            engine.GlobalContext[CoreServiceKeys.SelectedEntity.Name] = hero;
+            SetViewedSelection(engine, hero);
             TickCamera(engine, 3);
             Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.True);
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(1600f, 1200f)));
@@ -939,8 +938,7 @@ namespace Ludots.Tests.ThreeC.Acceptance
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.EqualTo(new Vector2(2200f, 1800f)));
             Assert.That(engine.GameSession.Camera.State.TargetCm, Is.EqualTo(new Vector2(2200f, 1800f)));
 
-            SetSelectionBuffer(engine);
-            engine.GlobalContext.Remove(CoreServiceKeys.SelectedEntity.Name);
+            SetViewedSelection(engine);
             TickCamera(engine, 3);
             Assert.That(engine.GameSession.Camera.FollowTargetPositionCm, Is.Null);
             Assert.That(engine.GameSession.Camera.State.IsFollowing, Is.False);
@@ -1001,6 +999,8 @@ namespace Ludots.Tests.ThreeC.Acceptance
             InstallInput(engine);
             var view = new StubViewController(1920, 1080);
             engine.SetService(CoreServiceKeys.ViewController, view);
+            engine.SetService(CoreServiceKeys.UiTextMeasurer, new SkiaTextMeasurer());
+            engine.SetService(CoreServiceKeys.UiImageSizeProvider, new SkiaImageSizeProvider());
             var cameraAdapter = new StubCameraAdapter();
             var timingDiagnostics = engine.GetService(CoreServiceKeys.PresentationTimingDiagnostics);
             var cameraPresenter = new CameraPresenter(engine.SpatialCoords, cameraAdapter, timingDiagnostics);
@@ -1314,18 +1314,55 @@ namespace Ludots.Tests.ThreeC.Acceptance
                 : throw new InvalidOperationException("LocalPlayerEntity is missing.");
         }
 
-        private static void SetSelectionBuffer(GameEngine engine, params Entity[] entities)
+        private static bool IsInLiveSelection(GameEngine engine, Entity owner, Entity candidate)
         {
-            Entity local = GetLocalPlayer(engine);
-            ref var selection = ref engine.World.Get<SelectionBuffer>(local);
-            selection.Clear();
-            for (int i = 0; i < entities.Length && i < SelectionBuffer.CAPACITY; i++)
+            if (candidate == Entity.Null)
             {
-                if (entities[i] != Entity.Null)
+                return false;
+            }
+
+            Entity[] selected = ReadLiveSelection(engine, owner);
+            for (int i = 0; i < selected.Length; i++)
+            {
+                if (selected[i] == candidate)
                 {
-                    selection.Add(entities[i]);
+                    return true;
                 }
             }
+
+            return false;
+        }
+
+        private static Entity[] ReadLiveSelection(GameEngine engine, Entity owner)
+        {
+            SelectionRuntime selectionRuntime = engine.GetService(CoreServiceKeys.SelectionRuntime)
+                ?? throw new InvalidOperationException("SelectionRuntime is missing.");
+            int count = selectionRuntime.GetSelectionCount(owner, SelectionSetKeys.LivePrimary);
+            if (count <= 0)
+            {
+                return Array.Empty<Entity>();
+            }
+
+            var members = new Entity[count];
+            int written = selectionRuntime.CopySelection(owner, SelectionSetKeys.LivePrimary, members);
+            if (written == members.Length)
+            {
+                return members;
+            }
+
+            Array.Resize(ref members, written);
+            return members;
+        }
+
+        private static void SetViewedSelection(GameEngine engine, params Entity[] entities)
+        {
+            Entity local = GetLocalPlayer(engine);
+            SelectionRuntime selectionRuntime = engine.GetService(CoreServiceKeys.SelectionRuntime)
+                ?? throw new InvalidOperationException("SelectionRuntime is missing.");
+            selectionRuntime.ReplaceSelection(local, SelectionSetKeys.LivePrimary, entities);
+            selectionRuntime.TryBindView(local, SelectionViewKeys.Primary, local, SelectionSetKeys.LivePrimary);
+            engine.GlobalContext[CoreServiceKeys.SelectionViewViewerEntity.Name] = local;
+            engine.GlobalContext[CoreServiceKeys.SelectionViewKey.Name] = SelectionViewKeys.Primary;
         }
 
         private static Vector2 ProjectEntity(GameEngine engine, IScreenProjector projector, Entity entity)

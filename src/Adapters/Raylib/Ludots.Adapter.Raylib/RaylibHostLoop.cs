@@ -588,8 +588,7 @@ namespace Ludots.Adapter.Raylib
             }
 
             string selectedSummary = "selected=(none)";
-            if (engine.GlobalContext.TryGetValue(CoreServiceKeys.SelectedEntity.Name, out var selectedObj) &&
-                selectedObj is Entity selected &&
+            if (SelectionContextRuntime.TryGetCurrentPrimary(engine.World, engine.GlobalContext, out Entity selected) &&
                 selected != Entity.Null)
             {
                 selectedSummary = $"selected={DescribeEntity(engine, selected)}";
